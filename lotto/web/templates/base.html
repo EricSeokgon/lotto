@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>로또 통계 대시보드</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'surface': '#F8F9FA',
+                        'card': '#FFFFFF',
+                        'ink': '#1A202C',
+                        'muted': '#718096',
+                        'slate-blue': '#4A5568',
+                        'data-blue': '#3B82F6',
+                        'data-muted': '#93C5FD',
+                        'amber': '#D97706',
+                        'border': '#E2E8F0'
+                    }
+                }
+            }
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; }
+    </style>
+</head>
+<body class="bg-surface text-ink min-h-screen">
+    <!-- 헤더 -->
+    <header class="bg-card border-b border-border shadow-sm">
+        <div class="max-w-screen-xl mx-auto px-4 py-4 flex items-center justify-between">
+            <h1 class="text-xl font-bold text-ink">로또 통계 대시보드</h1>
+            {% if last_date %}
+            <span class="text-sm text-muted">최근 수집: {{ last_date }}</span>
+            {% endif %}
+        </div>
+        <!-- 탭 네비게이션 -->
+        <nav class="max-w-screen-xl mx-auto px-4">
+            <div class="flex space-x-1 border-t border-border pt-0">
+                <a href="/"
+                   class="px-4 py-2 text-sm font-medium border-b-2 {% if active_tab == 'dashboard' %}border-data-blue text-data-blue{% else %}border-transparent text-muted hover:text-ink hover:border-border{% endif %}">
+                    대시보드
+                </a>
+                <a href="/collect"
+                   class="px-4 py-2 text-sm font-medium border-b-2 {% if active_tab == 'collect' %}border-data-blue text-data-blue{% else %}border-transparent text-muted hover:text-ink hover:border-border{% endif %}">
+                    수집 현황
+                </a>
+                <a href="/analyze"
+                   class="px-4 py-2 text-sm font-medium border-b-2 {% if active_tab == 'analyze' %}border-data-blue text-data-blue{% else %}border-transparent text-muted hover:text-ink hover:border-border{% endif %}">
+                    빈도 분석
+                </a>
+                <a href="/recommend"
+                   class="px-4 py-2 text-sm font-medium border-b-2 {% if active_tab == 'recommend' %}border-data-blue text-data-blue{% else %}border-transparent text-muted hover:text-ink hover:border-border{% endif %}">
+                    추천 번호
+                </a>
+                <a href="/simulate"
+                   class="px-4 py-2 text-sm font-medium border-b-2 {% if active_tab == 'simulate' %}border-data-blue text-data-blue{% else %}border-transparent text-muted hover:text-ink hover:border-border{% endif %}">
+                    시뮬레이션
+                </a>
+            </div>
+        </nav>
+    </header>
+
+    <!-- 메인 콘텐츠 -->
+    <main class="max-w-screen-xl mx-auto px-4 py-6">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- 푸터 면책 조항 -->
+    <footer class="mt-8 border-t border-border bg-card">
+        <div class="max-w-screen-xl mx-auto px-4 py-4">
+            <p class="text-xs text-muted">
+                ⚠️ 이 통계는 과거 당첨 데이터를 기반으로 한 분석 도구입니다.
+                미래 당첨 번호를 예측하거나 보장하지 않습니다.
+                이 도구를 사용한 모든 결과에 대한 책임은 사용자에게 있습니다.
+            </p>
+        </div>
+    </footer>
+</body>
+</html>

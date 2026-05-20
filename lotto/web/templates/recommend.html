@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-2xl font-bold text-ink mb-1">추천 번호</h2>
+            <p class="text-muted text-sm">통계 기반 번호 추천 결과입니다.</p>
+        </div>
+        <!-- 추천 수 선택 -->
+        <form method="get" action="/recommend" class="flex items-center space-x-2">
+            <label class="text-sm text-muted">추천 세트 수:</label>
+            <select name="count" onchange="this.form.submit()"
+                    class="text-sm border border-border rounded px-2 py-1 bg-card text-ink">
+                {% for n in [1, 3, 5, 10, 20] %}
+                <option value="{{ n }}" {% if n == count %}selected{% endif %}>{{ n }}세트</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    {% if recommendations %}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for rec in recommendations %}
+        <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+            <div class="flex items-center justify-between mb-3">
+                <span class="text-sm font-semibold text-ink">세트 {{ loop.index }}</span>
+                <span class="text-xs px-2 py-0.5 rounded bg-surface text-muted border border-border">{{ rec.strategy_label }}</span>
+            </div>
+            <div class="flex flex-wrap gap-1">
+                {% for num in rec.numbers %}
+                <span class="inline-block w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold bg-data-blue text-white">{{ num }}</span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="bg-card rounded-lg border border-border p-8 text-center shadow-sm">
+        <p class="text-muted">통계 데이터가 없습니다.</p>
+        <p class="text-sm text-muted mt-1">CLI에서 <code class="bg-surface px-1 rounded">python main.py analyze</code> 명령을 실행하세요.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

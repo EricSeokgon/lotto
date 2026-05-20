@@ -199,5 +199,17 @@ def simulate(
         console.print(f"[green]결과 저장 완료: {output}[/green]")
 
 
+@app.command()
+def web(
+    host: Annotated[str, typer.Option("--host", help="바인딩 호스트")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", help="포트 번호")] = 8000,
+    reload: Annotated[bool, typer.Option("--reload", help="자동 재시작 (개발 모드)")] = False,
+) -> None:
+    """웹 대시보드를 시작합니다."""
+    import uvicorn
+
+    uvicorn.run("lotto.web.app:app", host=host, port=port, reload=reload)
+
+
 if __name__ == "__main__":
     app()

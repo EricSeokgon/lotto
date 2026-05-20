@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-2xl font-bold text-ink mb-1">시뮬레이션</h2>
+            <p class="text-muted text-sm">역대 데이터를 이용한 백테스팅 시뮬레이션 결과입니다.</p>
+        </div>
+        <!-- 회차 수 선택 -->
+        <form method="get" action="/simulate" class="flex items-center space-x-2">
+            <label class="text-sm text-muted">시뮬레이션 회차:</label>
+            <select name="rounds" onchange="this.form.submit()"
+                    class="text-sm border border-border rounded px-2 py-1 bg-card text-ink">
+                {% for r in [100, 500, 1000, 5000, 10000] %}
+                <option value="{{ r }}" {% if r == rounds %}selected{% endif %}>{{ r }}회</option>
+                {% endfor %}
+            </select>
+        </form>
+    </div>
+
+    {% if result %}
+    <!-- 요약 통계 -->
+    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+        <div class="bg-card rounded-lg border border-border p-4 shadow-sm">
+            <p class="text-xs text-muted">총 시도</p>
+            <p class="text-2xl font-bold text-ink">{{ result.total_rounds }}</p>
+        </div>
+        <div class="bg-card rounded-lg border border-border p-4 shadow-sm">
+            <p class="text-xs text-muted">적중률 (5등 이상)</p>
+            <p class="text-2xl font-bold text-data-blue">{{ "%.2f" | format(result.hit_rate * 100) }}%</p>
+        </div>
+    </div>
+
+    <!-- 도넛 차트 + 등수 테이블 -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+            <h3 class="font-semibold text-ink mb-4">등수별 분포</h3>
+            <canvas id="prizeChart" height="280"></canvas>
+        </div>
+        <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+            <h3 class="font-semibold text-ink mb-4">등수별 당첨 횟수</h3>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border">
+                        <th class="text-left py-2 text-muted font-medium">등수</th>
+                        <th class="text-right py-2 text-muted font-medium">횟수</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for prize, cnt in result.prize_counts.items() %}
+                    <tr class="border-b border-border last:border-0">
+                        <td class="py-2 text-ink">{{ prize }}</td>
+                        <td class="py-2 text-right font-medium text-ink">{{ cnt }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        var prizeData = {{ prize_chart_data | tojson }};
+        var ctx = document.getElementById('prizeChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: prizeData.labels,
+                datasets: [{
+                    data: prizeData.values,
+                    backgroundColor: ['#3B82F6', '#60A5FA', '#93C5FD', '#BFDBFE', '#DBEAFE', '#EFF6FF'],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom' } }
+            }
+        });
+    })();
+    </script>
+
+    {% else %}
+    <div class="bg-card rounded-lg border border-border p-8 text-center shadow-sm">
+        <p class="text-muted">수집 데이터가 없습니다.</p>
+        <p class="text-sm text-muted mt-1">CLI에서 <code class="bg-surface px-1 rounded">python main.py collect</code> 명령을 실행하세요.</p>
+    </div>
+    {% endif %}
+
+    <!-- 면책 카드 -->
+    <div class="bg-card rounded-lg border border-border p-4 shadow-sm">
+        <p class="text-xs text-muted">
+            이 시뮬레이션은 과거 추첨 데이터를 기반으로 무작위 번호를 선택하여 적중률을 계산합니다.
+            실제 로또 당첨 확률을 보장하지 않으며, 모든 투자 결과에 대한 책임은 사용자에게 있습니다.
+        </p>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <div>
+        <h2 class="text-2xl font-bold text-ink mb-1">빈도 분석</h2>
+        <p class="text-muted text-sm">1~45 번호별 출현 빈도를 시각화합니다. 색이 진할수록 출현 빈도가 높습니다.</p>
+    </div>
+
+    {% if stats %}
+    <!-- 시그니처 배지 그리드 -->
+    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+        <h3 class="font-semibold text-ink mb-4">번호별 빈도 배지</h3>
+        <div class="grid grid-cols-9 gap-1">
+            {% for num in numbers %}
+            {% set color = badge_colors.get(num, '#E2E8F0') %}
+            {% set percentile = badge_percentiles.get(num, 0.0) %}
+            <div class="rounded text-center py-2 text-sm font-medium"
+                 style="background-color: {{ color }}; color: {{ 'white' if percentile >= 0.5 else '#1A202C' }};">
+                {{ num }}
+            </div>
+            {% endfor %}
+        </div>
+        <div class="mt-3 flex items-center space-x-4 text-xs text-muted">
+            <div class="flex items-center space-x-1">
+                <span class="inline-block w-4 h-4 rounded" style="background-color: #E2E8F0;"></span>
+                <span>저빈도</span>
+            </div>
+            <div class="flex items-center space-x-1">
+                <span class="inline-block w-4 h-4 rounded" style="background-color: #3B82F6;"></span>
+                <span>고빈도</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 상위 20개 빈도 차트 -->
+    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+        <h3 class="font-semibold text-ink mb-4">빈도 상위 20개 번호</h3>
+        <canvas id="freqChart" height="300"></canvas>
+    </div>
+
+    <script>
+    (function() {
+        // Python에서 전달된 JSON 데이터로 차트 렌더링
+        var freqData = {{ freq_chart_data | tojson }};
+        var ctx = document.getElementById('freqChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: freqData.labels,
+                datasets: [{
+                    label: '출현 횟수',
+                    data: freqData.values,
+                    backgroundColor: '#3B82F6',
+                    borderColor: '#2563EB',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true },
+                    y: { ticks: { font: { size: 11 } } }
+                }
+            }
+        });
+    })();
+    </script>
+
+    {% else %}
+    <div class="bg-card rounded-lg border border-border p-8 text-center shadow-sm">
+        <p class="text-muted">통계 데이터가 없습니다.</p>
+        <p class="text-sm text-muted mt-1">CLI에서 <code class="bg-surface px-1 rounded">python main.py analyze</code> 명령을 실행하세요.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

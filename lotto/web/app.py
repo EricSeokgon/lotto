@@ -1,0 +1,45 @@
+"""FastAPI 앱 — 로또 통계 웹 대시보드."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from lotto.web.routes import api, pages
+
+# 경로 상수
+_WEB_DIR = Path(__file__).parent
+_TEMPLATES_DIR = _WEB_DIR / "templates"
+_STATIC_DIR = _WEB_DIR / "static"
+_DRAWS_PATH = Path("data/draws.csv")
+_STATS_PATH = Path("data/stats.json")
+
+# FastAPI 앱 초기화
+app = FastAPI(title="로또 통계 대시보드")
+
+# 정적 파일 마운트 (디렉토리 존재 시)
+if _STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+# Jinja2 템플릿 설정
+templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+# 라우터 등록
+app.include_router(pages.router)
+app.include_router(api.router)
+
+
+@app.get("/health")
+async def health() -> dict:
+    """서버 및 데이터 파일 상태를 반환합니다."""
+    csv_exists = _DRAWS_PATH.exists()
+    stats_exists = _STATS_PATH.exists()
+    status = "ok" if (csv_exists and stats_exists) else "degraded"
+    return {
+        "status": status,
+        "data_csv_exists": csv_exists,
+        "stats_json_exists": stats_exists,
+    }

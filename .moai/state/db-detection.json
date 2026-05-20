@@ -1,0 +1,8 @@
+{
+  "detected": false,
+  "matched_keywords": ["postgresql", "sqlite"],
+  "source_files": [".moai/project/tech.md"],
+  "scanned_at": "2026-05-20T13:57:00Z",
+  "tech_md_hash": "mention-only-no-orm-dependency",
+  "notes": "Keywords found only in future plans section of tech.md. No ORM/DB library in pyproject.toml. Current architecture uses CSV/JSON file storage exclusively."
+}

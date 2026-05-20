@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <div>
+        <h2 class="text-2xl font-bold text-ink mb-1">수집 현황</h2>
+        <p class="text-muted text-sm">동행복권 API에서 수집한 당첨 번호 데이터 상태입니다.</p>
+    </div>
+
+    <!-- 데이터 파일 상태 -->
+    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+        <h3 class="font-semibold text-ink mb-3">데이터 파일 상태</h3>
+        <div class="space-y-2">
+            <div class="flex items-center justify-between py-2 border-b border-border">
+                <span class="text-sm text-muted">draws.csv</span>
+                <span class="text-sm font-medium {% if data_status.draws_available %}text-data-blue{% else %}text-gray-400{% endif %}">
+                    {% if data_status.draws_available %}존재{% else %}없음{% endif %}
+                </span>
+            </div>
+            <div class="flex items-center justify-between py-2">
+                <span class="text-sm text-muted">stats.json</span>
+                <span class="text-sm font-medium {% if data_status.stats_available %}text-data-blue{% else %}text-gray-400{% endif %}">
+                    {% if data_status.stats_available %}존재{% else %}없음{% endif %}
+                </span>
+            </div>
+        </div>
+    </div>
+
+    {% if draws %}
+    <!-- 수집 데이터 요약 -->
+    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+        <h3 class="font-semibold text-ink mb-3">수집 데이터 요약</h3>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div>
+                <p class="text-xs text-muted">총 회차</p>
+                <p class="text-xl font-bold text-ink">{{ draws | length }}</p>
+            </div>
+            <div>
+                <p class="text-xs text-muted">최초 회차</p>
+                <p class="text-xl font-bold text-ink">{{ draws | min(attribute='drwNo') }}회</p>
+            </div>
+            <div>
+                <p class="text-xs text-muted">최근 회차</p>
+                <p class="text-xl font-bold text-ink">{{ draws | max(attribute='drwNo') }}회</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 최근 5회 -->
+    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+        <h3 class="font-semibold text-ink mb-3">최근 추첨 결과</h3>
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border">
+                        <th class="text-left py-2 text-muted font-medium">회차</th>
+                        <th class="text-left py-2 text-muted font-medium">날짜</th>
+                        <th class="text-left py-2 text-muted font-medium">당첨 번호</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for draw in draws[-5:] | reverse %}
+                    <tr class="border-b border-border last:border-0">
+                        <td class="py-2 font-medium text-ink">{{ draw.drwNo }}회</td>
+                        <td class="py-2 text-muted">{{ draw.date }}</td>
+                        <td class="py-2">
+                            <div class="flex flex-wrap gap-1">
+                                {% for n in draw.numbers() %}
+                                <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-data-blue text-white">{{ n }}</span>
+                                {% endfor %}
+                                <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-data-muted text-ink">+{{ draw.bonus }}</span>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="bg-card rounded-lg border border-border p-8 text-center shadow-sm">
+        <p class="text-muted">수집된 데이터가 없습니다.</p>
+        <p class="text-sm text-muted mt-1">CLI에서 <code class="bg-surface px-1 rounded">python main.py collect</code> 명령을 실행하세요.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

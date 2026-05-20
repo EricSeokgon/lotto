@@ -6,6 +6,25 @@
 
 ---
 
+## [1.1.0] - 2026-05-20
+
+웹 대시보드 추가 (SPEC-WEB-001 구현 완료)
+
+### 추가
+
+#### REQ-WEB: 읽기 전용 웹 대시보드
+- FastAPI 기반 5탭 웹 대시보드 (`lotto/web/`)
+- 대시보드, 수집 현황, 빈도 분석, 추천 번호, 시뮬레이션 탭
+- 번호별 빈도 백분위수 기반 컬러 배지 (저빈도 #E2E8F0 ~ 고빈도 #3B82F6)
+- Chart.js v4 차트: 빈도 분석(가로 막대), 시뮬레이션(도넛)
+- Tailwind CSS CDN, Noto Sans KR CDN 활용 (빌드 스텝 없음)
+- REST API 엔드포인트: GET /api/draws, /api/stats, /api/recommendations, /api/simulation
+- POST /api/collect, /api/analyze (비동기 백그라운드 실행)
+- `python main.py web` CLI 서브커맨드 추가
+- 65개 신규 테스트 추가, lotto.web 커버리지 ≥ 90%
+
+---
+
 ## [1.0.0] - 2026-05-20
 
 로또 번호 추천 CLI 도구의 초기 안정 버전 (SPEC-LOTTO-001 구현 완료)
