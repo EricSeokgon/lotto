@@ -103,6 +103,47 @@ class TestWeightsValidation:
         assert len(results) == 5
 
 
+class TestRecommendByStrategy:
+    """전략별 추천 테스트 (recommend_by_strategy)."""
+
+    def test_returns_single_recommendation(self, sample_stats: Statistics) -> None:
+        """각 전략으로 1세트 반환 확인."""
+        from lotto.recommender import STRATEGY_LABELS, LottoRecommender, Recommendation
+
+        rec = LottoRecommender(sample_stats)
+        result = rec.recommend_by_strategy(STRATEGY_LABELS[0])
+        assert isinstance(result, Recommendation)
+        assert len(result.numbers) == 6
+
+    def test_numbers_in_valid_range(self, sample_stats: Statistics) -> None:
+        """추천 번호가 1~45 범위인지 확인."""
+        from lotto.recommender import STRATEGY_LABELS, LottoRecommender
+
+        rec = LottoRecommender(sample_stats)
+        for label in STRATEGY_LABELS:
+            result = rec.recommend_by_strategy(label)
+            assert all(1 <= n <= 45 for n in result.numbers)
+
+    def test_strategy_label_preserved(self, sample_stats: Statistics) -> None:
+        """반환된 추천의 strategy_label이 유효한 레이블인지 확인."""
+        from lotto.recommender import STRATEGY_LABELS, LottoRecommender
+
+        rec = LottoRecommender(sample_stats)
+        result = rec.recommend_by_strategy(STRATEGY_LABELS[2])
+        assert result.strategy_label in STRATEGY_LABELS
+
+
+class TestNormalize:
+    """_normalize 유틸리티 테스트."""
+
+    def test_normalize_uniform_values_returns_half(self) -> None:
+        """모든 값이 같을 때 span=0 → 0.5 반환 확인."""
+        from lotto.recommender import _normalize  # type: ignore[attr-defined]
+
+        result = _normalize({1: 10, 2: 10, 3: 10})
+        assert all(v == 0.5 for v in result.values())
+
+
 class TestMissingStats:
     """stats.json 부재 테스트 (REQ-RECOMMEND-06)."""
 

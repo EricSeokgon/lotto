@@ -192,19 +192,113 @@ def test_collect_page_with_draws(monkeypatch):
 
 def test_simulate_page_with_result(monkeypatch):
     """시뮬레이션 결과 있을 때 페이지에 적중률이 표시되는지 확인."""
-    from unittest.mock import MagicMock
+    from unittest.mock import MagicMock, patch
 
     from lotto.web.app import app
 
     mock_result = MagicMock()
     mock_result.total_rounds = 1000
     mock_result.hit_rate = 0.05
-    mock_result.prize_counts = {"1등": 0, "2등": 0, "3등": 2, "4등": 15, "5등": 50}
+    mock_result.prize_counts = {"1등": 0, "2등": 0, "3등": 2, "4등": 15, "5등": 50, "낙첨": 933}
+    mock_result.per_round_hits = [0] * 1000
 
-    with __import__("unittest.mock", fromlist=["patch"]).patch(
-        "lotto.web.routes.pages.get_simulation", return_value=mock_result
-    ):
+    with patch("lotto.web.routes.pages.get_simulation", return_value=mock_result), \
+         patch("lotto.web.routes.pages.get_strategy_comparison", return_value=None):
         c = TestClient(app)
         response = c.get("/simulate")
+
+    assert response.status_code == 200
+
+
+# ──────────────────────────────────────────────
+# T-017: 구매 히스토리 페이지 테스트
+# ──────────────────────────────────────────────
+
+def test_history_page_returns_200(client):
+    """/history 가 200을 반환하는지 확인."""
+    from unittest.mock import patch
+
+    from lotto.web.app import app
+
+    with patch("lotto.web.routes.pages.compute_ticket_results", return_value=[]):
+        c = TestClient(app)
+        response = c.get("/history")
+
+    assert response.status_code == 200
+
+
+def test_history_page_shows_empty_state():
+    """/history 페이지에서 데이터 없을 때 빈 상태 표시."""
+    from unittest.mock import patch
+
+    from lotto.web.app import app
+
+    with patch("lotto.web.routes.pages.compute_ticket_results", return_value=[]):
+        c = TestClient(app)
+        response = c.get("/history")
+
+    assert response.status_code == 200
+    assert "history" in response.text.lower() or "히스토리" in response.text
+
+
+def test_history_page_shows_ticket_results():
+    """/history 페이지에서 티켓 결과 데이터가 렌더링된다."""
+    from unittest.mock import patch
+
+    from lotto.web.app import app
+
+    fake_results = [
+        {
+            "ticket": {"id": "abc", "drwNo": 1100, "numbers": [1, 2, 3, 4, 5, 6],
+                       "bought_at": "2024-01-15"},
+            "draw_numbers": [1, 2, 3, 4, 5, 6],
+            "draw_bonus": 7,
+            "draw_date": "2024-01-15",
+            "matched": 6,
+            "bonus_match": False,
+            "prize": "1등",
+        }
+    ]
+
+    with patch("lotto.web.routes.pages.compute_ticket_results", return_value=fake_results):
+        c = TestClient(app)
+        response = c.get("/history")
+
+    assert response.status_code == 200
+    assert "1100" in response.text
+
+
+def test_history_page_prize_counts_computed():
+    """/history 페이지에서 등수 집계가 올바르게 렌더링된다."""
+    from unittest.mock import patch
+
+    from lotto.web.app import app
+
+    fake_results = [
+        {
+            "ticket": {"id": "a", "drwNo": 1100, "numbers": [1, 2, 3, 4, 5, 6],
+                       "bought_at": "2024-01-15"},
+            "draw_numbers": [1, 2, 3, 4, 5, 6],
+            "draw_bonus": 7,
+            "draw_date": "2024-01-15",
+            "matched": 3,
+            "bonus_match": False,
+            "prize": "5등",
+        },
+        {
+            "ticket": {"id": "b", "drwNo": 1101, "numbers": [10, 20, 30, 40, 41, 42],
+                       "bought_at": "2024-01-22"},
+            "draw_numbers": [],
+            "draw_bonus": 0,
+            "draw_date": "",
+            "matched": 0,
+            "bonus_match": False,
+            "prize": "미추첨",
+        },
+    ]
+
+    with patch("lotto.web.routes.pages.compute_ticket_results", return_value=fake_results):
+        c = TestClient(app)
+        response = c.get("/history")
 
     assert response.status_code == 200

@@ -178,3 +178,78 @@ class TestCsvPersistence:
             assert loaded_draw.drwNo == orig.drwNo
             assert loaded_draw.numbers() == orig.numbers()
             assert loaded_draw.bonus == orig.bonus
+
+
+class TestCollectNew:
+    """collect_new 메서드 테스트."""
+
+    def test_collect_new_from_empty(self, requests_mock: rm.Mocker, tmp_data_dir: Path) -> None:
+        """기존 데이터 없을 때 1회차부터 수집한다."""
+        requests_mock.get(
+            API_URL_PATTERN,
+            [
+                {"json": _make_success_response(1)},
+                {"json": _make_success_response(2)},
+                {"status_code": 500},  # 3회차 실패 (3회 재시도)
+                {"status_code": 500},
+                {"status_code": 500},
+                {"status_code": 500},  # 4회차 실패
+                {"status_code": 500},
+                {"status_code": 500},
+                {"status_code": 500},  # 5회차 실패
+                {"status_code": 500},
+                {"status_code": 500},
+                {"status_code": 500},  # 6회차 실패
+                {"status_code": 500},
+                {"status_code": 500},
+            ],
+        )
+        collector = LottoCollector(data_dir=tmp_data_dir)
+        with patch("time.sleep"), pytest.raises(CollectAbortError):
+            collector.collect_new(latest_drw_no=10)
+
+    def test_collect_new_appends_to_existing(
+        self, requests_mock: rm.Mocker, tmp_data_dir: Path, mini_draws: list
+    ) -> None:
+        """기존 데이터 있을 때 다음 회차부터 수집한다."""
+        # mini_draws 에 drwNo=1,2,3 이 있다고 가정
+        collector = LottoCollector(data_dir=tmp_data_dir)
+        collector.save_csv(mini_draws)
+        max_drw_no = max(d.drwNo for d in mini_draws)
+
+        # 다음 회차 하나만 성공, 이후 연속 5회 실패
+        responses = [
+            {"json": _make_success_response(max_drw_no + 1)},
+            {"status_code": 500},
+            {"status_code": 500},
+            {"status_code": 500},
+            {"status_code": 500},  # 연속 실패 5 시작
+            {"status_code": 500},
+            {"status_code": 500},
+            {"status_code": 500},
+            {"status_code": 500},  # (4회 연속 실패 × 3 재시도)
+            {"status_code": 500},
+            {"status_code": 500},
+            {"status_code": 500},
+            {"status_code": 500},
+            {"status_code": 500},
+            {"status_code": 500},
+            {"status_code": 500},
+        ]
+        requests_mock.get(API_URL_PATTERN, responses)
+
+        with patch("time.sleep"), pytest.raises(CollectAbortError):
+            collector.collect_new(latest_drw_no=max_drw_no + 10)
+
+    def test_collect_new_fetch_invalid_data_returns_none(
+        self, requests_mock: rm.Mocker, tmp_data_dir: Path
+    ) -> None:
+        """fetch_draw 에서 KeyError 발생 시 None 반환 (에러 경로 커버)."""
+        requests_mock.get(
+            API_URL_PATTERN,
+            json={"returnValue": "success", "drwNo": 1},  # 필수 필드 누락
+        )
+        collector = LottoCollector(data_dir=tmp_data_dir)
+        with patch("time.sleep"):
+            result = collector.fetch_draw(1)
+        assert result is None

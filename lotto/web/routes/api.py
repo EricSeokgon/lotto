@@ -6,7 +6,12 @@
 
 from __future__ import annotations
 
+import datetime
+import threading
+from pathlib import Path
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from pydantic import BaseModel, field_validator, model_validator
 
 from lotto.web.data import (
     get_draws,
@@ -14,6 +19,16 @@ from lotto.web.data import (
     get_simulation,
     get_stats,
 )
+
+# 수집 진행 상태 (단일 서버 프로세스 내 공유)
+_collect_state: dict = {
+    "status": "idle",   # idle | running | done | error
+    "current": 0,
+    "total": 0,
+    "collected": 0,
+    "message": "",
+}
+_collect_lock = threading.Lock()
 
 router = APIRouter(prefix="/api")
 
@@ -76,17 +91,418 @@ async def run_simulation_results(
     return result.model_dump()
 
 
-@router.post("/collect", status_code=202)
-async def trigger_collect(background_tasks: BackgroundTasks) -> dict:
-    """데이터 수집을 백그라운드에서 시작합니다."""
+def _run_analyze_sync() -> None:
+    """수집 데이터 기반 통계 분석을 동기 실행합니다."""
+    from lotto.analyzer import LottoAnalyzer
     from lotto.collector import LottoCollector
 
-    collector = LottoCollector()
-    existing = collector.load_existing()
-    latest = max((d.drwNo for d in existing), default=0)
+    draws = LottoCollector().load_existing()
+    if draws:
+        analyzer = LottoAnalyzer()
+        stats = analyzer.analyze(draws)
+        analyzer.save_stats(stats, Path("data/stats.json"))
 
-    background_tasks.add_task(collector.collect_new, latest_drw_no=latest + 50)
-    return {"status": "started", "message": "데이터 수집을 시작했습니다."}
+
+def _estimate_latest_drw_no() -> int:
+    """현재 날짜 기준 최신 회차 번호를 추정합니다. (1회: 2002-12-07 토요일)"""
+    origin = datetime.date(2002, 12, 7)
+    today = datetime.date.today()
+    weeks = (today - origin).days // 7
+    return max(1, weeks + 1)
+
+
+_CHECKPOINT_INTERVAL = 20  # N회마다 중간 저장
+
+
+def _collect_worker(full: bool, start_from: int, max_drw_no: int) -> None:
+    """백그라운드 수집 워커 — 진행 상태를 _collect_state에 기록합니다.
+
+    # @MX:NOTE: [AUTO] 20회마다 중간 저장 — 실패 시 증분 재시작으로 이어서 수집 가능
+    """
+    import time
+
+    from lotto.collector import LottoCollector
+    from lotto.models import DrawResult  # noqa: TC001
+
+    global _collect_state  # noqa: PLW0603
+
+    collector = LottoCollector()
+
+    # 빈 CSV 처리
+    csv_path = Path("data/draws.csv")
+    if csv_path.exists() and csv_path.stat().st_size < 10:
+        csv_path.unlink()
+
+    existing = collector.load_existing() if not full else []
+    existing_set = {d.drwNo for d in existing}
+    targets = [n for n in range(start_from, max_drw_no + 1) if n not in existing_set]
+
+    with _collect_lock:
+        _collect_state.update({
+            "status": "running", "current": 0, "total": len(targets),
+            "collected": 0, "message": "수집 중...",
+        })
+
+    collected: list[DrawResult] = list(existing)
+    consecutive_failures = 0
+    new_since_checkpoint = 0
+
+    for idx, drw_no in enumerate(targets, 1):
+        with _collect_lock:
+            _collect_state["current"] = idx
+            _collect_state["message"] = f"{drw_no}회차 수집 중..."
+
+        draw = collector.fetch_draw(drw_no)
+        time.sleep(0.2)
+
+        if draw is None:
+            consecutive_failures += 1
+            if consecutive_failures >= 5:
+                # 5회 연속 실패 = 더 이상 데이터 없음 (최신 회차 도달)
+                break
+        else:
+            consecutive_failures = 0
+            collected.append(draw)
+            new_since_checkpoint += 1
+            with _collect_lock:
+                _collect_state["collected"] += 1
+
+            # 주기적 중간 저장 — 실패 시 이 시점부터 증분 재시작 가능
+            if new_since_checkpoint >= _CHECKPOINT_INTERVAL:
+                try:
+                    collector.save_csv(sorted(collected, key=lambda d: d.drwNo))
+                    new_since_checkpoint = 0
+                    with _collect_lock:
+                        saved_count = len(collected)
+                        _collect_state["message"] = (
+                            f"{drw_no}회차 수집 중... (체크포인트 저장: {saved_count}회차)"
+                        )
+                except Exception:
+                    pass  # 중간 저장 실패는 무시하고 계속 진행
+
+    if not collected:
+        with _collect_lock:
+            _collect_state.update({
+                "status": "error",
+                "message": (
+                    "API에서 데이터를 가져올 수 없습니다. 블로그 크롤링 기능을 사용해보세요."
+                ),
+            })
+        return
+
+    try:
+        sorted_draws = sorted(collected, key=lambda d: d.drwNo)
+        collector.save_csv(sorted_draws)
+        total_saved = len(sorted_draws)
+        with _collect_lock:
+            _collect_state.update({
+                "status": "running",
+                "message": "통계 분석 중...",
+                "total": total_saved,
+            })
+        _run_analyze_sync()
+        with _collect_lock:
+            _collect_state.update({
+                "status": "done",
+                "message": f"수집 완료 — 총 {total_saved}회차 저장, 통계 분석 완료",
+                "total": total_saved,
+            })
+    except Exception as exc:
+        with _collect_lock:
+            _collect_state.update({"status": "error", "message": f"저장 실패: {exc}"})
+
+
+@router.get("/collect/status")
+async def collect_status() -> dict:
+    """수집 진행 상태를 반환합니다."""
+    with _collect_lock:
+        return dict(_collect_state)
+
+
+@router.post("/collect", status_code=202)
+async def trigger_collect(
+    background_tasks: BackgroundTasks,
+    full: bool = Query(default=False, description="True면 전체 재수집"),
+    count: int = Query(default=0, ge=0, description="최근 N회 수집 (0=증분, full=True면 무시)"),
+) -> dict:
+    """데이터 수집을 백그라운드에서 시작합니다.
+    - full=true: 1회차부터 전체 재수집
+    - count>0: 최근 N회차 수집
+    - 기본: 마지막 저장 회차 이후 증분 수집
+    """
+    with _collect_lock:
+        if _collect_state["status"] == "running":
+            raise HTTPException(
+                status_code=409,
+                detail={"error": "already_running", "message": "이미 수집이 진행 중입니다."},
+            )
+
+    csv_path = Path("data/draws.csv")
+    if csv_path.exists() and csv_path.stat().st_size < 10:
+        csv_path.unlink()
+
+    from lotto.collector import LottoCollector
+
+    max_drw_no = _estimate_latest_drw_no()
+
+    if full:
+        start_from = 1
+        mode = "전체"
+    elif count > 0:
+        start_from = max(1, max_drw_no - count + 1)
+        mode = f"최근 {count}회"
+    else:
+        existing = LottoCollector().load_existing()
+        start_from = (max(d.drwNo for d in existing) + 1) if existing else 1
+        mode = "증분"
+
+    background_tasks.add_task(_collect_worker, full, start_from, max_drw_no)
+    return {
+        "status": "started",
+        "message": f"{mode} 수집을 시작했습니다.",
+        "start_from": start_from,
+        "max_drw_no": max_drw_no,
+    }
+
+
+class ManualDrawRequest(BaseModel):
+    """수동 회차 입력 요청 모델."""
+
+    drwNo: int  # noqa: N815
+    date: str
+    numbers: list[int]
+    bonus: int
+
+    @field_validator("drwNo")
+    @classmethod
+    def validate_drw_no(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("회차 번호는 1 이상이어야 합니다.")
+        return v
+
+    @field_validator("date")
+    @classmethod
+    def validate_date(cls, v: str) -> str:
+        try:
+            datetime.date.fromisoformat(v)
+        except ValueError as err:
+            raise ValueError("날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)") from err
+        return v
+
+    @field_validator("numbers")
+    @classmethod
+    def validate_numbers(cls, v: list[int]) -> list[int]:
+        if len(v) != 6:
+            raise ValueError("번호는 정확히 6개여야 합니다.")
+        if len(set(v)) != 6:
+            raise ValueError("번호에 중복이 있습니다.")
+        for n in v:
+            if not (1 <= n <= 45):
+                raise ValueError(f"번호 {n}은 1~45 범위를 벗어납니다.")
+        return sorted(v)
+
+    @field_validator("bonus")
+    @classmethod
+    def validate_bonus(cls, v: int) -> int:
+        if not (1 <= v <= 45):
+            raise ValueError(f"보너스 번호 {v}은 1~45 범위를 벗어납니다.")
+        return v
+
+    @model_validator(mode="after")
+    def bonus_not_in_numbers(self) -> ManualDrawRequest:
+        if self.bonus in self.numbers:
+            raise ValueError("보너스 번호가 당첨 번호와 중복됩니다.")
+        return self
+
+
+@router.post("/draws/manual", status_code=201)
+async def add_manual_draw(req: ManualDrawRequest) -> dict:
+    """회차 데이터를 수동으로 추가합니다."""
+
+    from lotto.collector import LottoCollector
+    from lotto.models import DrawResult
+
+    collector = LottoCollector()
+
+    # 빈 CSV 파일은 미리 제거하여 pandas EmptyDataError 방지
+    csv_path = Path("data/draws.csv")
+    if csv_path.exists() and csv_path.stat().st_size < 10:
+        csv_path.unlink()
+
+    existing = collector.load_existing()
+
+    if any(d.drwNo == req.drwNo for d in existing):
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "duplicate", "message": f"{req.drwNo}회차는 이미 존재합니다."},
+        )
+
+    new_draw = DrawResult(
+        drwNo=req.drwNo,
+        date=datetime.date.fromisoformat(req.date),
+        n1=req.numbers[0],
+        n2=req.numbers[1],
+        n3=req.numbers[2],
+        n4=req.numbers[3],
+        n5=req.numbers[4],
+        n6=req.numbers[5],
+        bonus=req.bonus,
+    )
+
+    all_draws = sorted(existing + [new_draw], key=lambda d: d.drwNo)
+    collector.save_csv(all_draws)
+    return {
+        "status": "ok",
+        "message": f"{req.drwNo}회차 데이터가 저장되었습니다.",
+        "total": len(all_draws),
+    }
+
+
+def _scrape_worker() -> None:
+    """블로그 크롤링 워커 — 두 URL에서 전체 회차 데이터를 수집합니다."""
+    from lotto.collector import LottoCollector
+    from lotto.scraper import scrape_all
+
+    global _collect_state  # noqa: PLW0603
+
+    with _collect_lock:
+        _collect_state.update({
+            "status": "running",
+            "current": 0,
+            "total": 1224,
+            "collected": 0,
+            "message": "블로그 크롤링 시작...",
+        })
+
+    def _on_progress(drw_no: int, row_idx: int, count: int) -> None:
+        with _collect_lock:
+            _collect_state["current"] = row_idx
+            _collect_state["collected"] = count
+            if drw_no:
+                _collect_state["message"] = f"{drw_no}회차 처리 중..."
+
+    try:
+        draws = scrape_all(on_progress=_on_progress)
+        if not draws:
+            with _collect_lock:
+                _collect_state.update({"status": "error", "message": "크롤링 결과가 없습니다."})
+            return
+
+        with _collect_lock:
+            _collect_state.update({
+                "status": "running",
+                "message": "저장 및 통계 분석 중...",
+                "total": len(draws),
+            })
+
+        collector = LottoCollector()
+        collector.save_csv(draws)
+        _run_analyze_sync()
+
+        with _collect_lock:
+            _collect_state.update({
+                "status": "done",
+                "message": f"크롤링 완료 — 총 {len(draws)}회차 저장, 통계 분석 완료",
+                "total": len(draws),
+                "collected": len(draws),
+            })
+    except Exception as exc:
+        with _collect_lock:
+            _collect_state.update({"status": "error", "message": f"크롤링 오류: {exc}"})
+
+
+@router.post("/scrape", status_code=202)
+async def trigger_scrape(background_tasks: BackgroundTasks) -> dict:
+    """블로그에서 전체 회차 데이터를 크롤링합니다.
+
+    동행복권 API 차단 환경에서 대체 데이터 수집 수단입니다.
+    """
+    with _collect_lock:
+        if _collect_state["status"] == "running":
+            raise HTTPException(
+                status_code=409,
+                detail={"error": "already_running", "message": "이미 수집이 진행 중입니다."},
+            )
+
+    background_tasks.add_task(_scrape_worker)
+    return {"status": "started", "message": "블로그 크롤링을 시작했습니다."}
+
+
+class PurchaseRequest(BaseModel):
+    """구매 티켓 추가 요청 모델."""
+
+    drwNo: int  # noqa: N815
+    numbers: list[int]
+    bought_at: str  # YYYY-MM-DD
+
+    @field_validator("drwNo")
+    @classmethod
+    def validate_drw_no(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("회차 번호는 1 이상이어야 합니다.")
+        return v
+
+    @field_validator("bought_at")
+    @classmethod
+    def validate_bought_at(cls, v: str) -> str:
+        import datetime as _dt
+        try:
+            _dt.date.fromisoformat(v)
+        except ValueError as err:
+            raise ValueError("날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)") from err
+        return v
+
+
+@router.get("/history")
+async def list_history() -> list[dict]:
+    """구매 히스토리 + 당첨 결과를 반환합니다."""
+    from lotto.web.data import compute_ticket_results
+    return compute_ticket_results()
+
+
+@router.post("/history", status_code=201)
+async def add_history(req: PurchaseRequest) -> dict:
+    """구매 티켓을 추가합니다."""
+    import uuid
+
+    from lotto.web.data import get_history, save_history
+
+    # 번호 검증 (Python 3.9 호환: 명시적 길이 확인)
+    nums = sorted(set(req.numbers))
+    if len(nums) != 6 or not all(1 <= n <= 45 for n in nums):  # noqa: PLR2004
+        raise HTTPException(
+            400,
+            detail={
+                "error": "invalid_numbers",
+                "message": "번호를 확인하세요. (1~45 범위의 중복 없는 6개)",
+            },
+        )
+    tickets = get_history()
+    ticket = {
+        "id": str(uuid.uuid4()),
+        "drwNo": req.drwNo,
+        "numbers": nums,
+        "bought_at": req.bought_at,
+    }
+    tickets.append(ticket)
+    save_history(tickets)
+    return {"status": "ok", "ticket": ticket}
+
+
+@router.delete("/history/{ticket_id}", status_code=200)
+async def delete_history(ticket_id: str) -> dict:
+    """구매 티켓을 삭제합니다."""
+    from lotto.web.data import get_history, save_history
+
+    tickets = get_history()
+    new_tickets = [t for t in tickets if t["id"] != ticket_id]
+    if len(new_tickets) == len(tickets):
+        raise HTTPException(
+            404,
+            detail={"error": "not_found", "message": "티켓을 찾을 수 없습니다."},
+        )
+    save_history(new_tickets)
+    return {"status": "ok"}
 
 
 @router.post("/analyze", status_code=202)

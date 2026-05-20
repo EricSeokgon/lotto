@@ -235,3 +235,275 @@ def test_get_simulation_draws_none():
         with patch("lotto.web.data.get_draws", return_value=None):
             result = get_simulation(rounds=10)
     assert result is None
+
+
+# ──────────────────────────────────────────────
+# get_history / save_history 테스트
+# ──────────────────────────────────────────────
+
+def test_get_history_returns_empty_when_file_missing(tmp_path, monkeypatch):
+    """history.json 없을 때 빈 리스트 반환."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    from lotto.web.data import get_history
+    result = get_history()
+    assert result == []
+
+
+def test_get_history_returns_data_from_file(tmp_path, monkeypatch):
+    """history.json 있을 때 파싱된 데이터 반환."""
+    import json
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    tickets = [{"id": "abc", "drwNo": 1100, "numbers": [1, 2, 3, 4, 5, 6],
+                "bought_at": "2024-01-15"}]
+    (tmp_path / "data" / "history.json").write_text(json.dumps(tickets), encoding="utf-8")
+    from lotto.web.data import get_history
+    result = get_history()
+    assert result == tickets
+
+
+def test_get_history_returns_empty_on_invalid_json(tmp_path, monkeypatch):
+    """history.json 파싱 실패 시 빈 리스트 반환."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "history.json").write_text("not-json", encoding="utf-8")
+    from lotto.web.data import get_history
+    result = get_history()
+    assert result == []
+
+
+def test_save_history_creates_file(tmp_path, monkeypatch):
+    """save_history 가 history.json 파일을 생성한다."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    from lotto.web.data import save_history
+    tickets = [{"id": "abc", "drwNo": 1100, "numbers": [1, 2, 3, 4, 5, 6]}]
+    save_history(tickets)
+    assert (tmp_path / "data" / "history.json").exists()
+
+
+def test_save_history_roundtrip(tmp_path, monkeypatch):
+    """save_history 후 get_history 로 동일 데이터 읽힌다."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    from lotto.web.data import get_history, save_history
+    tickets = [{"id": "xyz", "drwNo": 1050, "numbers": [10, 20, 30, 40, 41, 42]}]
+    save_history(tickets)
+    result = get_history()
+    assert result == tickets
+
+
+def test_save_history_creates_data_dir_if_missing(tmp_path, monkeypatch):
+    """data 디렉토리가 없어도 save_history 가 생성한다."""
+    monkeypatch.chdir(tmp_path)
+    from lotto.web.data import save_history
+    save_history([])
+    assert (tmp_path / "data" / "history.json").exists()
+
+
+# ──────────────────────────────────────────────
+# _calc_prize 테스트
+# ──────────────────────────────────────────────
+
+def test_calc_prize_1st():
+    """6개 일치 → 1등."""
+    from lotto.web.data import _calc_prize
+    assert _calc_prize(6, False) == "1등"
+
+
+def test_calc_prize_2nd():
+    """5개 + 보너스 → 2등."""
+    from lotto.web.data import _calc_prize
+    assert _calc_prize(5, True) == "2등"
+
+
+def test_calc_prize_3rd():
+    """5개 (보너스 없음) → 3등."""
+    from lotto.web.data import _calc_prize
+    assert _calc_prize(5, False) == "3등"
+
+
+def test_calc_prize_4th():
+    """4개 일치 → 4등."""
+    from lotto.web.data import _calc_prize
+    assert _calc_prize(4, False) == "4등"
+
+
+def test_calc_prize_5th():
+    """3개 일치 → 5등."""
+    from lotto.web.data import _calc_prize
+    assert _calc_prize(3, False) == "5등"
+
+
+def test_calc_prize_no_win():
+    """2개 이하 → 낙첨."""
+    from lotto.web.data import _calc_prize
+    assert _calc_prize(2, False) == "낙첨"
+    assert _calc_prize(0, False) == "낙첨"
+
+
+# ──────────────────────────────────────────────
+# compute_ticket_results 테스트
+# ──────────────────────────────────────────────
+
+def test_compute_ticket_results_empty_history(tmp_path, monkeypatch):
+    """히스토리 없을 때 빈 리스트 반환."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    from lotto.web.data import compute_ticket_results
+    result = compute_ticket_results()
+    assert result == []
+
+
+def test_compute_ticket_results_no_draw_match(tmp_path, monkeypatch):
+    """추첨 데이터 없을 때 미추첨 상태 반환."""
+    import json
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    tickets = [{"id": "abc", "drwNo": 9999, "numbers": [1, 2, 3, 4, 5, 6],
+                "bought_at": "2024-01-01"}]
+    (tmp_path / "data" / "history.json").write_text(json.dumps(tickets), encoding="utf-8")
+
+    from unittest.mock import patch
+
+    from lotto.web.data import compute_ticket_results
+
+    with patch("lotto.web.data.get_draws", return_value=None):
+        result = compute_ticket_results()
+
+    assert len(result) == 1
+    assert result[0]["prize"] == "미추첨"
+    assert result[0]["matched"] == 0
+
+
+def test_compute_ticket_results_with_draw_match(tmp_path, monkeypatch):
+    """추첨 데이터와 매칭되면 등수가 계산된다."""
+    import json
+    from unittest.mock import MagicMock, patch
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+
+    # 1~6 모두 일치 → 1등
+    tickets = [{"id": "abc", "drwNo": 1100, "numbers": [1, 2, 3, 4, 5, 6],
+                "bought_at": "2024-01-15"}]
+    (tmp_path / "data" / "history.json").write_text(json.dumps(tickets), encoding="utf-8")
+
+    mock_draw = MagicMock()
+    mock_draw.drwNo = 1100
+    mock_draw.numbers.return_value = [1, 2, 3, 4, 5, 6]
+    mock_draw.bonus = 7
+    mock_draw.date = "2024-01-15"
+
+    from lotto.web.data import compute_ticket_results
+
+    with patch("lotto.web.data.get_draws", return_value=[mock_draw]):
+        result = compute_ticket_results()
+
+    assert len(result) == 1
+    assert result[0]["prize"] == "1등"
+    assert result[0]["matched"] == 6
+
+
+def test_compute_ticket_results_sorted_by_drw_no_desc(tmp_path, monkeypatch):
+    """결과가 drwNo 내림차순으로 정렬된다."""
+    import json
+    from unittest.mock import patch
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+
+    tickets = [
+        {"id": "a", "drwNo": 1100, "numbers": [1, 2, 3, 4, 5, 6], "bought_at": "2024-01-15"},
+        {"id": "b", "drwNo": 1200, "numbers": [7, 8, 9, 10, 11, 12], "bought_at": "2024-06-01"},
+    ]
+    (tmp_path / "data" / "history.json").write_text(json.dumps(tickets), encoding="utf-8")
+
+    from lotto.web.data import compute_ticket_results
+
+    with patch("lotto.web.data.get_draws", return_value=None):
+        result = compute_ticket_results()
+
+    assert result[0]["ticket"]["drwNo"] == 1200
+    assert result[1]["ticket"]["drwNo"] == 1100
+
+
+def test_compute_ticket_results_5th_prize(tmp_path, monkeypatch):
+    """3개 일치 → 5등 계산."""
+    import json
+    from unittest.mock import MagicMock, patch
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+
+    tickets = [{"id": "abc", "drwNo": 1100, "numbers": [1, 2, 3, 40, 41, 42],
+                "bought_at": "2024-01-15"}]
+    (tmp_path / "data" / "history.json").write_text(json.dumps(tickets), encoding="utf-8")
+
+    mock_draw = MagicMock()
+    mock_draw.drwNo = 1100
+    mock_draw.numbers.return_value = [1, 2, 3, 4, 5, 6]
+    mock_draw.bonus = 7
+    mock_draw.date = "2024-01-15"
+
+    from lotto.web.data import compute_ticket_results
+
+    with patch("lotto.web.data.get_draws", return_value=[mock_draw]):
+        result = compute_ticket_results()
+
+    assert result[0]["prize"] == "5등"
+    assert result[0]["matched"] == 3
+
+
+# ──────────────────────────────────────────────
+# get_strategy_comparison 가드 테스트
+# ──────────────────────────────────────────────
+
+def test_get_strategy_comparison_no_files_returns_none(tmp_path, monkeypatch):
+    """draws.csv 또는 stats.json 없을 때 None 반환 확인."""
+    from lotto.web import data as wd
+
+    monkeypatch.setattr(wd, "DRAWS_PATH", tmp_path / "draws.csv")
+    monkeypatch.setattr(wd, "STATS_PATH", tmp_path / "stats.json")
+
+    result = wd.get_strategy_comparison()
+    assert result is None
+
+
+def test_get_strategy_comparison_empty_draws_returns_none(tmp_path, monkeypatch):
+    """draws.csv 존재하지만 get_draws가 None일 때 None 반환 확인."""
+    from unittest.mock import patch
+
+    from lotto.web import data as wd
+
+    draws_path = tmp_path / "draws.csv"
+    stats_path = tmp_path / "stats.json"
+    draws_path.write_text("dummy")
+    stats_path.write_text("{}")
+
+    monkeypatch.setattr(wd, "DRAWS_PATH", draws_path)
+    monkeypatch.setattr(wd, "STATS_PATH", stats_path)
+
+    with patch.object(wd, "get_draws", return_value=None), \
+         patch.object(wd, "get_stats", return_value=None):
+        result = wd.get_strategy_comparison()
+
+    assert result is None
+
+
+def test_get_recommendations_stats_none_returns_none(tmp_path, monkeypatch):
+    """STATS_PATH 존재하지만 get_stats()가 None일 때 None 반환 확인."""
+    from unittest.mock import patch
+
+    from lotto.web import data as wd
+
+    stats_path = tmp_path / "stats.json"
+    stats_path.write_text("{}")
+
+    monkeypatch.setattr(wd, "STATS_PATH", stats_path)
+
+    with patch.object(wd, "get_stats", return_value=None):
+        result = wd.get_recommendations()
+
+    assert result is None

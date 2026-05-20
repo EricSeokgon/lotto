@@ -86,6 +86,7 @@ class Recommendation(BaseModel):
 
     numbers: list[int] = Field(..., description="추천 번호 6개 (오름차순)")
     strategy_label: str = Field(..., description="전략 라벨 (고빈도/저빈도/균형/최근편향/동반패턴)")
+    strategy_desc: str = Field(default="", description="전략 설명")
     scores: dict[int, float] = Field(default_factory=dict, description="번호별 가중 점수")
 
     @field_validator("numbers")
@@ -104,6 +105,42 @@ class Recommendation(BaseModel):
         return sorted(v)
 
 
+class PurchaseTicket(BaseModel):
+    """구매한 로또 티켓."""
+
+    id: str = Field(..., description="UUID4 식별자")
+    drwNo: int = Field(..., ge=1, description="구매 회차")  # noqa: N815
+    numbers: list[int] = Field(..., description="구매 번호 6개 (오름차순)")
+    bought_at: str = Field(..., description="구매일 (YYYY-MM-DD)")
+
+    @field_validator("numbers")
+    @classmethod
+    def validate_numbers(cls, v: list[int]) -> list[int]:
+        """6개의 서로 다른 1~45 정수인지 검증합니다."""
+        if len(v) != 6:  # noqa: PLR2004
+            msg = "번호는 6개여야 합니다."
+            raise ValueError(msg)
+        if len(set(v)) != 6:  # noqa: PLR2004
+            msg = "번호에 중복이 있습니다."
+            raise ValueError(msg)
+        if not all(1 <= n <= 45 for n in v):
+            msg = "번호는 1~45 범위여야 합니다."
+            raise ValueError(msg)
+        return sorted(v)
+
+
+class TicketResult(BaseModel):
+    """티켓 + 추첨 결과 비교."""
+
+    ticket: PurchaseTicket
+    draw_numbers: list[int] = Field(default_factory=list, description="당첨 번호")
+    draw_bonus: int = Field(default=0)
+    draw_date: str = Field(default="")
+    matched: int = Field(default=0, description="일치 번호 수")
+    bonus_match: bool = Field(default=False)
+    prize: str = Field(default="미추첨", description="1등~5등 | 낙첨 | 미추첨")
+
+
 class SimulationResult(BaseModel):
     """시뮬레이션 결과 요약."""
 
@@ -114,3 +151,7 @@ class SimulationResult(BaseModel):
     )
     hit_rate: float = Field(default=0.0, description="전체 적중률 (5등 이상 / 총 시도)")
     details: list[dict[str, Any]] = Field(default_factory=list, description="회차별 상세 결과")
+    per_round_hits: list[int] = Field(
+        default_factory=list,
+        description="회차별 누적 적중 횟수 (차트용)",
+    )

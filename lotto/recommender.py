@@ -9,7 +9,20 @@ from dataclasses import dataclass
 from lotto.models import Recommendation, Statistics
 
 DEFAULT_WEIGHTS = (0.4, 0.3, 0.2, 0.1)
-STRATEGY_LABELS = ["고빈도", "저빈도", "균형", "최근편향", "동반패턴"]
+STRATEGY_LABELS = [
+    "고빈도", "저빈도", "균형", "최근편향",
+    "동반패턴", "홀짝균형", "번호대균형", "핫콜드혼합",
+]
+STRATEGY_DESCRIPTIONS = {
+    "고빈도": "역대 가장 자주 나온 번호를 중심으로 선택합니다.",
+    "저빈도": "상대적으로 덜 나온 번호로 역발상 조합을 만듭니다.",
+    "균형": "전체 번호 범위에서 고르게 선택합니다.",
+    "최근편향": "최근 20회 출현이 많은 번호를 우선합니다.",
+    "동반패턴": "함께 자주 나온 번호 쌍을 반영합니다.",
+    "홀짝균형": "홀수 3개, 짝수 3개로 균형 잡힌 조합을 만듭니다.",
+    "번호대균형": "1~45 구간을 5개 영역으로 나눠 고르게 선택합니다.",
+    "핫콜드혼합": "자주 나온 번호 3개와 오랫동안 안 나온 번호 3개를 섞습니다.",
+}
 MIN_COUNT = 1
 MAX_COUNT = 20
 NUM_BALLS = 45
@@ -92,6 +105,21 @@ class LottoRecommender:
             )
         return scores
 
+    def recommend_by_strategy(self, strategy_label: str) -> Recommendation:
+        """지정한 전략으로 번호 세트 1개를 추천합니다."""
+        scores = self.compute_scores()
+        strategy_idx = STRATEGY_LABELS.index(strategy_label)
+        # len(excluded) % len(STRATEGY_LABELS) == strategy_idx 가 되도록 더미 세트 생성
+        # 더미 세트는 음수 원소로 실제 번호와 충돌하지 않음
+        dummy_excluded: set[frozenset[int]] = {frozenset({-i}) for i in range(1, strategy_idx + 1)}
+        numbers, label = self._pick_set(scores, dummy_excluded)
+        return Recommendation(
+            numbers=numbers,
+            strategy_label=label,
+            strategy_desc=STRATEGY_DESCRIPTIONS.get(label, ""),
+            scores={n: scores.get(n, 0.0) for n in numbers},
+        )
+
     # @MX:ANCHOR: [AUTO] recommend() — 번호 추천 핵심 메서드
     # @MX:REASON: CLI(main.py), simulator, test에서 호출 (fan_in >= 3)
     def recommend(self, count: int = 5) -> list[Recommendation]:
@@ -111,11 +139,14 @@ class LottoRecommender:
                 Recommendation(
                     numbers=numbers,
                     strategy_label=label,
+                    strategy_desc=STRATEGY_DESCRIPTIONS.get(label, ""),
                     scores={n: scores.get(n, 0.0) for n in numbers},
                 )
             )
         return results
 
+    # @MX:WARN: [AUTO] _pick_set — 전략 분기 8개로 복잡도 임계치 초과
+    # @MX:REASON: 전략 수 증가(5→8)로 if-branches >= 8; 전략 추가 시 주의
     def _pick_set(
         self,
         scores: dict[int, float],
@@ -140,8 +171,43 @@ class LottoRecommender:
         elif label == "최근편향":
             # 최근 패턴 반영 (이미 scores에 포함됨)
             candidates = sorted_nums[:25]
-        else:  # 동반패턴
+        elif label == "동반패턴":
             candidates = sorted_nums[:20]
+        elif label == "홀짝균형":
+            odds = [n for n in range(1, 46) if n % 2 == 1]
+            evens = [n for n in range(1, 46) if n % 2 == 0]
+            for _ in range(100):
+                half_o = sorted(random.sample(odds, 3))
+                half_e = sorted(random.sample(evens, 3))
+                picked = sorted(half_o + half_e)
+                if frozenset(picked) not in excluded:
+                    return picked, label
+            candidates = list(range(1, NUM_BALLS + 1))
+        elif label == "번호대균형":
+            zones = [(1, 9), (10, 19), (20, 29), (30, 39), (40, 45)]
+            for _ in range(100):
+                zone_list = list(zones)
+                random.shuffle(zone_list)
+                zone_picks = []
+                for z_start, z_end in zone_list[:4]:
+                    zone_picks.append(random.randint(z_start, z_end))
+                remaining_pool = [n for n in range(1, 46) if n not in zone_picks]
+                zone_picks += random.sample(remaining_pool, 2)
+                picked = sorted(zone_picks)
+                if len(set(picked)) == 6 and frozenset(picked) not in excluded:  # noqa: PLR2004
+                    return picked, label
+            candidates = list(range(1, NUM_BALLS + 1))
+        else:  # 핫콜드혼합
+            sorted_by_freq = sorted(scores.keys(), key=lambda n: scores[n], reverse=True)
+            hot = sorted_by_freq[:15]
+            cold = sorted_by_freq[-15:]
+            for _ in range(100):
+                hot_pick = random.sample(hot, 3)
+                cold_pick = random.sample(cold, 3)
+                picked = sorted(set(hot_pick + cold_pick))
+                if len(picked) == 6 and frozenset(picked) not in excluded:  # noqa: PLR2004
+                    return picked, label
+            candidates = list(range(1, NUM_BALLS + 1))
 
         # 중복 세트 방지: 최대 100회 시도
         for _ in range(100):

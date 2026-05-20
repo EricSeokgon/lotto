@@ -17,11 +17,13 @@ if TYPE_CHECKING:
 
 from lotto.web.data import (
     compute_frequency_percentiles,
+    compute_ticket_results,
     get_data_status,
     get_draws,
     get_recommendations,
     get_simulation,
     get_stats,
+    get_strategy_comparison,
     interpolate_color,
 )
 
@@ -30,6 +32,38 @@ router = APIRouter()
 # 템플릿 경로 설정
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
+
+
+def _ball_color(n: int) -> str:
+    """로또 볼 번호에 따른 배경색 반환 (공식 색상 기준)."""
+    if n <= 10:  # noqa: PLR2004
+        return "#FBC400"
+    if n <= 20:  # noqa: PLR2004
+        return "#69C8F2"
+    if n <= 30:  # noqa: PLR2004
+        return "#FF7272"
+    if n <= 40:  # noqa: PLR2004
+        return "#AAAAAA"
+    return "#B0D840"
+
+
+def _prize_class(prize: str) -> str:
+    """등수 배지 Tailwind CSS 클래스 반환."""
+    mapping = {
+        "1등": "bg-yellow-400 text-yellow-900",
+        "2등": "bg-yellow-200 text-yellow-800",
+        "3등": "bg-orange-200 text-orange-800",
+        "4등": "bg-green-200 text-green-800",
+        "5등": "bg-blue-200 text-blue-800",
+        "낙첨": "bg-gray-200 text-gray-600",
+        "미추첨": "bg-gray-100 text-gray-400",
+    }
+    return mapping.get(prize, "bg-gray-100 text-gray-400")
+
+
+# Jinja2 환경에 커스텀 필터 등록
+templates.env.filters["ball_color"] = _ball_color
+templates.env.filters["prize_class"] = _prize_class
 
 
 def _render(request: Request, template: str, ctx: dict) -> TemplateResponse:
@@ -82,7 +116,8 @@ async def analyze_page(request: Request) -> TemplateResponse:
             # 상위 20개 차트 데이터 (Python에서 미리 계산)
             sorted_freq = sorted(freq_dict.items(), key=lambda x: x[1], reverse=True)[:20]
             freq_chart_data = {
-                "labels": [str(k) for k, _ in sorted_freq],
+                "numbers": [k for k, _ in sorted_freq],
+                "labels": [f"{k}번" for k, _ in sorted_freq],
                 "values": [v for _, v in sorted_freq],
             }
 
@@ -119,26 +154,66 @@ async def recommend_page(
     })
 
 
+_PRIZE_VALUES: dict[str, int] = {
+    "1등": 2_000_000_000,
+    "2등": 60_000_000,
+    "3등": 1_500_000,
+    "4등": 50_000,
+    "5등": 5_000,
+    "낙첨": 0,
+}
+
+
 @router.get("/simulate")
 async def simulate_page(
     request: Request,
     rounds: int = 1000,
+    budget: int = 1000,
 ) -> TemplateResponse:
     """시뮬레이션 페이지.
 
     Args:
         rounds: 시뮬레이션 회차 수 (1~100000)
+        budget: 회차당 구매 금액 (원)
     """
     rounds = max(1, min(100000, rounds))
+    budget = max(1000, min(100000, budget))
     data_status = get_data_status()
     result = get_simulation(rounds=rounds)
+    strategy_comparison = get_strategy_comparison(min(rounds, 200)) if result is not None else None
 
-    # 도넛 차트 데이터 구성
     prize_chart_data: dict = {"labels": [], "values": []}
+    budget_info: dict = {"total_cost": 0, "total_return": 0, "roi": 0.0}
+    per_round_data: dict = {"labels": [], "values": []}
+
     if result is not None:
         prize_chart_data = {
             "labels": list(result.prize_counts.keys()),
             "values": list(result.prize_counts.values()),
+        }
+
+        total_cost = result.total_rounds * budget
+        total_return = sum(
+            result.prize_counts.get(prize, 0) * _PRIZE_VALUES.get(prize, 0)
+            for prize in _PRIZE_VALUES
+        )
+        roi = (total_return - total_cost) / total_cost * 100 if total_cost > 0 else 0.0
+        budget_info = {
+            "total_cost": total_cost,
+            "total_return": total_return,
+            "roi": roi,
+        }
+
+        # 누적 적중 추세 (최대 300포인트로 샘플링)
+        per_round = result.per_round_hits
+        if len(per_round) > 300:
+            step = max(1, len(per_round) // 300)
+            sampled = per_round[::step]
+        else:
+            sampled = per_round
+        per_round_data = {
+            "labels": list(range(1, len(sampled) + 1)),
+            "values": sampled,
         }
 
     return _render(request, "simulate.html", {
@@ -146,5 +221,29 @@ async def simulate_page(
         "data_status": data_status,
         "result": result,
         "rounds": rounds,
+        "budget": budget,
         "prize_chart_data": prize_chart_data,
+        "budget_info": budget_info,
+        "per_round_data": per_round_data,
+        "strategy_comparison": strategy_comparison,
+    })
+
+
+@router.get("/history")
+async def history_page(request: Request) -> TemplateResponse:
+    """구매 히스토리 페이지."""
+    data_status = get_data_status()
+    results = compute_ticket_results()
+
+    # 등수 통계 사전 계산 (Jinja2에서 dict.update 미지원 우회)
+    prize_counts: dict[str, int] = {}
+    for r in results:
+        prize = r["prize"]
+        prize_counts[prize] = prize_counts.get(prize, 0) + 1
+
+    return _render(request, "history.html", {
+        "active_tab": "history",
+        "data_status": data_status,
+        "results": results,
+        "prize_counts": prize_counts,
     })

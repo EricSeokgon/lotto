@@ -2,43 +2,122 @@
 
 {% block content %}
 <div class="space-y-6">
-    <div class="flex items-center justify-between">
+    <div class="flex items-center justify-between flex-wrap gap-3">
         <div>
             <h2 class="text-2xl font-bold text-ink mb-1">추천 번호</h2>
-            <p class="text-muted text-sm">통계 기반 번호 추천 결과입니다.</p>
+            <p class="text-muted text-sm">8가지 전략으로 분석한 번호 추천 결과입니다.</p>
         </div>
-        <!-- 추천 수 선택 -->
-        <form method="get" action="/recommend" class="flex items-center space-x-2">
-            <label class="text-sm text-muted">추천 세트 수:</label>
-            <select name="count" onchange="this.form.submit()"
-                    class="text-sm border border-border rounded px-2 py-1 bg-card text-ink">
-                {% for n in [1, 3, 5, 10, 20] %}
-                <option value="{{ n }}" {% if n == count %}selected{% endif %}>{{ n }}세트</option>
-                {% endfor %}
-            </select>
-        </form>
+        <div class="flex items-center gap-3">
+            <!-- 재생성 버튼 -->
+            <button onclick="location.reload()"
+                    class="text-sm px-3 py-1.5 rounded border border-border bg-card text-ink hover:bg-surface transition-colors">
+                다시 추천
+            </button>
+            <!-- 추천 수 선택 -->
+            <form method="get" action="/recommend" class="flex items-center space-x-2">
+                <label class="text-sm text-muted">세트 수:</label>
+                <select name="count" onchange="this.form.submit()"
+                        class="text-sm border border-border rounded px-2 py-1 bg-card text-ink">
+                    {% for n in [1, 3, 5, 8, 10, 20] %}
+                    <option value="{{ n }}" {% if n == count %}selected{% endif %}>{{ n }}세트</option>
+                    {% endfor %}
+                </select>
+            </form>
+        </div>
     </div>
 
     {% if recommendations %}
+    <!-- 전략 범례 -->
+    <div class="bg-card rounded-lg border border-border p-4 shadow-sm">
+        <p class="text-xs font-semibold text-muted uppercase tracking-wide mb-3">번호 색상 범례</p>
+        <div class="flex flex-wrap gap-3">
+            <div class="flex items-center gap-1.5">
+                <span class="inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold" style="background-color:#FBC400;color:#1f2937;">7</span>
+                <span class="text-xs text-muted">1–10</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <span class="inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold" style="background-color:#69C8F2;color:#fff;">15</span>
+                <span class="text-xs text-muted">11–20</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <span class="inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold" style="background-color:#FF7272;color:#fff;">25</span>
+                <span class="text-xs text-muted">21–30</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <span class="inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold" style="background-color:#AAAAAA;color:#fff;">35</span>
+                <span class="text-xs text-muted">31–40</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+                <span class="inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold" style="background-color:#B0D840;color:#fff;">43</span>
+                <span class="text-xs text-muted">41–45</span>
+            </div>
+        </div>
+    </div>
+
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {% for rec in recommendations %}
-        <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
-            <div class="flex items-center justify-between mb-3">
+        <div class="bg-card rounded-lg border border-border p-5 shadow-sm hover:shadow-md transition-shadow">
+            <!-- 헤더: 세트 번호 + 전략 배지 -->
+            <div class="flex items-start justify-between mb-3">
                 <span class="text-sm font-semibold text-ink">세트 {{ loop.index }}</span>
-                <span class="text-xs px-2 py-0.5 rounded bg-surface text-muted border border-border">{{ rec.strategy_label }}</span>
+                <span class="text-xs px-2 py-0.5 rounded-full font-medium
+                    {% if rec.strategy_label == '고빈도' %}bg-blue-100 text-blue-700
+                    {% elif rec.strategy_label == '저빈도' %}bg-purple-100 text-purple-700
+                    {% elif rec.strategy_label == '균형' %}bg-green-100 text-green-700
+                    {% elif rec.strategy_label == '최근편향' %}bg-orange-100 text-orange-700
+                    {% elif rec.strategy_label == '동반패턴' %}bg-pink-100 text-pink-700
+                    {% elif rec.strategy_label == '홀짝균형' %}bg-teal-100 text-teal-700
+                    {% elif rec.strategy_label == '번호대균형' %}bg-indigo-100 text-indigo-700
+                    {% elif rec.strategy_label == '핫콜드혼합' %}bg-red-100 text-red-700
+                    {% else %}bg-surface text-muted{% endif %}">
+                    {{ rec.strategy_label }}
+                </span>
             </div>
-            <div class="flex flex-wrap gap-1">
+
+            <!-- 번호 공 -->
+            <div class="flex flex-wrap gap-1.5 mb-3">
                 {% for num in rec.numbers %}
-                <span class="inline-block w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold bg-data-blue text-white">{{ num }}</span>
+                {% if num <= 10 %}{% set bg = '#FBC400' %}{% set fg = '#1f2937' %}
+                {% elif num <= 20 %}{% set bg = '#69C8F2' %}{% set fg = '#ffffff' %}
+                {% elif num <= 30 %}{% set bg = '#FF7272' %}{% set fg = '#ffffff' %}
+                {% elif num <= 40 %}{% set bg = '#AAAAAA' %}{% set fg = '#ffffff' %}
+                {% else %}{% set bg = '#B0D840' %}{% set fg = '#ffffff' %}{% endif %}
+                <span class="inline-flex w-9 h-9 rounded-full items-center justify-center text-sm font-bold shadow-sm"
+                      style="background-color: {{ bg }}; color: {{ fg }};">{{ num }}</span>
                 {% endfor %}
+            </div>
+
+            <!-- 전략 설명 -->
+            {% if rec.strategy_desc %}
+            <p class="text-xs text-muted border-t border-border pt-2 leading-relaxed">
+                {{ rec.strategy_desc }}
+            </p>
+            {% endif %}
+
+            <!-- 홀짝 분포 표시 -->
+            <div class="flex items-center gap-3 mt-2 pt-2 border-t border-border">
+                {% set odd_count = rec.numbers | selectattr('__mod__', 'ne', 0) | list | length %}
+                {% set odd_cnt = namespace(v=0) %}
+                {% set even_cnt = namespace(v=0) %}
+                {% for n in rec.numbers %}
+                    {% if n % 2 == 1 %}{% set odd_cnt.v = odd_cnt.v + 1 %}
+                    {% else %}{% set even_cnt.v = even_cnt.v + 1 %}{% endif %}
+                {% endfor %}
+                <span class="text-xs text-muted">홀 <strong class="text-ink">{{ odd_cnt.v }}</strong></span>
+                <span class="text-xs text-muted">짝 <strong class="text-ink">{{ even_cnt.v }}</strong></span>
+                <span class="text-xs text-muted">합 <strong class="text-ink">{{ rec.numbers | sum }}</strong></span>
             </div>
         </div>
         {% endfor %}
     </div>
+
     {% else %}
     <div class="bg-card rounded-lg border border-border p-8 text-center shadow-sm">
         <p class="text-muted">통계 데이터가 없습니다.</p>
-        <p class="text-sm text-muted mt-1">CLI에서 <code class="bg-surface px-1 rounded">python main.py analyze</code> 명령을 실행하세요.</p>
+        <p class="text-sm text-muted mt-1">
+            <a href="/collect" class="text-blue-600 hover:underline">수집</a> 후
+            <a href="/analyze" class="text-blue-600 hover:underline">분석</a>을 먼저 실행하세요.
+        </p>
     </div>
     {% endif %}
 </div>

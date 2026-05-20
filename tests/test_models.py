@@ -132,3 +132,77 @@ class TestRecommendation:
                 numbers=[1, 2, 3, 4, 5, 46],
                 strategy_label="고빈도",
             )
+
+
+class TestPurchaseTicket:
+    """PurchaseTicket 모델 테스트."""
+
+    def test_valid_purchase_ticket(self) -> None:
+        """유효한 PurchaseTicket 생성 테스트."""
+        from lotto.models import PurchaseTicket
+        ticket = PurchaseTicket(
+            id="abc-123",
+            drwNo=1100,
+            numbers=[6, 5, 4, 3, 2, 1],
+            bought_at="2024-01-15",
+        )
+        assert ticket.numbers == [1, 2, 3, 4, 5, 6]
+        assert ticket.drwNo == 1100
+
+    def test_purchase_ticket_wrong_count_rejected(self) -> None:
+        """번호가 6개 아닐 때 ValidationError."""
+        from lotto.models import PurchaseTicket
+        with pytest.raises(ValidationError):
+            PurchaseTicket(
+                id="abc",
+                drwNo=1100,
+                numbers=[1, 2, 3, 4, 5],
+                bought_at="2024-01-15",
+            )
+
+    def test_purchase_ticket_duplicate_rejected(self) -> None:
+        """번호 중복 시 ValidationError."""
+        from lotto.models import PurchaseTicket
+        with pytest.raises(ValidationError):
+            PurchaseTicket(
+                id="abc",
+                drwNo=1100,
+                numbers=[1, 1, 2, 3, 4, 5],
+                bought_at="2024-01-15",
+            )
+
+    def test_purchase_ticket_out_of_range_rejected(self) -> None:
+        """범위 초과 번호 시 ValidationError."""
+        from lotto.models import PurchaseTicket
+        with pytest.raises(ValidationError):
+            PurchaseTicket(
+                id="abc",
+                drwNo=1100,
+                numbers=[0, 1, 2, 3, 4, 5],
+                bought_at="2024-01-15",
+            )
+
+    def test_purchase_ticket_numbers_sorted(self) -> None:
+        """numbers 필드가 오름차순 정렬되어 저장된다."""
+        from lotto.models import PurchaseTicket
+        ticket = PurchaseTicket(
+            id="abc",
+            drwNo=1100,
+            numbers=[45, 30, 20, 10, 5, 1],
+            bought_at="2024-01-15",
+        )
+        assert ticket.numbers == [1, 5, 10, 20, 30, 45]
+
+
+class TestDrawResultValidator:
+    """DrawResult validate_number_range 에러 경로 테스트."""
+
+    def test_validate_number_range_zero_raises(self) -> None:
+        """n1=0 으로 validator 에러 경로 커버."""
+        with pytest.raises(ValidationError) as exc_info:
+            DrawResult(
+                drwNo=1,
+                date=date(2024, 1, 1),
+                n1=0, n2=2, n3=3, n4=4, n5=5, n6=6, bonus=7,
+            )
+        assert "1~45" in str(exc_info.value) or "greater_than_equal" in str(exc_info.value)

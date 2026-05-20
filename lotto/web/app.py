@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+import datetime
+import threading
+from collections.abc import AsyncIterator  # noqa: TC003
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -17,8 +22,40 @@ _STATIC_DIR = _WEB_DIR / "static"
 _DRAWS_PATH = Path("data/draws.csv")
 _STATS_PATH = Path("data/stats.json")
 
+
+def _next_monday_midnight() -> float:
+    """다음 월요일 자정까지 남은 초를 반환합니다."""
+    now = datetime.datetime.now()
+    days_until_monday = (7 - now.weekday()) % 7 or 7
+    next_monday = (now + datetime.timedelta(days=days_until_monday)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+    return (next_monday - now).total_seconds()
+
+
+async def _weekly_collect_task() -> None:
+    """매주 월요일 자정에 증분 수집 + 통계 분석을 실행합니다."""
+    while True:
+        wait_sec = _next_monday_midnight()
+        await asyncio.sleep(wait_sec)
+        threading.Thread(
+            target=api._collect_worker,
+            args=(False, 1, api._estimate_latest_drw_no()),
+            daemon=True,
+        ).start()
+        # 다음 루프까지 1시간 대기 (월요일 중복 실행 방지)
+        await asyncio.sleep(3600)
+
+
+@asynccontextmanager
+async def _lifespan(app_: FastAPI) -> AsyncIterator[None]:
+    task = asyncio.create_task(_weekly_collect_task())
+    yield
+    task.cancel()
+
+
 # FastAPI 앱 초기화
-app = FastAPI(title="로또 통계 대시보드")
+app = FastAPI(title="로또 통계 대시보드", lifespan=_lifespan)
 
 # 정적 파일 마운트 (디렉토리 존재 시)
 if _STATIC_DIR.exists():

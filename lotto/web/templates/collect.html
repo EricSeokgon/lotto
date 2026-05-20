@@ -7,6 +7,71 @@
         <p class="text-muted text-sm">동행복권 API에서 수집한 당첨 번호 데이터 상태입니다.</p>
     </div>
 
+    <!-- 블로그 크롤링 (권장) -->
+    <div class="bg-card rounded-lg border border-data-blue p-5 shadow-sm">
+        <div class="mb-3">
+            <div class="flex items-center gap-2 mb-1">
+                <h3 class="font-semibold text-ink">블로그 크롤링 수집</h3>
+                <span class="text-xs px-2 py-0.5 rounded-full bg-data-blue text-white font-medium">권장</span>
+            </div>
+            <p class="text-xs text-muted">1회~최신회차 전체 데이터를 블로그에서 직접 수집합니다. API 차단 환경에서도 동작합니다.</p>
+        </div>
+        <button id="btn-scrape" onclick="startScrape()"
+                class="collect-btn px-4 py-2 text-sm font-medium rounded bg-data-blue text-white hover:opacity-90 transition-opacity">
+            전체 크롤링 시작
+        </button>
+    </div>
+
+    <!-- API 자동 수집 -->
+    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+        <div class="mb-4">
+            <h3 class="font-semibold text-ink">API 자동 수집</h3>
+            <p class="text-xs text-muted mt-0.5">동행복권 API에서 당첨 번호를 가져옵니다. 네트워크 환경에 따라 차단될 수 있습니다.</p>
+        </div>
+
+        <!-- 수집 버튼 그룹 -->
+        <div class="flex flex-wrap gap-2 mb-3">
+            <button id="btn-inc" onclick="startCollect({mode:'incremental'})"
+                    class="collect-btn px-3 py-1.5 text-sm font-medium rounded border border-border text-muted hover:border-data-blue hover:text-data-blue transition-colors">
+                증분 수집
+            </button>
+            <button id="btn-100" onclick="startCollect({mode:'count', count:100})"
+                    class="collect-btn px-3 py-1.5 text-sm font-medium rounded border border-border text-muted hover:border-data-blue hover:text-data-blue transition-colors">
+                최근 100회
+            </button>
+            <button id="btn-200" onclick="startCollect({mode:'count', count:200})"
+                    class="collect-btn px-3 py-1.5 text-sm font-medium rounded border border-border text-muted hover:border-data-blue hover:text-data-blue transition-colors">
+                최근 200회
+            </button>
+            <button id="btn-full" onclick="startCollect({mode:'full'})"
+                    class="collect-btn px-3 py-1.5 text-sm font-medium rounded border border-border text-muted hover:border-data-blue hover:text-data-blue transition-colors">
+                전체 수집
+            </button>
+        </div>
+
+        <!-- 사용자 지정 -->
+        <div class="flex items-center gap-2">
+            <input type="number" id="custom-count" min="1" max="9999" placeholder="직접 입력 (회)"
+                   class="w-36 text-sm border border-border rounded px-3 py-1.5 bg-surface text-ink focus:outline-none focus:border-data-blue">
+            <button onclick="startCustomCollect()"
+                    class="collect-btn px-3 py-1.5 text-sm font-medium rounded border border-data-blue text-data-blue hover:bg-data-blue hover:text-white transition-colors">
+                수집
+            </button>
+        </div>
+
+        <!-- 진행 상태 -->
+        <div id="collect-status-box" class="hidden mt-4">
+            <div class="flex items-center justify-between text-xs text-muted mb-1">
+                <span id="collect-msg">수집 중...</span>
+                <span id="collect-count"></span>
+            </div>
+            <div class="w-full bg-surface rounded-full h-2 overflow-hidden">
+                <div id="collect-bar" class="h-2 rounded-full bg-data-blue transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+        <div id="collect-result" class="hidden text-sm rounded px-3 py-2 mt-3"></div>
+    </div>
+
     <!-- 데이터 파일 상태 -->
     <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
         <h3 class="font-semibold text-ink mb-3">데이터 파일 상태</h3>
@@ -23,6 +88,51 @@
                     {% if data_status.stats_available %}존재{% else %}없음{% endif %}
                 </span>
             </div>
+        </div>
+    </div>
+
+    <!-- 수동 입력 폼 -->
+    <div class="bg-card rounded-lg border border-border shadow-sm overflow-hidden">
+        <button id="toggle-manual" onclick="toggleManualForm()"
+                class="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-surface transition-colors">
+            <span class="font-semibold text-ink">수동 데이터 입력</span>
+            <span id="toggle-icon" class="text-muted text-lg">＋</span>
+        </button>
+        <div id="manual-form-section" class="hidden border-t border-border p-5">
+            <p class="text-xs text-muted mb-4">API 수집이 불가한 경우 회차 데이터를 직접 입력하세요.</p>
+            <form id="manual-form" onsubmit="submitManualDraw(event)" class="space-y-4">
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-xs text-muted mb-1">회차 번호</label>
+                        <input type="number" id="drwNo" min="1" required placeholder="예: 1178"
+                               class="w-full text-sm border border-border rounded px-3 py-2 bg-surface text-ink focus:outline-none focus:border-data-blue">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-muted mb-1">추첨 날짜</label>
+                        <input type="date" id="drawDate" required
+                               class="w-full text-sm border border-border rounded px-3 py-2 bg-surface text-ink focus:outline-none focus:border-data-blue">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs text-muted mb-1">당첨 번호 (6개, 1~45)</label>
+                    <div class="grid grid-cols-6 gap-2">
+                        {% for i in range(1, 7) %}
+                        <input type="number" id="n{{ i }}" min="1" max="45" required placeholder="{{ i }}"
+                               class="w-full text-sm text-center border border-border rounded px-2 py-2 bg-surface text-ink focus:outline-none focus:border-data-blue">
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="w-32">
+                    <label class="block text-xs text-muted mb-1">보너스 번호</label>
+                    <input type="number" id="bonus" min="1" max="45" required placeholder="보너스"
+                           class="w-full text-sm text-center border border-border rounded px-2 py-2 bg-surface text-ink focus:outline-none focus:border-data-blue">
+                </div>
+                <div id="manual-result" class="hidden text-sm rounded px-3 py-2"></div>
+                <button type="submit"
+                        class="px-4 py-2 text-sm font-medium rounded bg-data-blue text-white hover:opacity-90 transition-opacity">
+                    저장
+                </button>
+            </form>
         </div>
     </div>
 
@@ -84,4 +194,154 @@
     </div>
     {% endif %}
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+/* ── 블로그 크롤링 ─────────────────────────────── */
+async function startScrape() {
+    document.getElementById('collect-result').classList.add('hidden');
+    try {
+        const res = await fetch('/api/scrape', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) {
+            showCollectResult('error', data.detail?.message || '크롤링 시작 실패');
+            return;
+        }
+        setButtons(true);
+        document.getElementById('collect-status-box').classList.remove('hidden');
+        _pollTimer = setInterval(pollStatus, 1500);
+    } catch {
+        showCollectResult('error', '네트워크 오류');
+    }
+}
+
+/* ── API 자동 수집 ─────────────────────────────── */
+let _pollTimer = null;
+
+function setButtons(disabled) {
+    document.querySelectorAll('.collect-btn').forEach(b => b.disabled = disabled);
+}
+
+function startCustomCollect() {
+    const val = parseInt(document.getElementById('custom-count').value);
+    if (!val || val < 1) { alert('수집 회차 수를 입력해주세요.'); return; }
+    startCollect({mode: 'count', count: val});
+}
+
+async function startCollect({mode, count = 0}) {
+    document.getElementById('collect-result').classList.add('hidden');
+
+    let url = '/api/collect';
+    if (mode === 'full') url += '?full=true';
+    else if (mode === 'count') url += '?count=' + count;
+
+    try {
+        const res = await fetch(url, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) {
+            showCollectResult('error', data.detail?.message || '수집 시작 실패');
+            return;
+        }
+        setButtons(true);
+        document.getElementById('collect-status-box').classList.remove('hidden');
+        _pollTimer = setInterval(pollStatus, 1500);
+    } catch {
+        showCollectResult('error', '네트워크 오류');
+    }
+}
+
+async function pollStatus() {
+    try {
+        const res = await fetch('/api/collect/status');
+        const s = await res.json();
+
+        document.getElementById('collect-msg').textContent = s.message || '';
+        document.getElementById('collect-count').textContent =
+            s.total > 0 ? s.current + ' / ' + s.total : '';
+
+        const pct = s.total > 0 ? Math.round(s.current / s.total * 100) : 0;
+        document.getElementById('collect-bar').style.width = pct + '%';
+
+        if (s.status === 'done') {
+            clearInterval(_pollTimer);
+            setButtons(false);
+            document.getElementById('collect-bar').style.width = '100%';
+            showCollectResult('ok', s.message);
+            setTimeout(() => location.reload(), 1500);
+        } else if (s.status === 'error') {
+            clearInterval(_pollTimer);
+            setButtons(false);
+            showCollectResult('error', s.message);
+        }
+    } catch { /* 일시적 네트워크 오류 무시 */ }
+}
+
+function showCollectResult(type, msg) {
+    document.getElementById('collect-status-box').classList.add('hidden');
+    const box = document.getElementById('collect-result');
+    box.className = type === 'ok'
+        ? 'text-sm rounded px-3 py-2 mt-3 bg-green-50 text-green-700 border border-green-200'
+        : 'text-sm rounded px-3 py-2 mt-3 bg-red-50 text-red-700 border border-red-200';
+    box.textContent = msg;
+    box.classList.remove('hidden');
+}
+
+// 페이지 로드 시 이미 실행 중이면 폴링 재개
+(async () => {
+    const res = await fetch('/api/collect/status');
+    const s = await res.json();
+    if (s.status === 'running') {
+        setButtons(true);
+        document.getElementById('collect-status-box').classList.remove('hidden');
+        _pollTimer = setInterval(pollStatus, 1500);
+    }
+})();
+
+/* ── 수동 입력 ─────────────────────────────────── */
+function toggleManualForm() {
+    const section = document.getElementById('manual-form-section');
+    const icon = document.getElementById('toggle-icon');
+    const hidden = section.classList.toggle('hidden');
+    icon.textContent = hidden ? '＋' : '－';
+}
+
+async function submitManualDraw(e) {
+    e.preventDefault();
+    const result = document.getElementById('manual-result');
+    const numbers = [1,2,3,4,5,6].map(i => parseInt(document.getElementById('n'+i).value));
+    const payload = {
+        drwNo: parseInt(document.getElementById('drwNo').value),
+        date: document.getElementById('drawDate').value,
+        numbers,
+        bonus: parseInt(document.getElementById('bonus').value),
+    };
+
+    result.className = 'text-sm rounded px-3 py-2 bg-surface text-muted';
+    result.textContent = '저장 중...';
+    result.classList.remove('hidden');
+
+    try {
+        const res = await fetch('/api/draws/manual', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (res.ok) {
+            result.className = 'text-sm rounded px-3 py-2 bg-green-50 text-green-700 border border-green-200';
+            result.textContent = data.message + ' (총 ' + data.total + '회차)';
+            document.getElementById('manual-form').reset();
+            setTimeout(() => location.reload(), 1200);
+        } else {
+            const msg = data.detail?.message || data.detail || '저장에 실패했습니다.';
+            result.className = 'text-sm rounded px-3 py-2 bg-red-50 text-red-700 border border-red-200';
+            result.textContent = msg;
+        }
+    } catch {
+        result.className = 'text-sm rounded px-3 py-2 bg-red-50 text-red-700 border border-red-200';
+        result.textContent = '네트워크 오류가 발생했습니다.';
+    }
+}
+</script>
 {% endblock %}

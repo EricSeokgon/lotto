@@ -69,11 +69,20 @@ class LottoSimulator:
 
         hit_rate = hits / actual_rounds if actual_rounds > 0 else 0.0
 
+        # 누적 적중 횟수 (차트용)
+        cumulative = 0
+        per_round_hits: list[int] = []
+        for d in details:
+            if str(d.get("prize", "낙첨")) != "낙첨":
+                cumulative += 1
+            per_round_hits.append(cumulative)
+
         return SimulationResult(
             total_rounds=actual_rounds,
             prize_counts=prize_counts,
             hit_rate=hit_rate,
             details=details,
+            per_round_hits=per_round_hits,
         )
 
     def _evaluate_round(

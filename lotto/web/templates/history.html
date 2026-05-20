@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <div>
+        <h2 class="text-2xl font-bold text-ink mb-1">구매 히스토리</h2>
+        <p class="text-muted text-sm">구매한 로또 티켓과 당첨 결과를 확인합니다.</p>
+    </div>
+
+    <!-- 통계 바 (prize_counts는 Python에서 전달) -->
+    <div id="stats-bar" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div class="bg-card border border-border rounded-lg p-4 text-center">
+            <div class="text-2xl font-bold text-ink">{{ results | length }}</div>
+            <div class="text-xs text-muted mt-1">전체 티켓</div>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 text-center">
+            <div class="text-2xl font-bold text-amber">{{ (prize_counts.get('1등', 0) + prize_counts.get('2등', 0) + prize_counts.get('3등', 0)) }}</div>
+            <div class="text-xs text-muted mt-1">1~3등</div>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 text-center">
+            <div class="text-2xl font-bold text-data-blue">{{ (prize_counts.get('4등', 0) + prize_counts.get('5등', 0)) }}</div>
+            <div class="text-xs text-muted mt-1">4~5등</div>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 text-center">
+            <div class="text-2xl font-bold text-muted">{{ prize_counts.get('미추첨', 0) }}</div>
+            <div class="text-xs text-muted mt-1">미추첨</div>
+        </div>
+    </div>
+
+    <!-- 티켓 입력 폼 -->
+    <div class="bg-card border border-border rounded-lg p-5 shadow-sm">
+        <h3 class="font-semibold text-ink mb-4">티켓 추가</h3>
+        <form id="add-form" onsubmit="addTicket(event)" class="space-y-4">
+            <div class="flex flex-wrap gap-4 items-end">
+                <!-- 회차 -->
+                <div>
+                    <label class="block text-xs text-muted mb-1">회차</label>
+                    <input id="inp-drwNo" type="number" min="1" placeholder="예: 1222"
+                           class="w-28 px-3 py-2 border border-border rounded text-sm text-ink focus:outline-none focus:border-data-blue" required>
+                </div>
+                <!-- 구매일 -->
+                <div>
+                    <label class="block text-xs text-muted mb-1">구매일</label>
+                    <input id="inp-date" type="date"
+                           class="px-3 py-2 border border-border rounded text-sm text-ink focus:outline-none focus:border-data-blue" required>
+                </div>
+            </div>
+            <!-- 번호 6개 -->
+            <div>
+                <label class="block text-xs text-muted mb-2">번호 (1~45, 중복 없는 6개)</label>
+                <div class="flex flex-wrap gap-2">
+                    <input id="n1" type="number" min="1" max="45" placeholder="1번"
+                           class="w-16 px-2 py-2 border border-border rounded text-sm text-center text-ink focus:outline-none focus:border-data-blue" required>
+                    <input id="n2" type="number" min="1" max="45" placeholder="2번"
+                           class="w-16 px-2 py-2 border border-border rounded text-sm text-center text-ink focus:outline-none focus:border-data-blue" required>
+                    <input id="n3" type="number" min="1" max="45" placeholder="3번"
+                           class="w-16 px-2 py-2 border border-border rounded text-sm text-center text-ink focus:outline-none focus:border-data-blue" required>
+                    <input id="n4" type="number" min="1" max="45" placeholder="4번"
+                           class="w-16 px-2 py-2 border border-border rounded text-sm text-center text-ink focus:outline-none focus:border-data-blue" required>
+                    <input id="n5" type="number" min="1" max="45" placeholder="5번"
+                           class="w-16 px-2 py-2 border border-border rounded text-sm text-center text-ink focus:outline-none focus:border-data-blue" required>
+                    <input id="n6" type="number" min="1" max="45" placeholder="6번"
+                           class="w-16 px-2 py-2 border border-border rounded text-sm text-center text-ink focus:outline-none focus:border-data-blue" required>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <button type="submit"
+                        class="px-5 py-2 text-sm font-medium rounded bg-data-blue text-white hover:opacity-90 transition-opacity">
+                    저장
+                </button>
+                <span id="form-msg" class="text-sm text-muted hidden"></span>
+            </div>
+        </form>
+    </div>
+
+    <!-- 티켓 목록 -->
+    <div class="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-border">
+            <h3 class="font-semibold text-ink">티켓 목록</h3>
+        </div>
+
+        {% if results %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="bg-surface text-muted text-xs">
+                        <th class="px-4 py-2 text-left font-medium">회차</th>
+                        <th class="px-4 py-2 text-left font-medium">구매 번호</th>
+                        <th class="px-4 py-2 text-left font-medium">당첨 번호</th>
+                        <th class="px-4 py-2 text-center font-medium">일치</th>
+                        <th class="px-4 py-2 text-center font-medium">등수</th>
+                        <th class="px-4 py-2 text-left font-medium">구매일</th>
+                        <th class="px-4 py-2 text-center font-medium"></th>
+                    </tr>
+                </thead>
+                <tbody id="ticket-list">
+                    {% for r in results %}
+                    <tr class="border-t border-border hover:bg-surface transition-colors" data-id="{{ r.ticket.id }}">
+                        <td class="px-4 py-3 font-medium text-ink">{{ r.ticket.drwNo }}회</td>
+                        <!-- 구매 번호 배지 -->
+                        <td class="px-4 py-3">
+                            <div class="flex flex-wrap gap-1">
+                                {% for n in r.ticket.numbers %}
+                                    {% if n in r.draw_numbers %}
+                                    <span class="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white"
+                                          style="background-color: {{ n | ball_color }}; box-shadow: 0 1px 2px rgba(0,0,0,.25);">{{ n }}</span>
+                                    {% else %}
+                                    <span class="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white opacity-40"
+                                          style="background-color: {{ n | ball_color }}; box-shadow: 0 1px 2px rgba(0,0,0,.15);">{{ n }}</span>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                        </td>
+                        <!-- 당첨 번호 배지 -->
+                        <td class="px-4 py-3">
+                            {% if r.draw_numbers %}
+                            <div class="flex flex-wrap gap-1">
+                                {% for n in r.draw_numbers %}
+                                <span class="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold text-white"
+                                      style="background-color: {{ n | ball_color }}; box-shadow: 0 1px 2px rgba(0,0,0,.25);">{{ n }}</span>
+                                {% endfor %}
+                                <!-- 보너스 번호 -->
+                                <span class="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold border-2 border-dashed"
+                                      style="border-color: {{ r.draw_bonus | ball_color }}; color: {{ r.draw_bonus | ball_color }};">+{{ r.draw_bonus }}</span>
+                            </div>
+                            {% else %}
+                            <span class="text-xs text-muted">미추첨</span>
+                            {% endif %}
+                        </td>
+                        <!-- 일치 수 -->
+                        <td class="px-4 py-3 text-center">
+                            {% if r.draw_numbers %}
+                            <span class="font-semibold text-ink">{{ r.matched }}</span>
+                            {% if r.bonus_match %}
+                            <span class="text-xs text-amber ml-0.5">+보너스</span>
+                            {% endif %}
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <!-- 등수 배지 -->
+                        <td class="px-4 py-3 text-center">
+                            <span class="inline-block px-2 py-0.5 rounded-full text-xs font-bold {{ r.prize | prize_class }}">{{ r.prize }}</span>
+                        </td>
+                        <!-- 구매일 -->
+                        <td class="px-4 py-3 text-muted">{{ r.ticket.bought_at }}</td>
+                        <!-- 삭제 버튼 -->
+                        <td class="px-4 py-3 text-center">
+                            <button onclick="deleteTicket('{{ r.ticket.id }}')"
+                                    class="text-muted hover:text-red-500 transition-colors text-lg leading-none" title="삭제">
+                                &times;
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="px-5 py-12 text-center text-muted">
+            <p class="text-lg mb-2">구매 기록이 없습니다.</p>
+            <p class="text-sm">위 폼에서 티켓을 추가해보세요.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // 오늘 날짜를 기본값으로 설정
+    (function() {
+        var today = new Date().toISOString().split('T')[0];
+        document.getElementById('inp-date').value = today;
+    })();
+
+    // 볼 색상 (JavaScript용 — Jinja2 필터와 동기화)
+    function getBallColor(n) {
+        if (n <= 10) return '#FBC400';
+        if (n <= 20) return '#69C8F2';
+        if (n <= 30) return '#FF7272';
+        if (n <= 40) return '#AAAAAA';
+        return '#B0D840';
+    }
+
+    // 등수 CSS 클래스
+    function getPrizeClass(prize) {
+        const map = {
+            '1등': 'bg-yellow-400 text-yellow-900',
+            '2등': 'bg-yellow-200 text-yellow-800',
+            '3등': 'bg-orange-200 text-orange-800',
+            '4등': 'bg-green-200 text-green-800',
+            '5등': 'bg-blue-200 text-blue-800',
+            '낙첨': 'bg-gray-200 text-gray-600',
+            '미추첨': 'bg-gray-100 text-gray-400',
+        };
+        return map[prize] || 'bg-gray-100 text-gray-400';
+    }
+
+    async function addTicket(e) {
+        e.preventDefault();
+        var msg = document.getElementById('form-msg');
+        msg.classList.add('hidden');
+
+        var drwNo = parseInt(document.getElementById('inp-drwNo').value);
+        var boughtAt = document.getElementById('inp-date').value;
+        var numbers = [
+            parseInt(document.getElementById('n1').value),
+            parseInt(document.getElementById('n2').value),
+            parseInt(document.getElementById('n3').value),
+            parseInt(document.getElementById('n4').value),
+            parseInt(document.getElementById('n5').value),
+            parseInt(document.getElementById('n6').value),
+        ];
+
+        // 클라이언트 측 기본 검증
+        var unique = [...new Set(numbers)];
+        if (unique.length !== 6 || numbers.some(function(n) { return n < 1 || n > 45 || isNaN(n); })) {
+            showMsg('번호를 확인하세요. (1~45 범위, 중복 없는 6개)', 'text-red-500');
+            return;
+        }
+
+        try {
+            var res = await fetch('/api/history', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ drwNo: drwNo, numbers: numbers, bought_at: boughtAt }),
+            });
+            if (!res.ok) {
+                var err = await res.json();
+                showMsg(err.detail.message || '저장 실패', 'text-red-500');
+                return;
+            }
+            // 저장 성공 시 페이지 새로고침
+            window.location.reload();
+        } catch (ex) {
+            showMsg('요청 오류: ' + ex.message, 'text-red-500');
+        }
+    }
+
+    async function deleteTicket(ticketId) {
+        if (!confirm('이 티켓을 삭제하시겠습니까?')) return;
+        try {
+            var res = await fetch('/api/history/' + ticketId, { method: 'DELETE' });
+            if (!res.ok) {
+                alert('삭제 실패');
+                return;
+            }
+            // 해당 행만 DOM에서 제거
+            var row = document.querySelector('[data-id="' + ticketId + '"]');
+            if (row) {
+                row.remove();
+            }
+        } catch (ex) {
+            alert('요청 오류: ' + ex.message);
+        }
+    }
+
+    function showMsg(text, cls) {
+        var msg = document.getElementById('form-msg');
+        msg.textContent = text;
+        msg.className = 'text-sm ' + cls;
+        msg.classList.remove('hidden');
+    }
+</script>
+{% endblock %}
