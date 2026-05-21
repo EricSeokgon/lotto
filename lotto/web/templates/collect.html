@@ -172,7 +172,11 @@
             </table>
         </div>
         <!-- 페이지네이션 컨트롤 -->
-        <div class="flex items-center justify-between gap-4 mt-4">
+        <div class="flex items-center justify-center gap-2 mt-4">
+            <button id="btn-first" type="button" onclick="goToFirst()"
+                    class="px-3 py-1.5 text-sm font-medium rounded border border-border text-muted hover:border-data-blue hover:text-data-blue transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                처음
+            </button>
             <button id="btn-prev" type="button" onclick="changePage(-1)"
                     class="px-3 py-1.5 text-sm font-medium rounded border border-border text-muted hover:border-data-blue hover:text-data-blue transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                 이전
@@ -181,6 +185,10 @@
             <button id="btn-next" type="button" onclick="changePage(1)"
                     class="px-3 py-1.5 text-sm font-medium rounded border border-border text-muted hover:border-data-blue hover:text-data-blue transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
                 다음
+            </button>
+            <button id="btn-last" type="button" onclick="goToLast()"
+                    class="px-3 py-1.5 text-sm font-medium rounded border border-border text-muted hover:border-data-blue hover:text-data-blue transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                마지막
             </button>
         </div>
     </div>
@@ -350,7 +358,7 @@ async function loadDraws(offset) {
     const tbody = document.getElementById('draws-tbody');
     if (!tbody) return;
     try {
-        const res = await fetch('/api/draws?limit=' + PAGE_SIZE + '&offset=' + offset);
+        const res = await fetch('/api/draws?limit=' + PAGE_SIZE + '&offset=' + offset + '&sort=desc');
         if (!res.ok) {
             tbody.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-muted">데이터 조회 실패</td></tr>';
             return;
@@ -390,16 +398,32 @@ function updatePagination() {
     const totalPages = Math.max(1, Math.ceil(totalDraws / PAGE_SIZE));
     const info = document.getElementById('page-info');
     if (info) info.textContent = currentPage + ' / ' + totalPages + ' 페이지 (총 ' + totalDraws + '회)';
+    const btnFirst = document.getElementById('btn-first');
     const btnPrev = document.getElementById('btn-prev');
     const btnNext = document.getElementById('btn-next');
+    const btnLast = document.getElementById('btn-last');
+    if (btnFirst) btnFirst.disabled = currentOffset <= 0;
     if (btnPrev) btnPrev.disabled = currentOffset <= 0;
     if (btnNext) btnNext.disabled = currentOffset + PAGE_SIZE >= totalDraws;
+    if (btnLast) btnLast.disabled = currentOffset + PAGE_SIZE >= totalDraws;
 }
 
 function changePage(dir) {
     const newOffset = currentOffset + dir * PAGE_SIZE;
     if (newOffset < 0 || newOffset >= Math.max(totalDraws, 1)) return;
     loadDraws(newOffset);
+}
+
+function goToFirst() {
+    if (currentOffset <= 0) return;
+    loadDraws(0);
+}
+
+function goToLast() {
+    const totalPages = Math.ceil(totalDraws / PAGE_SIZE);
+    const lastOffset = Math.max(0, (totalPages - 1) * PAGE_SIZE);
+    if (currentOffset >= lastOffset) return;
+    loadDraws(lastOffset);
 }
 
 // 페이지 로드 시 첫 페이지 자동 조회

@@ -150,6 +150,9 @@ async def list_draws(
     to_round: Optional[int] = Query(  # noqa: UP045
         default=None, ge=1, description="회차 범위 끝 (포함, >=1)"
     ),
+    sort: Optional[str] = Query(  # noqa: UP045
+        default=None, description="정렬 순서 (desc=최신순, asc=오래된순)"
+    ),
 ) -> dict[str, Any]:
     """수집된 추첨 데이터를 페이지네이션 응답으로 반환합니다.
 
@@ -174,6 +177,10 @@ async def list_draws(
         draws = [d for d in draws if d.drwNo >= from_round]
     if to_round is not None:
         draws = [d for d in draws if d.drwNo <= to_round]
+
+    # 정렬: desc=최신순(drwNo 내림차순)
+    if sort == "desc":
+        draws = list(reversed(draws))
 
     total = len(draws)
     page = draws[offset : offset + limit]

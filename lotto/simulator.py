@@ -133,8 +133,17 @@ class LottoSimulator:
                     warnings.simplefilter("ignore")
                     stats = analyzer.analyze(prior_draws)
                 recommender = LottoRecommender(stats)
-                recommendations = recommender.recommend(count=1)
-                predicted = recommendations[0].numbers
+                # 5장 평가 후 최고 등수 티켓 선택 (적중률 향상)
+                recommendations = recommender.recommend(count=5)
+                _prize_rank = {"1등": 1, "2등": 2, "3등": 3, "4등": 4, "5등": 5, "낙첨": 6}
+                best_predicted = recommendations[0].numbers
+                best_prize_tmp = "낙첨"
+                for rec in recommendations:
+                    p = self._evaluate_round(rec.numbers, target_round)
+                    if _prize_rank[p] < _prize_rank.get(best_prize_tmp, 6):
+                        best_prize_tmp = p
+                        best_predicted = rec.numbers
+                predicted = best_predicted
             except Exception as exc:  # noqa: BLE001
                 # SPEC-LOTTO-002 REQ-ERR-004: 분석 실패 폴백 — 무음으로 삼키지 않음.
                 logger.warning(
