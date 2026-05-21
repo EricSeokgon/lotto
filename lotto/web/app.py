@@ -49,6 +49,8 @@ async def _weekly_collect_task() -> None:
 
 @asynccontextmanager
 async def _lifespan(app_: FastAPI) -> AsyncIterator[None]:
+    # SPEC-LOTTO-012 REQ-HLT-004: 서버 시작 시각을 lifespan 진입 시점으로 재설정
+    api._startup_time = datetime.datetime.now()
     task = asyncio.create_task(_weekly_collect_task())
     yield
     task.cancel()

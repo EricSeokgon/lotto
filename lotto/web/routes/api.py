@@ -40,7 +40,103 @@ _collect_state: dict = {
 }
 _collect_lock = threading.Lock()
 
+# SPEC-LOTTO-012 REQ-HLT-004: 서버 가동 시각 — /api/health uptime 계산용
+# 모듈 로딩 시 임시 값을 두고, FastAPI lifespan 시작 시점에서 재설정한다.
+_startup_time: datetime.datetime = datetime.datetime.now()
+
+
+# @MX:NOTE: [AUTO] importlib.metadata.version 우회 진입점 — 테스트에서 패치 가능
+# @MX:SPEC: SPEC-LOTTO-012 REQ-HLT-005
+def _pkg_version_lookup(name: str) -> str:
+    """패키지 버전 조회를 별도 함수로 분리하여 테스트 가능하게 한다."""
+    from importlib.metadata import version as _v
+
+    return _v(name)
+
+
 router = APIRouter(prefix="/api")
+
+
+# SPEC-LOTTO-012: GET /api/health 응답 모델
+class HealthDataResponse(BaseModel):
+    """헬스체크 데이터 상태 하위 객체."""
+
+    csv_exists: bool
+    csv_rows: int
+    stats_exists: bool
+    last_sync: Optional[str]  # noqa: UP045 — Pydantic + Python 3.9 호환
+
+
+class HealthResponse(BaseModel):
+    """GET /api/health 응답 모델 (REQ-HLT-001~005)."""
+
+    status: str  # "ok" or "degraded"
+    uptime_seconds: float
+    data: HealthDataResponse
+    version: str
+
+
+# @MX:ANCHOR: [AUTO] 운영 모니터링 진입점 — 외부 헬스체크/k8s probe 가 의존
+# @MX:REASON: 가용성 판정의 단일 진실 공급원 — 변경 시 SLO/알람 영향
+# @MX:SPEC: SPEC-LOTTO-012 REQ-HLT-001~005
+@router.get("/health", response_model=HealthResponse)
+async def get_health() -> HealthResponse:
+    """운영 상태 확인 엔드포인트.
+
+    - REQ-HLT-001: HTTP 200 상태로 status 필드("ok"/"degraded") 반환
+    - REQ-HLT-002: csv + stats 모두 존재 시 "ok", 아니면 "degraded"
+    - REQ-HLT-003: data.csv_rows 는 헤더 제외 행 수
+    - REQ-HLT-004: uptime_seconds 는 서버 시작 이후 경과 초
+    - REQ-HLT-005: version 미설치 시 "unknown" 반환
+    """
+    from importlib.metadata import PackageNotFoundError
+
+    csv_path = Path("data/draws.csv")
+    stats_path = Path("data/stats.json")
+    last_sync_path = Path("data/last_sync.json")
+
+    csv_exists = csv_path.exists()
+    stats_exists = stats_path.exists()
+
+    csv_rows = 0
+    if csv_exists:
+        try:
+            # 큰 파일도 안전하도록 스트리밍으로 행 수 계산 (헤더 제외)
+            with csv_path.open() as f:
+                csv_rows = sum(1 for _ in f) - 1
+        except OSError:
+            csv_rows = 0
+
+    last_sync: Optional[str] = None  # noqa: UP045
+    if last_sync_path.exists():
+        try:
+            import json
+
+            data = json.loads(last_sync_path.read_text())
+            last_sync = data.get("last_sync_date") or data.get("date")
+        except (OSError, ValueError, KeyError):
+            # 손상된 last_sync.json 은 무시하고 None 으로 유지 (REQ-HLT-005)
+            last_sync = None
+
+    try:
+        pkg_version = _pkg_version_lookup("lotto")
+    except PackageNotFoundError:
+        pkg_version = "unknown"
+
+    status = "ok" if (csv_exists and stats_exists) else "degraded"
+    uptime = (datetime.datetime.now() - _startup_time).total_seconds()
+
+    return HealthResponse(
+        status=status,
+        uptime_seconds=uptime,
+        data=HealthDataResponse(
+            csv_exists=csv_exists,
+            csv_rows=max(csv_rows, 0),
+            stats_exists=stats_exists,
+            last_sync=last_sync,
+        ),
+        version=pkg_version,
+    )
 
 
 @router.get("/draws")
