@@ -10,6 +10,9 @@ import datetime
 import logging
 import threading
 from pathlib import Path
+from typing import (
+    Optional,  # noqa: UP035 — FastAPI requires Optional for Query params on Python 3.9
+)
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import Response
@@ -40,8 +43,24 @@ router = APIRouter(prefix="/api")
 
 
 @router.get("/draws")
-async def list_draws() -> list[dict]:
-    """수집된 추첨 데이터를 반환합니다. 파일 없으면 503."""
+async def list_draws(
+    limit: int = Query(default=50, ge=1, le=200, description="페이지 크기 (1~200)"),
+    offset: int = Query(default=0, ge=0, description="페이지 오프셋 (>=0)"),
+    from_round: Optional[int] = Query(  # noqa: UP045
+        default=None, ge=1, description="회차 범위 시작 (포함, >=1)"
+    ),
+    to_round: Optional[int] = Query(  # noqa: UP045
+        default=None, ge=1, description="회차 범위 끝 (포함, >=1)"
+    ),
+) -> dict:
+    """수집된 추첨 데이터를 페이지네이션 응답으로 반환합니다.
+
+    SPEC-LOTTO-006:
+    - REQ-PAGE-001: limit(기본 50, 최대 200), offset(기본 0)
+    - REQ-PAGE-002: {total, limit, offset, items} 래퍼 응답
+    - REQ-PAGE-003: from_round/to_round 회차 범위 필터링
+    - REQ-PAGE-004: 빈 결과는 500이 아닌 200 + total=0 + items=[]
+    """
     draws = get_draws()
     if draws is None:
         raise HTTPException(
@@ -51,7 +70,21 @@ async def list_draws() -> list[dict]:
                 "message": "데이터가 없습니다. 먼저 수집을 실행해주세요.",
             },
         )
-    return [d.model_dump() for d in draws]
+
+    # REQ-PAGE-003: 회차 범위 필터링
+    if from_round is not None:
+        draws = [d for d in draws if d.drwNo >= from_round]
+    if to_round is not None:
+        draws = [d for d in draws if d.drwNo <= to_round]
+
+    total = len(draws)
+    page = draws[offset : offset + limit]
+    return {
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+        "items": [d.model_dump() for d in page],
+    }
 
 
 @router.get("/stats")
@@ -72,14 +105,26 @@ async def get_statistics() -> dict:
 @router.get("/recommendations")
 async def get_recommendation_list(
     count: int = Query(default=5, ge=1, le=20, description="추천 세트 수 (1~20)"),
+    strategy: Optional[str] = Query(  # noqa: UP045
+        default=None, description="특정 전략 라벨만 필터링 (예: 고빈도, 저빈도, 균형 등)"
+    ),
 ) -> list[dict]:
-    """번호 추천 결과를 반환합니다. 파일 없으면 503."""
+    """번호 추천 결과를 반환합니다. 파일 없으면 503.
+
+    SPEC-LOTTO-006:
+    - REQ-FILTER-001: strategy 파라미터로 특정 전략만 반환
+    - REQ-FILTER-002: 파라미터 미지정 시 기존 동작 유지 (count 만큼 전략 순환)
+    - REQ-FILTER-003: 존재하지 않는 전략은 200 + 빈 리스트
+    """
     recs = get_recommendations(count=count)
     if recs is None:
         raise HTTPException(
             503,
             detail={"error": "data_unavailable", "message": "데이터가 없습니다."},
         )
+    # REQ-FILTER-001/003: 전략 필터링 — 일치하는 항목만 반환 (불일치는 빈 리스트)
+    if strategy is not None:
+        recs = [r for r in recs if r.strategy_label == strategy]
     return [r.model_dump() for r in recs]
 
 

@@ -86,12 +86,13 @@ def test_api_503_has_error_structure(client, tmp_path, monkeypatch):
 # ──────────────────────────────────────────────
 
 def test_api_draws_with_data():
-    """/api/draws 가 데이터 있을 때 200과 리스트 반환."""
+    """SPEC-LOTTO-006: /api/draws 가 데이터 있을 때 200과 페이지네이션 래퍼 반환."""
     from unittest.mock import MagicMock, patch
 
     from lotto.web.app import app
 
     mock_draw = MagicMock()
+    mock_draw.drwNo = 1100
     mock_draw.model_dump.return_value = {"drwNo": 1100, "date": "2024-01-01"}
 
     with patch("lotto.web.routes.api.get_draws", return_value=[mock_draw]):
@@ -100,8 +101,10 @@ def test_api_draws_with_data():
 
     assert response.status_code == 200
     data = response.json()
-    assert isinstance(data, list)
-    assert len(data) == 1
+    # SPEC-LOTTO-006 REQ-PAGE-002: 페이지네이션 래퍼 구조
+    assert isinstance(data, dict)
+    assert data["total"] == 1
+    assert len(data["items"]) == 1
 
 
 def test_api_stats_with_data():
