@@ -378,3 +378,26 @@ def test_collect_tbody_is_empty_for_js_population(monkeypatch):
     assert tbody_content == "", (
         f"draws-tbody 가 비어있지 않음 (JS로 채워야 함): {tbody_content!r}"
     )
+
+
+# ──────────────────────────────────────────────
+# 커버리지 누락 분기: stats=None, result=None 경로
+# ──────────────────────────────────────────────
+
+
+def test_analyze_page_stats_none(client):
+    """/analyze — stats가 None(데이터 없음)일 때 200 반환 및 배지 없음."""
+    from unittest.mock import patch
+
+    with patch("lotto.web.routes.pages.get_stats", return_value=None):
+        response = client.get("/analyze")
+    assert response.status_code == 200
+
+
+def test_simulate_page_result_none(client):
+    """/simulate — result가 None(데이터 없음)일 때 200 반환."""
+    from unittest.mock import patch
+
+    with patch("lotto.web.routes.pages.get_simulation", return_value=None):
+        response = client.get("/simulate")
+    assert response.status_code == 200

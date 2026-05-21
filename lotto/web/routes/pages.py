@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from starlette.templating import _TemplateResponse as TemplateResponse
 
 from lotto.web.data import (

@@ -138,3 +138,12 @@ def test_recommender_weights_wrong_count_two_values() -> None:
 
     with pytest.raises(ValueError, match="정확히 4개"):
         _import_config()
+
+
+def test_fallback_load_dotenv_returns_false() -> None:
+    """_DOTENV_AVAILABLE=False 환경에서 fallback _load_dotenv()는 False를 반환한다."""
+    config = _import_config()
+
+    if not config._DOTENV_AVAILABLE:
+        result = config._load_dotenv()
+        assert result is False

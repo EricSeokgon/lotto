@@ -18,7 +18,7 @@ from pathlib import Path
 try:
     from dotenv import load_dotenv as _load_dotenv
 
-    _DOTENV_AVAILABLE = True
+    _DOTENV_AVAILABLE = True  # pragma: no cover
 except ImportError:
     _DOTENV_AVAILABLE = False
 

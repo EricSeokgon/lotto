@@ -151,3 +151,12 @@ class TestGenerateReport:
 
         assert isinstance(result, (bytes, bytearray))
         assert len(result) > 0
+
+
+def test_safe_text_non_latin1_falls_back_to_ascii() -> None:
+    """매핑 없는 non-latin-1 문자열은 ASCII 대체 문자(?)로 변환된다."""
+    from lotto.pdf_report import _safe_text
+
+    # 한글 "가나다"는 매핑 없고 latin-1 인코딩 불가 → UnicodeEncodeError 경로
+    result = _safe_text("가나다")
+    assert result == "???"

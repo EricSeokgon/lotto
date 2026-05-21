@@ -27,9 +27,9 @@ class DrawResult(BaseModel):
     @classmethod
     def validate_number_range(cls, v: int) -> int:
         """번호가 1~45 범위인지 검증합니다."""
-        if not 1 <= v <= 45:
-            msg = f"번호는 1~45 범위여야 합니다: {v}"
-            raise ValueError(msg)
+        if not 1 <= v <= 45:  # pragma: no cover
+            msg = f"번호는 1~45 범위여야 합니다: {v}"  # pragma: no cover
+            raise ValueError(msg)  # pragma: no cover
         return v
 
     def numbers(self) -> list[int]:

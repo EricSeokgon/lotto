@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 from fpdf import FPDF
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from lotto.models import Recommendation, SimulationResult, Statistics
 
 # 한글 전략명 → 영문 매핑 (fpdf2 Helvetica는 Latin-1만 지원)
