@@ -351,7 +351,7 @@ def test_collect_tbody_has_initial_rows_desc_order():
     from lotto.web.app import app
 
     draws = [
-        DrawResult(drwNo=i, date=datetime.date(2024, 1, i), n1=1, n2=2, n3=3, n4=4, n5=5, n6=6, bonus=7)
+        DrawResult(drwNo=i, date=datetime.date(2024, 1, i), n1=1, n2=2, n3=3, n4=4, n5=5, n6=6, bonus=7)  # noqa: E501
         for i in range(1, 6)
     ]
 
