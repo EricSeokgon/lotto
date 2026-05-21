@@ -15,7 +15,6 @@ from fastapi.testclient import TestClient
 
 from lotto.models import DrawResult
 
-
 # === Scenario 4.1: POST /api/scrape 엔드포인트 ===
 
 

@@ -67,7 +67,6 @@ def test_pdf_endpoint_no_data():
 
 def test_pdf_endpoint_with_mocked_data():
     """데이터가 있을 때 정상 PDF 생성을 확인한다."""
-    from unittest.mock import MagicMock
 
     from lotto.analyzer import FrequencyStats, Statistics
     from lotto.recommender import Recommendation
@@ -84,7 +83,7 @@ def test_pdf_endpoint_with_mocked_data():
             numbers=[1, 2, 3, 4, 5, 6],
             strategy_label="고빈도",
             strategy_desc="고빈도 전략",
-            scores={n: 0.5 for n in [1, 2, 3, 4, 5, 6]},
+            scores=dict.fromkeys([1, 2, 3, 4, 5, 6], 0.5),
         ),
     ]
     sim = SimulationResult(

@@ -14,7 +14,6 @@ from unittest.mock import patch
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-
 # === Scenario 2.1, 2.2: _next_monday_midnight ===
 
 

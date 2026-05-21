@@ -61,9 +61,11 @@ class TestSaveCsvAtomic:
 
         # 2) os.replace가 실패하도록 모킹하고 재저장 시도
         new_draws = _make_draws(5)
-        with patch("lotto.collector.os.replace", side_effect=OSError("replace failed")):
-            with pytest.raises(OSError, match="replace failed"):
-                collector.save_csv(new_draws)
+        with (
+            patch("lotto.collector.os.replace", side_effect=OSError("replace failed")),
+            pytest.raises(OSError, match="replace failed"),
+        ):
+            collector.save_csv(new_draws)
 
         # 3) 원본 CSV가 그대로 보존되어야 한다
         assert (tmp_data_dir / "draws.csv").read_bytes() == original_bytes

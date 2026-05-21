@@ -14,12 +14,12 @@ import random
 from pathlib import Path
 from unittest.mock import patch
 
+from main import app
 from typer.testing import CliRunner
 
 from lotto.analyzer import LottoAnalyzer
 from lotto.collector import LottoCollector
 from lotto.models import DrawResult
-from main import app
 
 runner = CliRunner()
 

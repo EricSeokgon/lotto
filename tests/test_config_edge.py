@@ -10,7 +10,7 @@ from __future__ import annotations
 import importlib
 import os
 import sys
-from typing import Iterator
+from collections.abc import Iterator
 from unittest.mock import patch
 
 import pytest
@@ -87,11 +87,13 @@ def test_load_dotenv_noop_when_unavailable() -> None:
     config = _import_config()
 
     # _load_dotenv가 False를 반환하거나 호출되지 않는지 확인
-    with patch.object(config, "_DOTENV_AVAILABLE", False):
-        with patch.object(config, "_load_dotenv") as mock_loader:
-            settings = config._load_settings()
-            # _DOTENV_AVAILABLE이 False일 때는 _load_dotenv를 호출하지 않아야 한다
-            mock_loader.assert_not_called()
+    with (
+        patch.object(config, "_DOTENV_AVAILABLE", False),
+        patch.object(config, "_load_dotenv") as mock_loader,
+    ):
+        settings = config._load_settings()
+        # _DOTENV_AVAILABLE이 False일 때는 _load_dotenv를 호출하지 않아야 한다
+        mock_loader.assert_not_called()
 
     assert settings is not None
 

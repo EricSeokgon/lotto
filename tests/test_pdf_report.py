@@ -5,8 +5,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from lotto.analyzer import FrequencyStats, Statistics
 from lotto.recommender import Recommendation
 from lotto.simulator import SimulationResult
@@ -18,7 +16,7 @@ def _build_recommendation(numbers: list[int], label: str) -> Recommendation:
         numbers=numbers,
         strategy_label=label,
         strategy_desc=f"{label} 전략 설명",
-        scores={n: 0.5 for n in numbers},
+        scores=dict.fromkeys(numbers, 0.5),
     )
 
 
@@ -26,9 +24,11 @@ def _build_statistics() -> Statistics:
     """테스트용 Statistics 인스턴스 빌더 — 빈도 통계 포함."""
     freq_abs = {i: (50 - i) for i in range(1, 46)}
     bonus_abs = {i: (10 + (i % 7)) for i in range(1, 46)}
+    freq_rel = {k: v / 100 for k, v in freq_abs.items()}
+    bonus_rel = {k: v / 50 for k, v in bonus_abs.items()}
     return Statistics(
-        frequency=FrequencyStats(absolute=freq_abs, relative={k: v / 100 for k, v in freq_abs.items()}),
-        bonus_frequency=FrequencyStats(absolute=bonus_abs, relative={k: v / 50 for k, v in bonus_abs.items()}),
+        frequency=FrequencyStats(absolute=freq_abs, relative=freq_rel),
+        bonus_frequency=FrequencyStats(absolute=bonus_abs, relative=bonus_rel),
         total_rounds=100,
     )
 
