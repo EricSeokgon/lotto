@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import datetime
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from fpdf import FPDF
 
@@ -41,7 +41,7 @@ _PRIZE_EN: dict[str, str] = {
 }
 
 
-def _safe_text(value: Any) -> str:
+def _safe_text(value: Any) -> str:  # noqa: ANN401
     """Latin-1로 인코딩 불가능한 문자를 안전하게 처리한다.
 
     한글 등 비ASCII 문자는 매핑 테이블을 우선 사용하고,
@@ -69,7 +69,7 @@ def _add_section_title(pdf: FPDF, title: str) -> None:
     pdf.set_font("Helvetica", "", 11)
 
 
-def _add_recommendations_section(pdf: FPDF, recommendations: Optional[list]) -> None:
+def _add_recommendations_section(pdf: FPDF, recommendations: list | None) -> None:
     """추천 번호 섹션 추가 (REQ-PDF-002)."""
     _add_section_title(pdf, "Recommendations")
     if not recommendations:
@@ -82,7 +82,7 @@ def _add_recommendations_section(pdf: FPDF, recommendations: Optional[list]) -> 
         pdf.cell(0, 6, _safe_text(line), new_x="LMARGIN", new_y="NEXT")
 
 
-def _add_stats_section(pdf: FPDF, stats: Optional[Any]) -> None:
+def _add_stats_section(pdf: FPDF, stats: Statistics | None) -> None:
     """통계 요약 섹션 추가 (REQ-PDF-003).
 
     상위 10개 빈출 번호 + 상위 5개 보너스 빈출 번호.
@@ -123,7 +123,7 @@ def _add_stats_section(pdf: FPDF, stats: Optional[Any]) -> None:
             )
 
 
-def _add_simulation_section(pdf: FPDF, simulation: Optional[Any]) -> None:
+def _add_simulation_section(pdf: FPDF, simulation: SimulationResult | None) -> None:
     """시뮬레이션 결과 섹션 추가 (REQ-PDF-004)."""
     _add_section_title(pdf, "Simulation Results")
     if simulation is None or not getattr(simulation, "prize_counts", None):
@@ -151,9 +151,9 @@ def _add_simulation_section(pdf: FPDF, simulation: Optional[Any]) -> None:
 
 
 def generate_report(
-    stats: Optional["Statistics"] = None,
-    recommendations: Optional[list["Recommendation"]] = None,
-    simulation: Optional["SimulationResult"] = None,
+    stats: Statistics | None = None,
+    recommendations: list[Recommendation] | None = None,
+    simulation: SimulationResult | None = None,
 ) -> bytes:
     """로또 분석 결과를 PDF 바이트로 생성한다.
 

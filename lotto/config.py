@@ -13,7 +13,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Tuple
 
 # REQ-CFG-003: python-dotenv은 선택적 의존성. 미설치 환경에서도 정상 동작해야 함.
 try:
@@ -41,7 +40,7 @@ _DEFAULT_SCRAPER_URL_2 = "https://signalfire85.tistory.com/28"
 _DEFAULT_BONUS_AVOIDANCE_WEIGHT = "0.0"
 
 
-def _parse_weights(raw: str) -> Tuple[float, float, float, float]:
+def _parse_weights(raw: str) -> tuple[float, float, float, float]:
     """REQ-CFG-005: 콤마 구분 가중치를 4-튜플로 파싱. 실패 시 명확한 ValueError."""
     try:
         parts = [float(x.strip()) for x in raw.split(",")]
@@ -89,7 +88,7 @@ class Settings:
     data_dir: Path
     web_host: str
     web_port: int
-    recommender_weights: Tuple[float, float, float, float]
+    recommender_weights: tuple[float, float, float, float]
     checkpoint_interval: int
     scraper_urls: list = field(default_factory=list)
     # SPEC-LOTTO-003 REQ-BONUS-004: 보너스 회피 가중치 (기본 0.0 = 비활성)
