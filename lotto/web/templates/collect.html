@@ -156,9 +156,9 @@
         </div>
     </div>
 
-    <!-- 최근 5회 -->
+    <!-- 추첨 결과 (클라이언트 사이드 페이지네이션, SPEC-LOTTO-010) -->
     <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
-        <h3 class="font-semibold text-ink mb-3">최근 추첨 결과</h3>
+        <h3 class="font-semibold text-ink mb-3">추첨 결과</h3>
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead>
@@ -168,23 +168,20 @@
                         <th class="text-left py-2 text-muted font-medium">당첨 번호</th>
                     </tr>
                 </thead>
-                <tbody>
-                    {% for draw in draws[-5:] | reverse %}
-                    <tr class="border-b border-border last:border-0">
-                        <td class="py-2 font-medium text-ink">{{ draw.drwNo }}회</td>
-                        <td class="py-2 text-muted">{{ draw.date }}</td>
-                        <td class="py-2">
-                            <div class="flex flex-wrap gap-1">
-                                {% for n in draw.numbers() %}
-                                <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-data-blue text-white">{{ n }}</span>
-                                {% endfor %}
-                                <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-data-muted text-ink">+{{ draw.bonus }}</span>
-                            </div>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
+                <tbody id="draws-tbody"></tbody>
             </table>
+        </div>
+        <!-- 페이지네이션 컨트롤 -->
+        <div class="flex items-center justify-between gap-4 mt-4">
+            <button id="btn-prev" type="button" onclick="changePage(-1)"
+                    class="px-3 py-1.5 text-sm font-medium rounded border border-border text-muted hover:border-data-blue hover:text-data-blue transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                이전
+            </button>
+            <span id="page-info" class="text-sm text-muted">1 / 1 페이지</span>
+            <button id="btn-next" type="button" onclick="changePage(1)"
+                    class="px-3 py-1.5 text-sm font-medium rounded border border-border text-muted hover:border-data-blue hover:text-data-blue transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                다음
+            </button>
         </div>
     </div>
     {% else %}
@@ -343,5 +340,73 @@ async function submitManualDraw(e) {
         result.textContent = '네트워크 오류가 발생했습니다.';
     }
 }
+
+/* ── 추첨 결과 페이지네이션 (SPEC-LOTTO-010) ───── */
+const PAGE_SIZE = 10;
+let currentOffset = 0;
+let totalDraws = 0;
+
+async function loadDraws(offset) {
+    const tbody = document.getElementById('draws-tbody');
+    if (!tbody) return;
+    try {
+        const res = await fetch('/api/draws?limit=' + PAGE_SIZE + '&offset=' + offset);
+        if (!res.ok) {
+            tbody.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-muted">데이터 조회 실패</td></tr>';
+            return;
+        }
+        const data = await res.json();
+        totalDraws = data.total || 0;
+        currentOffset = offset;
+        renderDrawsTable(data.items || []);
+        updatePagination();
+    } catch {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-muted">네트워크 오류</td></tr>';
+    }
+}
+
+function renderDrawsTable(items) {
+    const tbody = document.getElementById('draws-tbody');
+    if (!items.length) {
+        tbody.innerHTML = '<tr><td colspan="3" class="text-center py-4 text-muted">데이터 없음</td></tr>';
+        return;
+    }
+    tbody.innerHTML = items.map(draw => {
+        const nums = [draw.n1, draw.n2, draw.n3, draw.n4, draw.n5, draw.n6];
+        const badges = nums.map(n =>
+            '<span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-data-blue text-white">' + n + '</span>'
+        ).join(' ');
+        const bonus = '<span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-data-muted text-ink">+' + draw.bonus + '</span>';
+        return '<tr class="border-b border-border last:border-0">' +
+               '<td class="py-2 font-medium text-ink">' + draw.drwNo + '회</td>' +
+               '<td class="py-2 text-muted">' + draw.date + '</td>' +
+               '<td class="py-2"><div class="flex flex-wrap gap-1">' + badges + ' ' + bonus + '</div></td>' +
+               '</tr>';
+    }).join('');
+}
+
+function updatePagination() {
+    const currentPage = Math.floor(currentOffset / PAGE_SIZE) + 1;
+    const totalPages = Math.max(1, Math.ceil(totalDraws / PAGE_SIZE));
+    const info = document.getElementById('page-info');
+    if (info) info.textContent = currentPage + ' / ' + totalPages + ' 페이지 (총 ' + totalDraws + '회)';
+    const btnPrev = document.getElementById('btn-prev');
+    const btnNext = document.getElementById('btn-next');
+    if (btnPrev) btnPrev.disabled = currentOffset <= 0;
+    if (btnNext) btnNext.disabled = currentOffset + PAGE_SIZE >= totalDraws;
+}
+
+function changePage(dir) {
+    const newOffset = currentOffset + dir * PAGE_SIZE;
+    if (newOffset < 0 || newOffset >= Math.max(totalDraws, 1)) return;
+    loadDraws(newOffset);
+}
+
+// 페이지 로드 시 첫 페이지 자동 조회
+document.addEventListener('DOMContentLoaded', () => {
+    if (document.getElementById('draws-tbody')) {
+        loadDraws(0);
+    }
+});
 </script>
 {% endblock %}
