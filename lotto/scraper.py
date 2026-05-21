@@ -39,7 +39,7 @@ class _TableParser(HTMLParser):
         self._cell: list[str] = []
         self._in_cell = False
 
-    def handle_starttag(self, tag: str, attrs: list) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag == "tr":
             self._row = []
         elif tag in ("td", "th"):

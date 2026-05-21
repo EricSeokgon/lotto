@@ -14,9 +14,7 @@ from typing import TYPE_CHECKING, Any
 from fpdf import FPDF
 
 if TYPE_CHECKING:
-    from lotto.analyzer import Statistics
-    from lotto.recommender import Recommendation
-    from lotto.simulator import SimulationResult
+    from lotto.models import Recommendation, SimulationResult, Statistics
 
 # 한글 전략명 → 영문 매핑 (fpdf2 Helvetica는 Latin-1만 지원)
 _STRATEGY_EN: dict[str, str] = {
@@ -69,7 +67,7 @@ def _add_section_title(pdf: FPDF, title: str) -> None:
     pdf.set_font("Helvetica", "", 11)
 
 
-def _add_recommendations_section(pdf: FPDF, recommendations: list | None) -> None:
+def _add_recommendations_section(pdf: FPDF, recommendations: list[Recommendation] | None) -> None:
     """추천 번호 섹션 추가 (REQ-PDF-002)."""
     _add_section_title(pdf, "Recommendations")
     if not recommendations:

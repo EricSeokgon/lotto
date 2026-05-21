@@ -11,6 +11,7 @@ import logging
 import threading
 from pathlib import Path
 from typing import (
+    Any,
     Optional,  # noqa: UP035 — FastAPI requires Optional for Query params on Python 3.9
 )
 
@@ -31,7 +32,7 @@ from lotto.web.data import (
 logger = logging.getLogger(__name__)
 
 # 수집 진행 상태 (단일 서버 프로세스 내 공유)
-_collect_state: dict = {
+_collect_state: dict[str, Any] = {
     "status": "idle",   # idle | running | done | error
     "current": 0,
     "total": 0,
@@ -149,7 +150,7 @@ async def list_draws(
     to_round: Optional[int] = Query(  # noqa: UP045
         default=None, ge=1, description="회차 범위 끝 (포함, >=1)"
     ),
-) -> dict:
+) -> dict[str, Any]:
     """수집된 추첨 데이터를 페이지네이션 응답으로 반환합니다.
 
     SPEC-LOTTO-006:
@@ -185,7 +186,7 @@ async def list_draws(
 
 
 @router.get("/stats")
-async def get_statistics() -> dict:
+async def get_statistics() -> dict[str, Any]:
     """통계 분석 결과를 반환합니다. 보너스 번호 빈도 포함. 파일 없으면 503."""
     stats = get_stats()
     if stats is None:
@@ -205,7 +206,7 @@ async def get_recommendation_list(
     strategy: Optional[str] = Query(  # noqa: UP045
         default=None, description="특정 전략 라벨만 필터링 (예: 고빈도, 저빈도, 균형 등)"
     ),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """번호 추천 결과를 반환합니다. 파일 없으면 503.
 
     SPEC-LOTTO-006:
@@ -228,7 +229,7 @@ async def get_recommendation_list(
 @router.get("/simulation")
 async def run_simulation_results(
     rounds: int = Query(default=1000, ge=1, le=100000, description="시뮬레이션 회차 수 (1~100000)"),
-) -> dict:
+) -> dict[str, Any]:
     """인과 안전 백테스팅 시뮬레이션 결과를 반환합니다. 파일 없으면 503."""
     result = get_simulation(rounds=rounds)
     if result is None:
@@ -398,7 +399,7 @@ def _collect_worker(full: bool, start_from: int, max_drw_no: int) -> None:
 
 
 @router.get("/collect/status")
-async def collect_status() -> dict:
+async def collect_status() -> dict[str, Any]:
     """데이터 수집 진행 상태(idle/running/done/error)와 진행률을 반환합니다."""
     with _collect_lock:
         return dict(_collect_state)
@@ -409,7 +410,7 @@ async def trigger_collect(
     background_tasks: BackgroundTasks,
     full: bool = Query(default=False, description="True면 전체 재수집"),
     count: int = Query(default=0, ge=0, description="최근 N회 수집 (0=증분, full=True면 무시)"),
-) -> dict:
+) -> dict[str, Any]:
     """데이터 수집을 백그라운드에서 시작합니다.
     - full=true: 1회차부터 전체 재수집
     - count>0: 최근 N회차 수집
@@ -501,7 +502,7 @@ class ManualDrawRequest(BaseModel):
 
 
 @router.post("/draws/manual", status_code=201)
-async def add_manual_draw(req: ManualDrawRequest) -> dict:
+async def add_manual_draw(req: ManualDrawRequest) -> dict[str, Any]:
     """회차 데이터를 수동으로 추가합니다. 중복 회차는 409를 반환합니다."""
 
     from lotto.collector import LottoCollector
@@ -601,7 +602,7 @@ def _scrape_worker() -> None:
 
 
 @router.post("/scrape", status_code=202)
-async def trigger_scrape(background_tasks: BackgroundTasks) -> dict:
+async def trigger_scrape(background_tasks: BackgroundTasks) -> dict[str, Any]:
     """블로그에서 전체 회차 데이터를 크롤링합니다.
 
     동행복권 API 차단 환경에서 대체 데이터 수집 수단입니다.
@@ -643,14 +644,14 @@ class PurchaseRequest(BaseModel):
 
 
 @router.get("/history")
-async def list_history() -> list[dict]:
+async def list_history() -> list[dict[str, Any]]:
     """저장된 구매 티켓 목록과 각 회차의 당첨 결과를 함께 반환합니다."""
     from lotto.web.data import compute_ticket_results
     return compute_ticket_results()
 
 
 @router.post("/history", status_code=201)
-async def add_history(req: PurchaseRequest) -> dict:
+async def add_history(req: PurchaseRequest) -> dict[str, Any]:
     """구매 티켓(회차·번호·구매일)을 히스토리에 추가하고 UUID를 발급합니다."""
     import uuid
 
@@ -679,7 +680,7 @@ async def add_history(req: PurchaseRequest) -> dict:
 
 
 @router.delete("/history/{ticket_id}", status_code=200)
-async def delete_history(ticket_id: str) -> dict:
+async def delete_history(ticket_id: str) -> dict[str, Any]:
     """지정한 UUID의 구매 티켓을 삭제합니다. 존재하지 않으면 404를 반환합니다."""
     from lotto.web.data import get_history, save_history
 
@@ -695,7 +696,7 @@ async def delete_history(ticket_id: str) -> dict:
 
 
 @router.post("/analyze", status_code=202)
-async def trigger_analyze(background_tasks: BackgroundTasks) -> dict:
+async def trigger_analyze(background_tasks: BackgroundTasks) -> dict[str, Any]:
     """수집된 당첨 데이터를 기반으로 통계 분석을 백그라운드에서 시작합니다."""
     from pathlib import Path
 

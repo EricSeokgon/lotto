@@ -7,13 +7,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Request
 from fastapi.templating import Jinja2Templates
 
 if TYPE_CHECKING:
-    from starlette.responses import TemplateResponse
+    from starlette.templating import _TemplateResponse as TemplateResponse
 
 from lotto.web.data import (
     compute_frequency_percentiles,
@@ -67,7 +67,7 @@ templates.env.filters["ball_color"] = _ball_color
 templates.env.filters["prize_class"] = _prize_class
 
 
-def _render(request: Request, template: str, ctx: dict) -> TemplateResponse:
+def _render(request: Request, template: str, ctx: dict[str, Any]) -> TemplateResponse:
     """Starlette v0.40+ 호환 TemplateResponse 헬퍼."""
     return templates.TemplateResponse(request, template, ctx)
 
@@ -107,7 +107,7 @@ async def analyze_page(request: Request) -> TemplateResponse:
 
     badge_colors: dict[int, str] = {}
     badge_percentiles: dict[int, float] = {}
-    freq_chart_data: dict = {"labels": [], "values": []}
+    freq_chart_data: dict[str, Any] = {"labels": [], "values": []}
 
     if stats is not None:
         freq_abs = stats.frequency.absolute
@@ -188,9 +188,9 @@ async def simulate_page(
     result = get_simulation(rounds=rounds)
     strategy_comparison = get_strategy_comparison(min(rounds, 200)) if result is not None else None
 
-    prize_chart_data: dict = {"labels": [], "values": []}
-    budget_info: dict = {"total_cost": 0, "total_return": 0, "roi": 0.0}
-    per_round_data: dict = {"labels": [], "values": []}
+    prize_chart_data: dict[str, Any] = {"labels": [], "values": []}
+    budget_info: dict[str, Any] = {"total_cost": 0, "total_return": 0, "roi": 0.0}
+    per_round_data: dict[str, Any] = {"labels": [], "values": []}
 
     if result is not None:
         prize_chart_data = {

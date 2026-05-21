@@ -22,7 +22,7 @@ try:
 except ImportError:
     _DOTENV_AVAILABLE = False
 
-    def _load_dotenv(*_args: object, **_kwargs: object) -> bool:  # type: ignore[misc]
+    def _load_dotenv(*_args: object, **_kwargs: object) -> bool:
         """python-dotenv 미설치 시 no-op."""
         return False
 
@@ -90,7 +90,7 @@ class Settings:
     web_port: int
     recommender_weights: tuple[float, float, float, float]
     checkpoint_interval: int
-    scraper_urls: list = field(default_factory=list)
+    scraper_urls: list[str] = field(default_factory=list)
     # SPEC-LOTTO-003 REQ-BONUS-004: 보너스 회피 가중치 (기본 0.0 = 비활성)
     bonus_avoidance_weight: float = 0.0
 

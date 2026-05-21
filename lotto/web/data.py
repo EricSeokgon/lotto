@@ -10,9 +10,17 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from lotto.config import settings
+
+if TYPE_CHECKING:
+    from lotto.models import (
+        DrawResult,
+        Recommendation,
+        SimulationResult,
+        Statistics,
+    )
 
 # SPEC-LOTTO-002: 데이터 경로 외부화 — LOTTO_DATA_DIR 환경 변수로 오버라이드
 DRAWS_PATH = settings.data_dir / "draws.csv"
@@ -105,7 +113,7 @@ def get_data_status() -> DataStatus:
     )
 
 
-def get_draws() -> list | None:
+def get_draws() -> list[DrawResult] | None:
     """기존 수집 데이터를 반환합니다. 파일 없거나 비어있으면 None.
 
     SPEC-LOTTO-009 REQ-CACHE-001: 60초 TTL 메모리 캐시 적용.
@@ -114,7 +122,8 @@ def get_draws() -> list | None:
     global _draws_cache  # noqa: PLW0603 — 의도된 모듈 캐시 상태
     now = time.time()
     if _draws_cache is not None and (now - _draws_cache.ts) < _CACHE_TTL_SECONDS:
-        return _draws_cache.value
+        cached: list[DrawResult] | None = _draws_cache.value
+        return cached
 
     if not DRAWS_PATH.exists():
         return None
@@ -122,7 +131,7 @@ def get_draws() -> list | None:
         from lotto.collector import LottoCollector
 
         result = LottoCollector(data_dir=DRAWS_PATH.parent).load_existing()
-        value = result if result else None
+        value: list[DrawResult] | None = result if result else None
     except Exception as exc:  # noqa: BLE001
         # SPEC-LOTTO-002 REQ-ERR-002: 캐시 로드 실패는 무음으로 삼키지 않고 경고 로그 기록
         logger.warning("Failed to load cached draws data: %s", exc, exc_info=True)
@@ -132,7 +141,7 @@ def get_draws() -> list | None:
     return value
 
 
-def get_stats() -> object | None:
+def get_stats() -> Statistics | None:
     """통계 분석 결과를 반환합니다. 파일 없으면 None.
 
     SPEC-LOTTO-009 REQ-CACHE-002: 60초 TTL 메모리 캐시 적용.
@@ -140,7 +149,8 @@ def get_stats() -> object | None:
     global _stats_cache  # noqa: PLW0603 — 의도된 모듈 캐시 상태
     now = time.time()
     if _stats_cache is not None and (now - _stats_cache.ts) < _CACHE_TTL_SECONDS:
-        return _stats_cache.value
+        cached: Statistics | None = _stats_cache.value
+        return cached
 
     if not STATS_PATH.exists():
         return None
@@ -151,7 +161,7 @@ def get_stats() -> object | None:
     return value
 
 
-def get_recommendations(count: int = 5) -> list | None:
+def get_recommendations(count: int = 5) -> list[Recommendation] | None:
     """번호 추천 결과를 반환합니다. stats.json 없으면 None."""
     if not STATS_PATH.exists():
         return None
@@ -163,7 +173,7 @@ def get_recommendations(count: int = 5) -> list | None:
     return LottoRecommender(stats).recommend(count=count)
 
 
-def get_history() -> list[dict]:
+def get_history() -> list[dict[str, Any]]:
     """저장된 구매 티켓 목록을 반환합니다."""
     if not _HISTORY_PATH.exists():
         return []
@@ -173,7 +183,7 @@ def get_history() -> list[dict]:
         return []
 
 
-def save_history(tickets: list[dict]) -> None:
+def save_history(tickets: list[dict[str, Any]]) -> None:
     """구매 티켓 목록을 저장합니다."""
     _HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
     _HISTORY_PATH.write_text(
@@ -197,7 +207,7 @@ def _calc_prize(matched: int, bonus: bool) -> str:
     return "낙첨"
 
 
-def compute_ticket_results() -> list[dict]:
+def compute_ticket_results() -> list[dict[str, Any]]:
     """티켓 목록에 추첨 결과를 합산합니다.
 
     # @MX:ANCHOR: [AUTO] 구매 히스토리와 추첨 데이터를 합산하는 핵심 함수
@@ -207,7 +217,7 @@ def compute_ticket_results() -> list[dict]:
     draws = get_draws()
     draw_map = {d.drwNo: d for d in draws} if draws else {}
 
-    results = []
+    results: list[dict[str, Any]] = []
     for t in tickets:
         drw_no = t["drwNo"]
         draw = draw_map.get(drw_no)
@@ -242,7 +252,7 @@ def compute_ticket_results() -> list[dict]:
     return results
 
 
-def get_simulation(rounds: int = 1000) -> object | None:
+def get_simulation(rounds: int = 1000) -> SimulationResult | None:
     """시뮬레이션 결과를 반환합니다. draws.csv 없으면 None."""
     if not DRAWS_PATH.exists():
         return None
@@ -254,7 +264,7 @@ def get_simulation(rounds: int = 1000) -> object | None:
     return LottoSimulator(draws).simulate(rounds=rounds)
 
 
-def get_strategy_comparison(rounds: int = 100) -> list[dict] | None:
+def get_strategy_comparison(rounds: int = 100) -> list[dict[str, Any]] | None:
     """전략별 시뮬레이션 비교 결과를 반환합니다.
 
     pre-computed stats.json 기반 빠른 비교 (비인과적이지만 상대 비교에 충분)
@@ -273,7 +283,7 @@ def get_strategy_comparison(rounds: int = 100) -> list[dict] | None:
     recommender = LottoRecommender(stats)
     test_draws = draws[-min(rounds, 200):]
 
-    comparison: list[dict] = []
+    comparison: list[dict[str, Any]] = []
     for label in STRATEGY_LABELS:
         prize_counts: dict[str, int] = {
             "1등": 0, "2등": 0, "3등": 0, "4등": 0, "5등": 0, "낙첨": 0,

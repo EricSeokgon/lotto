@@ -8,6 +8,7 @@ import threading
 from collections.abc import AsyncIterator  # noqa: TC003
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -79,7 +80,7 @@ app.include_router(api.router)
 
 
 @app.get("/health")
-async def health() -> dict:
+async def health() -> dict[str, Any]:
     """서버 및 데이터 파일 상태를 반환합니다."""
     csv_exists = _DRAWS_PATH.exists()
     stats_exists = _STATS_PATH.exists()
