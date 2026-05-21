@@ -342,32 +342,27 @@ def test_collect_uses_api_draws_for_pagination(client):
     assert "PAGE_SIZE" in response.text or "= 10" in response.text
 
 
-def test_collect_tbody_is_empty_for_js_population(monkeypatch):
-    """REQ-UI-001/002: 서버 사이드 draws[-5:] 정적 루프가 제거되고 tbody는 JS로 채워진다."""
-    from unittest.mock import MagicMock
+def test_collect_tbody_has_initial_rows_desc_order():
+    """REQ-UI-001/002: 서버사이드 초기 렌더링으로 tbody에 최신 회차부터 행이 표시된다."""
+    import datetime
+    import re
 
+    from lotto.models import DrawResult
     from lotto.web.app import app
 
-    mock_draw = MagicMock()
-    mock_draw.drwNo = 9999  # 모킹된 회차 번호
-    mock_draw.date = "2024-01-01"
-    mock_draw.numbers.return_value = [1, 7, 15, 22, 33, 42]
-    mock_draw.bonus = 5
+    draws = [
+        DrawResult(drwNo=i, date=datetime.date(2024, 1, i), n1=1, n2=2, n3=3, n4=4, n5=5, n6=6, bonus=7)
+        for i in range(1, 6)
+    ]
 
     with __import__("unittest.mock", fromlist=["patch"]).patch(
-        "lotto.web.routes.pages.get_draws", return_value=[mock_draw]
+        "lotto.web.routes.pages.get_draws", return_value=draws
     ):
         c = TestClient(app)
         response = c.get("/collect")
 
     assert response.status_code == 200
-    # 서버 사이드에서 모킹된 회차 번호(9999)가 "최근 추첨" 테이블 행으로
-    # 직접 렌더링되지 않아야 한다 (요약 카드의 9999회/총 1회 표시는 허용).
-    # 정적 Jinja2 루프가 제거되었는지를 검증하기 위해, tbody가 비어있는지
-    # 또는 9999가 테이블 데이터 셀에 나타나지 않는지를 확인한다.
-    import re
 
-    # <tbody id="draws-tbody">...</tbody> 추출
     match = re.search(
         r'<tbody id="draws-tbody"[^>]*>(.*?)</tbody>',
         response.text,
@@ -375,8 +370,10 @@ def test_collect_tbody_is_empty_for_js_population(monkeypatch):
     )
     assert match is not None, "draws-tbody 가 발견되지 않음"
     tbody_content = match.group(1).strip()
-    assert tbody_content == "", (
-        f"draws-tbody 가 비어있지 않음 (JS로 채워야 함): {tbody_content!r}"
+    assert tbody_content != "", "draws-tbody 가 비어있음 (서버사이드 초기 렌더링 필요)"
+    rounds_in_order = re.findall(r'(\d+)회</td>', tbody_content)
+    assert rounds_in_order[0] == "5", (
+        f"첫 번째 행이 최신 회차가 아님: {rounds_in_order}"
     )
 
 

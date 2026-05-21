@@ -168,7 +168,22 @@
                         <th class="text-left py-2 text-muted font-medium">당첨 번호</th>
                     </tr>
                 </thead>
-                <tbody id="draws-tbody"></tbody>
+                <tbody id="draws-tbody">
+                {% for draw in initial_draws %}
+                <tr class="border-b border-border last:border-0">
+                    <td class="py-2 font-medium text-ink">{{ draw.drwNo }}회</td>
+                    <td class="py-2 text-muted">{{ draw.date }}</td>
+                    <td class="py-2">
+                        <div class="flex flex-wrap gap-1">
+                            {% for n in [draw.n1, draw.n2, draw.n3, draw.n4, draw.n5, draw.n6] %}
+                            <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-data-blue text-white">{{ n }}</span>
+                            {% endfor %}
+                            <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-data-muted text-ink">+{{ draw.bonus }}</span>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
             </table>
         </div>
         <!-- 페이지네이션 컨트롤 -->

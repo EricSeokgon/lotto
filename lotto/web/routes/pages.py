@@ -92,10 +92,13 @@ async def collect_page(request: Request) -> TemplateResponse:
     """수집 현황 페이지."""
     data_status = get_data_status()
     draws = get_draws()
+    # 서버사이드 초기 렌더링: 최신 회차부터 표시 (브라우저 캐시 무관)
+    initial_draws = list(reversed(draws))[:20]
     return _render(request, "collect.html", {
         "active_tab": "collect",
         "data_status": data_status,
         "draws": draws,
+        "initial_draws": initial_draws,
     })
 
 
