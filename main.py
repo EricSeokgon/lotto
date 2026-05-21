@@ -10,6 +10,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from lotto.config import settings
+
 console = Console()
 app = typer.Typer(
     name="lotto",
@@ -17,7 +19,8 @@ app = typer.Typer(
     add_completion=False,
 )
 
-DATA_DIR = Path("data")
+# SPEC-LOTTO-002: 데이터 디렉토리 외부화 — LOTTO_DATA_DIR 환경 변수로 오버라이드 가능
+DATA_DIR = settings.data_dir
 DISCLAIMER = "이 추천은 통계 기반이며 당첨을 보장하지 않습니다."
 
 
@@ -201,11 +204,14 @@ def simulate(
 
 @app.command()
 def web(
-    host: Annotated[str, typer.Option("--host", help="바인딩 호스트")] = "127.0.0.1",
-    port: Annotated[int, typer.Option("--port", help="포트 번호")] = 8000,
+    host: Annotated[str, typer.Option("--host", help="바인딩 호스트")] = settings.web_host,
+    port: Annotated[int, typer.Option("--port", help="포트 번호")] = settings.web_port,
     reload: Annotated[bool, typer.Option("--reload", help="자동 재시작 (개발 모드)")] = False,
 ) -> None:
-    """웹 대시보드를 시작합니다."""
+    """웹 대시보드를 시작합니다.
+
+    SPEC-LOTTO-002: --host/--port 미지정 시 LOTTO_WEB_HOST / LOTTO_WEB_PORT 환경 변수를 사용.
+    """
     import uvicorn
 
     uvicorn.run("lotto.web.app:app", host=host, port=port, reload=reload)

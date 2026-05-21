@@ -7,13 +7,18 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
-from pathlib import Path
 
-# 데이터 경로 상수
-DRAWS_PATH = Path("data/draws.csv")
-STATS_PATH = Path("data/stats.json")
-_HISTORY_PATH = Path("data/history.json")
+from lotto.config import settings
+
+# SPEC-LOTTO-002: 데이터 경로 외부화 — LOTTO_DATA_DIR 환경 변수로 오버라이드
+DRAWS_PATH = settings.data_dir / "draws.csv"
+STATS_PATH = settings.data_dir / "stats.json"
+_HISTORY_PATH = settings.data_dir / "history.json"
+
+# SPEC-LOTTO-002: 모듈 로거 — 무음 예외를 구조화 로깅으로 전환
+logger = logging.getLogger(__name__)
 
 
 def interpolate_color(t: float) -> str:
@@ -77,7 +82,9 @@ def get_draws() -> list | None:
 
         result = LottoCollector(data_dir=DRAWS_PATH.parent).load_existing()
         return result if result else None
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        # SPEC-LOTTO-002 REQ-ERR-002: 캐시 로드 실패는 무음으로 삼키지 않고 경고 로그 기록
+        logger.warning("Failed to load cached draws data: %s", exc, exc_info=True)
         return None
 
 

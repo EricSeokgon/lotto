@@ -10,10 +10,12 @@ from typing import Any
 import pandas as pd
 import requests
 
+from lotto.config import settings
 from lotto.models import DrawResult
 
-API_URL = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo={drw_no}"
-DEFAULT_DATA_DIR = Path("data")
+# SPEC-LOTTO-002: 설정 외부화 — LOTTO_API_URL / LOTTO_DATA_DIR 환경 변수로 오버라이드 가능
+API_URL = settings.api_url
+DEFAULT_DATA_DIR = settings.data_dir
 DEFAULT_CSV_PATH = DEFAULT_DATA_DIR / "draws.csv"
 REQUEST_DELAY_MS = 200
 MAX_CONSECUTIVE_FAILURES = 5

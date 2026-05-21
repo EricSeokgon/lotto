@@ -7,18 +7,23 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import threading
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from pydantic import BaseModel, field_validator, model_validator
 
+from lotto.config import settings
 from lotto.web.data import (
     get_draws,
     get_recommendations,
     get_simulation,
     get_stats,
 )
+
+# SPEC-LOTTO-002: 모듈 로거 — 무음 예외를 구조화 로깅으로 전환
+logger = logging.getLogger(__name__)
 
 # 수집 진행 상태 (단일 서버 프로세스 내 공유)
 _collect_state: dict = {
@@ -111,7 +116,8 @@ def _estimate_latest_drw_no() -> int:
     return max(1, weeks + 1)
 
 
-_CHECKPOINT_INTERVAL = 20  # N회마다 중간 저장
+# SPEC-LOTTO-002: 체크포인트 간격 외부화 — LOTTO_CHECKPOINT_INTERVAL 환경 변수로 오버라이드
+_CHECKPOINT_INTERVAL = settings.checkpoint_interval  # N회마다 중간 저장
 
 
 def _collect_worker(full: bool, start_from: int, max_drw_no: int) -> None:
@@ -177,8 +183,13 @@ def _collect_worker(full: bool, start_from: int, max_drw_no: int) -> None:
                         _collect_state["message"] = (
                             f"{drw_no}회차 수집 중... (체크포인트 저장: {saved_count}회차)"
                         )
-                except Exception:
-                    pass  # 중간 저장 실패는 무시하고 계속 진행
+                except Exception as exc:  # noqa: BLE001
+                    # SPEC-LOTTO-002 REQ-ERR-003: 체크포인트 저장 실패를 무음으로 삼키지 않음.
+                    # 수집 작업 자체는 중단하지 않고 다음 체크포인트까지 계속 진행.
+                    logger.warning(
+                        "Checkpoint save failed at round %d: %s",
+                        drw_no, exc, exc_info=True,
+                    )
 
     if not collected:
         with _collect_lock:

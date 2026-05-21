@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import warnings
 from typing import Any
 
 from lotto.analyzer import LottoAnalyzer
 from lotto.models import DrawResult, SimulationResult
 from lotto.recommender import LottoRecommender
+
+# SPEC-LOTTO-002: 모듈 로거 — 무작위 폴백 시 운영 가시성 확보용
+logger = logging.getLogger(__name__)
 
 
 # @MX:ANCHOR: [AUTO] HistoricalView — causal-safe 데이터 경계 어댑터
@@ -115,7 +119,11 @@ class LottoSimulator:
         """단일 회차에 대해 HistoricalView로 추천 후 매칭을 평가합니다."""
         prior_draws = view.draws
         if len(prior_draws) < 3:  # noqa: PLR2004
-            # 데이터 부족 시 무작위로 대체
+            # SPEC-LOTTO-002 REQ-ERR-004: 데이터 부족 폴백 — 운영 가시성을 위해 경고 로그 남김.
+            logger.warning(
+                "Analysis unavailable for %d draws, falling back to random sampling",
+                len(prior_draws),
+            )
             import random
             predicted = sorted(random.sample(range(1, 46), 6))
         else:
@@ -127,7 +135,13 @@ class LottoSimulator:
                 recommender = LottoRecommender(stats)
                 recommendations = recommender.recommend(count=1)
                 predicted = recommendations[0].numbers
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                # SPEC-LOTTO-002 REQ-ERR-004: 분석 실패 폴백 — 무음으로 삼키지 않음.
+                logger.warning(
+                    "Analysis failed for round %d (%d prior draws), "
+                    "falling back to random sampling: %s",
+                    target_round.drwNo, len(prior_draws), exc, exc_info=True,
+                )
                 import random
                 predicted = sorted(random.sample(range(1, 46), 6))
 

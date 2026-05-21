@@ -6,9 +6,11 @@ import random
 import warnings
 from dataclasses import dataclass
 
+from lotto.config import settings
 from lotto.models import Recommendation, Statistics
 
-DEFAULT_WEIGHTS = (0.4, 0.3, 0.2, 0.1)
+# SPEC-LOTTO-002: 추천 가중치 외부화 — LOTTO_RECOMMENDER_WEIGHTS 환경 변수로 오버라이드 가능
+DEFAULT_WEIGHTS = settings.recommender_weights
 STRATEGY_LABELS = [
     "고빈도", "저빈도", "균형", "최근편향",
     "동반패턴", "홀짝균형", "번호대균형", "핫콜드혼합",
@@ -30,12 +32,15 @@ NUM_BALLS = 45
 
 @dataclass(frozen=True)
 class Weights:
-    """가중치 설정 (w_freq, w_recent, w_pair, w_consec)."""
+    """가중치 설정 (w_freq, w_recent, w_pair, w_consec).
 
-    w_freq: float = 0.4
-    w_recent: float = 0.3
-    w_pair: float = 0.2
-    w_consec: float = 0.1
+    SPEC-LOTTO-002: 기본값은 LOTTO_RECOMMENDER_WEIGHTS 환경 변수에서 결정됨.
+    """
+
+    w_freq: float = DEFAULT_WEIGHTS[0]
+    w_recent: float = DEFAULT_WEIGHTS[1]
+    w_pair: float = DEFAULT_WEIGHTS[2]
+    w_consec: float = DEFAULT_WEIGHTS[3]
 
     def __post_init__(self) -> None:
         """모든 가중치가 음수가 아니고 합이 0보다 큰지 검증합니다."""

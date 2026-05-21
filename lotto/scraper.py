@@ -15,13 +15,12 @@ if TYPE_CHECKING:
 
 import requests
 
+from lotto.config import settings
 from lotto.models import DrawResult
 
+# SPEC-LOTTO-002: 스크래퍼 URL 외부화 — LOTTO_SCRAPER_URL_1 / LOTTO_SCRAPER_URL_2 로 오버라이드
 # URL[0]: 1~1000회, URL[1]: 1001~최신회
-SCRAPE_URLS = [
-    "https://signalfire85.tistory.com/798",
-    "https://signalfire85.tistory.com/28",
-]
+SCRAPE_URLS = list(settings.scraper_urls)
 
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; LottoBot/1.0)"}
 
