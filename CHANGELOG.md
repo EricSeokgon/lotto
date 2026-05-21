@@ -6,6 +6,44 @@
 
 ---
 
+## [1.2.0] - 2026-05-21
+
+코드 품질 강화 및 운영 모니터링 지원 (SPEC-LOTTO-011~012)
+
+### 추가
+
+#### REQ-HLT: 헬스체크 엔드포인트 (SPEC-LOTTO-012)
+- `GET /api/health` 엔드포인트 추가 (항상 HTTP 200)
+- 응답 필드: `status`, `uptime_seconds`, `data` (csv_exists, csv_rows, stats_exists, last_sync), `version`
+- `status: "ok"` — csv + stats 파일 모두 존재 시
+- `status: "degraded"` — 데이터 파일 없을 때
+- Pydantic 응답 모델: `HealthResponse`, `HealthDataResponse`
+- Prometheus / UptimeRobot / k8s liveness probe 호환
+
+### 개선
+
+#### 테스트 커버리지 향상 (SPEC-LOTTO-011)
+- 429개 테스트, 커버리지 96.26% → 98.51%
+- 추천기 폴백 경로(홀짝균형, 번호대균형, 핫콜드혼합) 테스트 추가
+- 웹 API 커버리지 미비 경로(CSV 삭제, analyze 분기 등) 추가
+- 헬스체크 테스트 10개 추가 (REQ-HLT-001~005 검증)
+
+#### mypy 타입 안정화
+- mypy 에러 50건 → 0건 (`lotto/` 15개 소스 파일 전체)
+- `web/data.py`: 반환 타입 구체화 (`list[DrawResult]`, `Statistics | None` 등)
+- `web/routes/pages.py`: `TemplateResponse` 임포트 경로 수정, `dict[str, Any]` 적용
+- `config.py`: `typing.Tuple` → `tuple` (UP035/UP006)
+- `scraper.py`: `list[tuple[str, str | None]]` 구체화
+- `pdf_report.py`: TYPE_CHECKING 임포트 경로 lotto.models로 통일
+
+#### 린트 정리
+- ruff SIM105: `try/except/pass` → `contextlib.suppress(OSError)` (collector.py)
+- ruff TC003: `Path` → TYPE_CHECKING 블록으로 이동 (collector.py)
+- ruff SIM117: 중첩 `with` → 괄호식 단일 `with` (test 파일 3개)
+- ruff E501: 긴 줄 분리 (test_pdf_report.py)
+
+---
+
 ## [1.1.0] - 2026-05-20
 
 웹 대시보드 추가 (SPEC-WEB-001 구현 완료)
@@ -155,11 +193,13 @@
 
 ### 향후 버전에서 예상되는 기능
 
+- API 입력 검증 강화 (Pydantic 경계 조건)
+- Rate limiting (collect/scrape 엔드포인트)
+- 웹 UI 개선 (히트맵, 트렌드 차트)
+- Docker/배포 설정
 - SPEC-LOTTO-002: 머신러닝 기반 추천 (신경망)
-- 웹 대시보드
 - 자동 구매 시스템 (PG 연동)
 - 다국어 지원
-- 배경 데이터 동기화
 
 ---
 

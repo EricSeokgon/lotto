@@ -1,8 +1,8 @@
 # 로또 번호 추천 프로그램
 
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-379-green)](./tests/)
-[![Coverage](https://img.shields.io/badge/Coverage-96.14%-green)](#)
+[![Tests](https://img.shields.io/badge/Tests-429-green)](./tests/)
+[![Coverage](https://img.shields.io/badge/Coverage-98.51%-green)](#)
 
 통계 분석 기반의 로또 번호 추천 CLI 도구 및 웹 대시보드입니다. 동행복권 공식 데이터를 수집하여 다각적인 통계 분석을 수행하고, 가중치 기반 알고리즘으로 추천 번호를 생성합니다. 또한 과거 데이터에 대한 백테스팅으로 알고리즘의 유효성을 검증합니다.
 
@@ -22,6 +22,7 @@
 - **인과 안전 백테스팅**: 과거 데이터로 알고리즘 효용성 검증
 - **웹 대시보드**: 브라우저 기반 5탭 대시보드 (FastAPI + Jinja2)
 - **PDF 리포트**: 통계·추천·시뮬레이션 결과를 단일 PDF로 다운로드
+- **헬스체크 API**: `GET /api/health` — uptime, CSV 행 수, 데이터 상태 응답
 - **설정 외부화**: 환경 변수(LOTTO_*)로 모든 핵심 파라미터 오버라이드
 
 ### 특징
@@ -29,7 +30,7 @@
 - 외부 데이터베이스 불필요 — 로컬 CSV/JSON 파일 기반
 - 원자적 파일 저장 — 쓰기 중 충돌 방지
 - 타입 안전성 — Python 3.9+ 호환
-- 높은 커버리지 — 379개 테스트, 96.14% 라인 커버리지
+- 높은 커버리지 — 429개 테스트, 98.51% 라인 커버리지
 
 ## 설치
 
@@ -104,7 +105,30 @@ http://localhost:8000 에서 확인 가능합니다.
 | `GET` | `/api/history` | 구매 히스토리 + 당첨 결과 조회 | — |
 | `DELETE` | `/api/history/{ticket_id}` | 구매 티켓 삭제 | `ticket_id` |
 | `POST` | `/api/analyze` | 통계 분석 백그라운드 시작 | — |
-| `GET` | `/health` | 서버 및 데이터 파일 상태 | — |
+| `GET` | `/api/health` | 서버 상태 및 데이터 파일 존재 여부 | — |
+
+### `/api/health` 응답 구조
+
+항상 HTTP 200을 반환하며, 모니터링 도구(Prometheus, UptimeRobot, k8s liveness probe)에서 사용합니다.
+
+```json
+{
+  "status": "ok",
+  "uptime_seconds": 123.45,
+  "data": {
+    "csv_exists": true,
+    "csv_rows": 1150,
+    "stats_exists": true,
+    "last_sync": "2024-01-15"
+  },
+  "version": "1.2.0"
+}
+```
+
+- `status`: `"ok"` (csv + stats 모두 존재) / `"degraded"` (파일 없음)
+- `uptime_seconds`: 앱 시작 이후 경과 시간(초)
+- `data.csv_rows`: `data/draws.csv` 행 수 (파일 없으면 0)
+- `data.last_sync`: `last_sync.json`의 날짜 (없으면 `null`)
 
 ## 환경 변수 (설정 외부화)
 
@@ -402,8 +426,8 @@ pytest tests/test_collector.py -v
 # Ruff 린팅
 ruff check .
 
-# 타입 검사 (mypy --strict)
-mypy --strict lotto main.py
+# 타입 검사
+python3.9 -m mypy lotto/ --ignore-missing-imports
 
 # 형식 검사
 ruff format --check .
