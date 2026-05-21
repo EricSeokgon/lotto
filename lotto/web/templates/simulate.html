@@ -8,6 +8,11 @@
             <h2 class="text-2xl font-bold text-ink mb-1">시뮬레이션</h2>
             <p class="text-muted text-sm">역대 데이터를 이용한 백테스팅 시뮬레이션 결과입니다.</p>
         </div>
+        <!-- SPEC-LOTTO-005 REQ-PDF-005: PDF 다운로드 버튼 -->
+        <a href="/api/report/pdf"
+           class="text-sm px-3 py-1.5 rounded border border-border bg-card text-ink hover:bg-surface transition-colors">
+            PDF 다운로드
+        </a>
         <form method="get" action="/simulate" class="flex flex-wrap items-center gap-3">
             <div class="flex items-center gap-1.5">
                 <label class="text-sm text-muted whitespace-nowrap">시뮬레이션 회차:</label>

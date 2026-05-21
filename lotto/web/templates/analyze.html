@@ -2,9 +2,16 @@
 
 {% block content %}
 <div class="space-y-6">
-    <div>
-        <h2 class="text-2xl font-bold text-ink mb-1">빈도 분석</h2>
-        <p class="text-muted text-sm">1~45 번호별 출현 빈도를 시각화합니다. 색이 진할수록 출현 빈도가 높습니다.</p>
+    <div class="flex items-center justify-between flex-wrap gap-3">
+        <div>
+            <h2 class="text-2xl font-bold text-ink mb-1">빈도 분석</h2>
+            <p class="text-muted text-sm">1~45 번호별 출현 빈도를 시각화합니다. 색이 진할수록 출현 빈도가 높습니다.</p>
+        </div>
+        <!-- SPEC-LOTTO-005 REQ-PDF-005: PDF 다운로드 버튼 -->
+        <a href="/api/report/pdf"
+           class="text-sm px-3 py-1.5 rounded border border-border bg-card text-ink hover:bg-surface transition-colors">
+            PDF 다운로드
+        </a>
     </div>
 
     {% if stats %}

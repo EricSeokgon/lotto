@@ -12,6 +12,7 @@ import threading
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, field_validator, model_validator
 
 from lotto.config import settings
@@ -94,6 +95,28 @@ async def run_simulation_results(
             detail={"error": "data_unavailable", "message": "데이터가 없습니다."},
         )
     return result.model_dump()
+
+
+# SPEC-LOTTO-005 REQ-PDF-001: PDF 리포트 다운로드 엔드포인트
+@router.get("/report/pdf")
+async def download_pdf_report() -> Response:
+    """추천/통계/시뮬레이션 결과를 단일 PDF로 다운로드합니다.
+
+    데이터가 부재해도 빈 섹션 표시로 정상 PDF를 반환합니다 (REQ-PDF-006).
+    """
+    from lotto.pdf_report import generate_report
+
+    stats = get_stats()
+    recs = get_recommendations()
+    sim = get_simulation()
+    pdf_bytes = generate_report(stats=stats, recommendations=recs, simulation=sim)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": "attachment; filename=lotto_report.pdf",
+        },
+    )
 
 
 def _run_analyze_sync() -> None:
