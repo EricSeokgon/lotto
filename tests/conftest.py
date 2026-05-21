@@ -10,6 +10,27 @@ import pytest
 from lotto.models import DrawResult
 
 
+# SPEC-LOTTO-009: 데이터 게이트웨이 캐시는 모듈 레벨 전역 상태이므로
+# 테스트 간 격리를 위해 각 테스트 시작 시 비운다.
+@pytest.fixture(autouse=True)
+def _isolate_data_cache():
+    """모든 테스트에서 자동 적용 — 캐시 누수 방지."""
+    try:
+        from lotto.web import data as wd
+
+        wd.invalidate_cache()
+    except (ImportError, AttributeError):
+        # web 모듈 미가용 또는 invalidate_cache 미정의 시 무시
+        pass
+    yield
+    try:
+        from lotto.web import data as wd
+
+        wd.invalidate_cache()
+    except (ImportError, AttributeError):
+        pass
+
+
 @pytest.fixture
 def mini_draws() -> list[DrawResult]:
     """검증용 3회차 mini-dataset 픽스처.

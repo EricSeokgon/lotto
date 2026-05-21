@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from dataclasses import dataclass
+from typing import Any
 
 from lotto.config import settings
 
@@ -16,9 +18,39 @@ from lotto.config import settings
 DRAWS_PATH = settings.data_dir / "draws.csv"
 STATS_PATH = settings.data_dir / "stats.json"
 _HISTORY_PATH = settings.data_dir / "history.json"
+# SPEC-LOTTO-009 REQ-LAST-002: last_sync.json은 SPEC-LOTTO-007에서 생성됨
+LAST_SYNC_PATH = settings.data_dir / "last_sync.json"
 
 # SPEC-LOTTO-002: 모듈 로거 — 무음 예외를 구조화 로깅으로 전환
 logger = logging.getLogger(__name__)
+
+# SPEC-LOTTO-009 REQ-CACHE-001/002: TTL 60초 모듈 레벨 캐시
+# @MX:NOTE: [AUTO] 표준 라이브러리 time 모듈만 사용. 단일 ASGI 워커 환경 기준.
+_CACHE_TTL_SECONDS = 60.0
+
+
+class _CacheEntry:
+    """캐시 항목 — 값과 적재 시각을 보관."""
+
+    __slots__ = ("value", "ts")
+
+    def __init__(self, value: Any, ts: float) -> None:  # noqa: ANN401 — 캐시는 다양한 도메인 객체를 보관
+        self.value = value
+        self.ts = ts
+
+
+_draws_cache: _CacheEntry | None = None
+_stats_cache: _CacheEntry | None = None
+
+
+def invalidate_cache() -> None:
+    """get_draws/get_stats의 메모리 캐시를 비웁니다.
+
+    SPEC-LOTTO-009 REQ-CACHE-003: 데이터 수집/분석/크롤링 완료 후 호출됩니다.
+    """
+    global _draws_cache, _stats_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
+    _draws_cache = None
+    _stats_cache = None
 
 
 def interpolate_color(t: float) -> str:
@@ -74,27 +106,49 @@ def get_data_status() -> DataStatus:
 
 
 def get_draws() -> list | None:
-    """기존 수집 데이터를 반환합니다. 파일 없거나 비어있으면 None."""
+    """기존 수집 데이터를 반환합니다. 파일 없거나 비어있으면 None.
+
+    SPEC-LOTTO-009 REQ-CACHE-001: 60초 TTL 메모리 캐시 적용.
+    캐시 적중 시 CSV를 재파싱하지 않고 메모리 보관된 결과 반환.
+    """
+    global _draws_cache  # noqa: PLW0603 — 의도된 모듈 캐시 상태
+    now = time.time()
+    if _draws_cache is not None and (now - _draws_cache.ts) < _CACHE_TTL_SECONDS:
+        return _draws_cache.value
+
     if not DRAWS_PATH.exists():
         return None
     try:
         from lotto.collector import LottoCollector
 
         result = LottoCollector(data_dir=DRAWS_PATH.parent).load_existing()
-        return result if result else None
+        value = result if result else None
     except Exception as exc:  # noqa: BLE001
         # SPEC-LOTTO-002 REQ-ERR-002: 캐시 로드 실패는 무음으로 삼키지 않고 경고 로그 기록
         logger.warning("Failed to load cached draws data: %s", exc, exc_info=True)
         return None
 
+    _draws_cache = _CacheEntry(value, now)
+    return value
+
 
 def get_stats() -> object | None:
-    """통계 분석 결과를 반환합니다. 파일 없으면 None."""
+    """통계 분석 결과를 반환합니다. 파일 없으면 None.
+
+    SPEC-LOTTO-009 REQ-CACHE-002: 60초 TTL 메모리 캐시 적용.
+    """
+    global _stats_cache  # noqa: PLW0603 — 의도된 모듈 캐시 상태
+    now = time.time()
+    if _stats_cache is not None and (now - _stats_cache.ts) < _CACHE_TTL_SECONDS:
+        return _stats_cache.value
+
     if not STATS_PATH.exists():
         return None
     from lotto.analyzer import LottoAnalyzer
 
-    return LottoAnalyzer.load_stats(STATS_PATH)
+    value = LottoAnalyzer.load_stats(STATS_PATH)
+    _stats_cache = _CacheEntry(value, now)
+    return value
 
 
 def get_recommendations(count: int = 5) -> list | None:
@@ -240,3 +294,28 @@ def get_strategy_comparison(rounds: int = 100) -> list[dict] | None:
             "total_rounds": len(test_draws),
         })
     return comparison
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-009 REQ-LAST-002 — last_sync.json 우선, draws 최신 회차 폴백
+def get_last_sync_date() -> str | None:
+    """마지막 수집 날짜를 YYYY-MM-DD 형식 문자열로 반환합니다.
+
+    SPEC-LOTTO-009 REQ-LAST-002 우선순위:
+    1. data/last_sync.json의 synced_at 앞 10자
+    2. draws.csv의 최신 회차 date 문자열
+    3. 둘 다 없으면 None
+    """
+    if LAST_SYNC_PATH.exists():
+        try:
+            meta = json.loads(LAST_SYNC_PATH.read_text(encoding="utf-8"))
+            synced_at = meta.get("synced_at", "") if isinstance(meta, dict) else ""
+            if synced_at:
+                return synced_at[:10]
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("Failed to read last_sync.json: %s", exc, exc_info=True)
+
+    draws = get_draws()
+    if draws:
+        latest = max(draws, key=lambda d: d.drwNo)
+        return str(latest.date)
+    return None

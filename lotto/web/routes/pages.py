@@ -20,6 +20,7 @@ from lotto.web.data import (
     compute_ticket_results,
     get_data_status,
     get_draws,
+    get_last_sync_date,
     get_recommendations,
     get_simulation,
     get_stats,
@@ -73,11 +74,16 @@ def _render(request: Request, template: str, ctx: dict) -> TemplateResponse:
 
 @router.get("/")
 async def index(request: Request) -> TemplateResponse:
-    """대시보드 인덱스 페이지."""
+    """대시보드 인덱스 페이지.
+
+    SPEC-LOTTO-009 REQ-LAST-001: 헤더에 표시할 last_date 컨텍스트를 전달한다.
+    """
     data_status = get_data_status()
+    last_date = get_last_sync_date()
     return _render(request, "index.html", {
         "active_tab": "dashboard",
         "data_status": data_status,
+        "last_date": last_date,
     })
 
 

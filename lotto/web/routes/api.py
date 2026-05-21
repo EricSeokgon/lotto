@@ -24,6 +24,7 @@ from lotto.web.data import (
     get_recommendations,
     get_simulation,
     get_stats,
+    invalidate_cache,
 )
 
 # SPEC-LOTTO-002: 모듈 로거 — 무음 예외를 구조화 로깅으로 전환
@@ -165,7 +166,11 @@ async def download_pdf_report() -> Response:
 
 
 def _run_analyze_sync() -> None:
-    """수집 데이터 기반 통계 분석을 동기 실행합니다."""
+    """수집 데이터 기반 통계 분석을 동기 실행합니다.
+
+    SPEC-LOTTO-009 REQ-CACHE-003: 분석 완료 후 캐시를 무효화하여
+    다음 요청부터 최신 stats.json을 다시 로드하도록 한다.
+    """
     from lotto.analyzer import LottoAnalyzer
     from lotto.collector import LottoCollector
 
@@ -174,6 +179,7 @@ def _run_analyze_sync() -> None:
         analyzer = LottoAnalyzer()
         stats = analyzer.analyze(draws)
         analyzer.save_stats(stats, Path("data/stats.json"))
+    invalidate_cache()
 
 
 def _estimate_latest_drw_no() -> int:
@@ -267,6 +273,8 @@ def _collect_worker(full: bool, start_from: int, max_drw_no: int) -> None:
                     "API에서 데이터를 가져올 수 없습니다. 블로그 크롤링 기능을 사용해보세요."
                 ),
             })
+        # SPEC-LOTTO-009 REQ-CACHE-003: 워커 종료 시점에 캐시 무효화 (안전 측면)
+        invalidate_cache()
         return
 
     try:
@@ -289,6 +297,8 @@ def _collect_worker(full: bool, start_from: int, max_drw_no: int) -> None:
     except Exception as exc:
         with _collect_lock:
             _collect_state.update({"status": "error", "message": f"저장 실패: {exc}"})
+    # SPEC-LOTTO-009 REQ-CACHE-003: 성공·실패 모두 캐시 무효화로 최신성 보장
+    invalidate_cache()
 
 
 @router.get("/collect/status")
@@ -465,6 +475,8 @@ def _scrape_worker() -> None:
         if not draws:
             with _collect_lock:
                 _collect_state.update({"status": "error", "message": "크롤링 결과가 없습니다."})
+            # SPEC-LOTTO-009 REQ-CACHE-003: 빈 결과여도 캐시는 비워둔다
+            invalidate_cache()
             return
 
         with _collect_lock:
@@ -488,6 +500,8 @@ def _scrape_worker() -> None:
     except Exception as exc:
         with _collect_lock:
             _collect_state.update({"status": "error", "message": f"크롤링 오류: {exc}"})
+    # SPEC-LOTTO-009 REQ-CACHE-003: 성공·실패 모두 캐시 무효화로 최신성 보장
+    invalidate_cache()
 
 
 @router.post("/scrape", status_code=202)
@@ -598,6 +612,8 @@ async def trigger_analyze(background_tasks: BackgroundTasks) -> dict:
             analyzer = LottoAnalyzer()
             stats = analyzer.analyze(draws)
             analyzer.save_stats(stats, Path("data/stats.json"))
+        # SPEC-LOTTO-009 REQ-CACHE-003: 분석 완료 후 캐시 무효화
+        invalidate_cache()
 
     background_tasks.add_task(_run_analyze)
     return {"status": "started", "message": "통계 분석을 시작했습니다."}
