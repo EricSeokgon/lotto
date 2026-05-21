@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import datetime
+import logging
 from html.parser import HTMLParser
 from typing import TYPE_CHECKING
 
@@ -23,6 +24,9 @@ from lotto.models import DrawResult
 SCRAPE_URLS = list(settings.scraper_urls)
 
 _HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; LottoBot/1.0)"}
+
+# SPEC-LOTTO-003 REQ-SCRAPER-001: 무음 None 반환을 구조화 경고 로깅으로 격상
+logger = logging.getLogger(__name__)
 
 
 class _TableParser(HTMLParser):
@@ -73,8 +77,16 @@ def _parse_draw_row(row: list[str]) -> DrawResult | None:
     """테이블 데이터 행 → DrawResult 변환. 형식 불일치 시 None 반환.
 
     행 형식: [회차, 추첨일(YYYY.MM.DD), 당첨자수, 당첨금액, n1..n6, bonus]
+
+    SPEC-LOTTO-003 REQ-SCRAPER-001: 모든 파싱 실패는 logger.warning 로 기록 후 None 반환.
     """
     if len(row) < 11:  # noqa: PLR2004
+        # SPEC-LOTTO-003 REQ-SCRAPER-001: 짧은 행에도 경고 로그
+        logger.warning(
+            "Scraper: row too short (len=%d, expected>=11): first=%r",
+            len(row),
+            row[0] if row else "<empty>",
+        )
         return None
     try:
         drw_no = int(row[0].replace("회", "").strip())
@@ -94,7 +106,13 @@ def _parse_draw_row(row: list[str]) -> DrawResult | None:
             n6=nums[5],
             bonus=bonus,
         )
-    except (ValueError, IndexError):
+    except (ValueError, IndexError) as exc:
+        # SPEC-LOTTO-003 REQ-SCRAPER-001: 무음 None 반환 → 구조화 경고 로깅
+        logger.warning(
+            "Scraper: failed to parse row (first=%r): %s",
+            row[0] if row else "<empty>",
+            exc,
+        )
         return None
 
 

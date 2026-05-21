@@ -79,6 +79,11 @@ class Statistics(BaseModel):
     consecutive_pattern: ConsecutivePattern = Field(default_factory=ConsecutivePattern)
     pair_analysis: PairAnalysis = Field(default_factory=PairAnalysis)
     total_rounds: int = Field(default=0, description="분석에 사용된 총 회차 수")
+    # SPEC-LOTTO-003 REQ-BONUS-001: 보너스 번호 빈도 통계 (본 추첨과 독립)
+    bonus_frequency: FrequencyStats = Field(
+        default_factory=FrequencyStats,
+        description="보너스 번호 1~45 절대/상대 빈도",
+    )
 
 
 class Recommendation(BaseModel):

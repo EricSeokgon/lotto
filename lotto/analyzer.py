@@ -38,6 +38,8 @@ class LottoAnalyzer:
         recent_data = self.compute_recent_pattern(draws)
         consecutive_data = self.compute_consecutive_pattern(draws)
         pair_data = self.compute_pair_analysis(draws)
+        # SPEC-LOTTO-003 REQ-BONUS-002: 보너스 빈도 계산
+        bonus_freq_data = self.compute_bonus_frequency(draws)
 
         freq_stats = FrequencyStats(
             absolute={int(k): int(v) for k, v in freq_data["absolute"].items()},
@@ -53,6 +55,10 @@ class LottoAnalyzer:
         pair_analysis = PairAnalysis(
             top_pairs=[(int(a), int(b), int(c)) for a, b, c in pair_data],
         )
+        bonus_frequency = FrequencyStats(
+            absolute={int(k): int(v) for k, v in bonus_freq_data["absolute"].items()},
+            relative={int(k): float(v) for k, v in bonus_freq_data["relative"].items()},
+        )
 
         return Statistics(
             frequency=freq_stats,
@@ -60,7 +66,24 @@ class LottoAnalyzer:
             consecutive_pattern=consecutive_pattern,
             pair_analysis=pair_analysis,
             total_rounds=len(draws),
+            bonus_frequency=bonus_frequency,
         )
+
+    def compute_bonus_frequency(self, draws: list[DrawResult]) -> dict[str, Any]:
+        """보너스 번호 1~45 절대/상대 빈도를 계산합니다.
+
+        SPEC-LOTTO-003 REQ-BONUS-002: 본 추첨 6개 번호와 독립적으로 계산.
+        """
+        absolute: dict[int, int] = dict.fromkeys(range(1, NUM_BALLS + 1), 0)
+        for draw in draws:
+            absolute[draw.bonus] += 1
+
+        total = len(draws)
+        relative: dict[int, float] = {}
+        for n in range(1, NUM_BALLS + 1):
+            relative[n] = absolute[n] / total if total > 0 else 0.0
+
+        return {"absolute": absolute, "relative": relative}
 
     def compute_frequency(self, draws: list[DrawResult]) -> dict[str, Any]:
         """번호 1~45 절대/상대 빈도를 계산합니다."""

@@ -100,6 +100,15 @@ class LottoRecommender:
             consec_penalty[n] = float(max(0, -streak))
         consec_norm = _normalize(consec_penalty)
 
+        # SPEC-LOTTO-003 REQ-BONUS-004: 보너스 회피 페널티 (가중치 > 0 일 때만 계산)
+        bonus_avoidance = float(getattr(settings, "bonus_avoidance_weight", 0.0))
+        bonus_norm: dict[int, float] = dict.fromkeys(range(1, NUM_BALLS + 1), 0.0)
+        if bonus_avoidance > 0:
+            bonus_abs = self._stats.bonus_frequency.absolute
+            bonus_norm = _normalize(
+                {n: float(bonus_abs.get(n, 0)) for n in range(1, NUM_BALLS + 1)}
+            )
+
         scores: dict[int, float] = {}
         for n in range(1, NUM_BALLS + 1):
             scores[n] = (
@@ -107,6 +116,7 @@ class LottoRecommender:
                 + w.w_recent * recent_norm.get(n, 0.0)
                 + w.w_pair * pair_norm.get(n, 0.0)
                 - w.w_consec * consec_norm.get(n, 0.0)
+                - bonus_avoidance * bonus_norm.get(n, 0.0)
             )
         return scores
 

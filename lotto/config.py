@@ -37,6 +37,8 @@ _DEFAULT_RECOMMENDER_WEIGHTS = "0.4,0.3,0.2,0.1"
 _DEFAULT_CHECKPOINT_INTERVAL = "20"
 _DEFAULT_SCRAPER_URL_1 = "https://signalfire85.tistory.com/798"
 _DEFAULT_SCRAPER_URL_2 = "https://signalfire85.tistory.com/28"
+# SPEC-LOTTO-003 REQ-BONUS-004: 보너스 회피 가중치 기본값 (0.0 = 비활성 → 기존 동작 보존)
+_DEFAULT_BONUS_AVOIDANCE_WEIGHT = "0.0"
 
 
 def _parse_weights(raw: str) -> Tuple[float, float, float, float]:
@@ -66,6 +68,16 @@ def _parse_int(raw: str, env_name: str) -> int:
         ) from exc
 
 
+def _parse_float(raw: str, env_name: str) -> float:
+    """SPEC-LOTTO-003: float 파싱. 실패 시 어떤 환경 변수인지 명시."""
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"{env_name}은 float이어야 합니다. 받은 값: {raw!r}"
+        ) from exc
+
+
 @dataclass(frozen=True)
 class Settings:
     """애플리케이션 전역 설정.
@@ -80,6 +92,8 @@ class Settings:
     recommender_weights: Tuple[float, float, float, float]
     checkpoint_interval: int
     scraper_urls: list = field(default_factory=list)
+    # SPEC-LOTTO-003 REQ-BONUS-004: 보너스 회피 가중치 (기본 0.0 = 비활성)
+    bonus_avoidance_weight: float = 0.0
 
 
 def _load_settings() -> Settings:
@@ -107,6 +121,11 @@ def _load_settings() -> Settings:
         os.environ.get("LOTTO_SCRAPER_URL_1", _DEFAULT_SCRAPER_URL_1),
         os.environ.get("LOTTO_SCRAPER_URL_2", _DEFAULT_SCRAPER_URL_2),
     ]
+    # SPEC-LOTTO-003 REQ-BONUS-004: 보너스 회피 가중치 (환경 변수 또는 기본 0.0)
+    bonus_avoidance_weight = _parse_float(
+        os.environ.get("LOTTO_BONUS_AVOIDANCE_WEIGHT", _DEFAULT_BONUS_AVOIDANCE_WEIGHT),
+        "LOTTO_BONUS_AVOIDANCE_WEIGHT",
+    )
 
     return Settings(
         api_url=api_url,
@@ -116,6 +135,7 @@ def _load_settings() -> Settings:
         recommender_weights=recommender_weights,
         checkpoint_interval=checkpoint_interval,
         scraper_urls=scraper_urls,
+        bonus_avoidance_weight=bonus_avoidance_weight,
     )
 
 
