@@ -89,7 +89,7 @@ async def list_draws(
 
 @router.get("/stats")
 async def get_statistics() -> dict:
-    """통계 분석 결과를 반환합니다. 파일 없으면 503."""
+    """통계 분석 결과를 반환합니다. 보너스 번호 빈도 포함. 파일 없으면 503."""
     stats = get_stats()
     if stats is None:
         raise HTTPException(
@@ -132,7 +132,7 @@ async def get_recommendation_list(
 async def run_simulation_results(
     rounds: int = Query(default=1000, ge=1, le=100000, description="시뮬레이션 회차 수 (1~100000)"),
 ) -> dict:
-    """시뮬레이션 결과를 반환합니다. 파일 없으면 503."""
+    """인과 안전 백테스팅 시뮬레이션 결과를 반환합니다. 파일 없으면 503."""
     result = get_simulation(rounds=rounds)
     if result is None:
         raise HTTPException(
@@ -293,7 +293,7 @@ def _collect_worker(full: bool, start_from: int, max_drw_no: int) -> None:
 
 @router.get("/collect/status")
 async def collect_status() -> dict:
-    """수집 진행 상태를 반환합니다."""
+    """데이터 수집 진행 상태(idle/running/done/error)와 진행률을 반환합니다."""
     with _collect_lock:
         return dict(_collect_state)
 
@@ -396,7 +396,7 @@ class ManualDrawRequest(BaseModel):
 
 @router.post("/draws/manual", status_code=201)
 async def add_manual_draw(req: ManualDrawRequest) -> dict:
-    """회차 데이터를 수동으로 추가합니다."""
+    """회차 데이터를 수동으로 추가합니다. 중복 회차는 409를 반환합니다."""
 
     from lotto.collector import LottoCollector
     from lotto.models import DrawResult
@@ -534,14 +534,14 @@ class PurchaseRequest(BaseModel):
 
 @router.get("/history")
 async def list_history() -> list[dict]:
-    """구매 히스토리 + 당첨 결과를 반환합니다."""
+    """저장된 구매 티켓 목록과 각 회차의 당첨 결과를 함께 반환합니다."""
     from lotto.web.data import compute_ticket_results
     return compute_ticket_results()
 
 
 @router.post("/history", status_code=201)
 async def add_history(req: PurchaseRequest) -> dict:
-    """구매 티켓을 추가합니다."""
+    """구매 티켓(회차·번호·구매일)을 히스토리에 추가하고 UUID를 발급합니다."""
     import uuid
 
     from lotto.web.data import get_history, save_history
@@ -570,7 +570,7 @@ async def add_history(req: PurchaseRequest) -> dict:
 
 @router.delete("/history/{ticket_id}", status_code=200)
 async def delete_history(ticket_id: str) -> dict:
-    """구매 티켓을 삭제합니다."""
+    """지정한 UUID의 구매 티켓을 삭제합니다. 존재하지 않으면 404를 반환합니다."""
     from lotto.web.data import get_history, save_history
 
     tickets = get_history()
@@ -586,7 +586,7 @@ async def delete_history(ticket_id: str) -> dict:
 
 @router.post("/analyze", status_code=202)
 async def trigger_analyze(background_tasks: BackgroundTasks) -> dict:
-    """통계 분석을 백그라운드에서 시작합니다."""
+    """수집된 당첨 데이터를 기반으로 통계 분석을 백그라운드에서 시작합니다."""
     from pathlib import Path
 
     from lotto.analyzer import LottoAnalyzer

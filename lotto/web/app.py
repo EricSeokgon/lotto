@@ -55,7 +55,14 @@ async def _lifespan(app_: FastAPI) -> AsyncIterator[None]:
 
 
 # FastAPI 앱 초기화
-app = FastAPI(title="로또 통계 대시보드", lifespan=_lifespan)
+app = FastAPI(
+    title="로또 번호 추천 시스템",
+    description="통계 기반 로또 번호 수집·분석·추천·시뮬레이션 API",
+    version="0.1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=_lifespan,
+)
 
 # 정적 파일 마운트 (디렉토리 존재 시)
 if _STATIC_DIR.exists():
