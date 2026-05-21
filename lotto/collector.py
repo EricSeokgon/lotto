@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import json
 import os
 import tempfile
 import time
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 import pandas as pd
 import requests
@@ -260,8 +263,6 @@ class LottoCollector:
         except Exception:
             # 임시 파일을 정리하고 원본 CSV는 그대로 둔다
             if os.path.exists(tmp_path):
-                try:
+                with contextlib.suppress(OSError):
                     os.unlink(tmp_path)
-                except OSError:
-                    pass
             raise
