@@ -112,6 +112,8 @@ async def analyze_page(request: Request) -> TemplateResponse:
     badge_percentiles: dict[int, float] = {}
     freq_chart_data: dict[str, Any] = {"labels": [], "values": []}
 
+    gap_rounds: dict[int, int] = {}
+
     if stats is not None:
         freq_abs = stats.frequency.absolute
         # 문자열 키를 정수 키로 변환
@@ -130,6 +132,16 @@ async def analyze_page(request: Request) -> TemplateResponse:
                 "values": [v for _, v in sorted_freq],
             }
 
+        # 갭 분석: consecutive_pattern.current_streak 음수값 = 미출현 회차 수
+        if stats.consecutive_pattern and stats.consecutive_pattern.current_streak:
+            streaks = stats.consecutive_pattern.current_streak
+            for num in range(1, 46):
+                try:
+                    streak = int(streaks.get(num, 0))
+                    gap_rounds[num] = max(0, -streak)
+                except (TypeError, ValueError):
+                    gap_rounds[num] = 0
+
     return _render(request, "analyze.html", {
         "active_tab": "analyze",
         "data_status": data_status,
@@ -138,6 +150,7 @@ async def analyze_page(request: Request) -> TemplateResponse:
         "badge_percentiles": badge_percentiles,
         "numbers": list(range(1, 46)),
         "freq_chart_data": freq_chart_data,
+        "gap_rounds": gap_rounds,
     })
 
 

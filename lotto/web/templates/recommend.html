@@ -5,7 +5,7 @@
     <div class="flex items-center justify-between flex-wrap gap-3">
         <div>
             <h2 class="text-2xl font-bold text-ink mb-1">추천 번호</h2>
-            <p class="text-muted text-sm">8가지 전략으로 분석한 번호 추천 결과입니다.</p>
+            <p class="text-muted text-sm">10가지 전략으로 분석한 번호 추천 결과입니다.</p>
         </div>
         <div class="flex items-center gap-3">
             <!-- SPEC-LOTTO-005 REQ-PDF-005: PDF 다운로드 버튼 -->
@@ -32,6 +32,34 @@
     </div>
 
     {% if recommendations %}
+    <!-- 전략 안내 -->
+    <details class="bg-card rounded-lg border border-border shadow-sm">
+        <summary class="px-4 py-3 cursor-pointer text-sm font-semibold text-ink select-none flex items-center justify-between">
+            <span>전략 안내</span>
+            <span class="text-xs text-muted font-normal">클릭하여 펼치기</span>
+        </summary>
+        <div class="px-4 pb-4 pt-2 border-t border-border grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {% set strategy_info = [
+                ('고빈도',    'bg-blue-100 text-blue-700',    '역대 가장 많이 당첨된 번호를 중심으로 선택합니다.'),
+                ('저빈도',    'bg-purple-100 text-purple-700', '상대적으로 덜 출현한 번호를 우선 선택합니다.'),
+                ('균형',      'bg-green-100 text-green-700',   '고빈도·저빈도·최근출현·패턴을 고르게 혼합합니다.'),
+                ('최근편향',  'bg-orange-100 text-orange-700', '최근 회차에 자주 등장한 번호를 우선 선택합니다.'),
+                ('동반패턴',  'bg-pink-100 text-pink-700',     '함께 자주 당첨되는 번호 조합을 우선 선택합니다.'),
+                ('홀짝균형',  'bg-teal-100 text-teal-700',     '홀수·짝수 번호가 3:3 비율을 이루도록 선택합니다.'),
+                ('번호대균형','bg-indigo-100 text-indigo-700', '1~10, 11~20, 21~30, 31~40, 41~45 구간에서 고르게 선택합니다.'),
+                ('핫콜드혼합','bg-red-100 text-red-700',       '최근 자주 나온 번호(핫)와 장기 미출현 번호(콜드)를 혼합합니다.'),
+                ('갭분석',    'bg-amber-100 text-amber-700',   '오랫동안 출현하지 않은 번호를 갭 점수로 계산하여 우선 선택합니다.'),
+                ('앙상블',    'bg-cyan-100 text-cyan-700',     '모든 분석 신호(빈도·최근·패턴·갭)를 균등 가중치로 종합합니다.'),
+            ] %}
+            {% for label, badge_cls, desc in strategy_info %}
+            <div class="flex gap-2 items-start">
+                <span class="text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap {{ badge_cls }}">{{ label }}</span>
+                <span class="text-xs text-muted leading-relaxed">{{ desc }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </details>
+
     <!-- 전략 범례 -->
     <div class="bg-card rounded-lg border border-border p-4 shadow-sm">
         <p class="text-xs font-semibold text-muted uppercase tracking-wide mb-3">번호 색상 범례</p>
@@ -74,6 +102,8 @@
                     {% elif rec.strategy_label == '홀짝균형' %}bg-teal-100 text-teal-700
                     {% elif rec.strategy_label == '번호대균형' %}bg-indigo-100 text-indigo-700
                     {% elif rec.strategy_label == '핫콜드혼합' %}bg-red-100 text-red-700
+                    {% elif rec.strategy_label == '갭분석' %}bg-amber-100 text-amber-700
+                    {% elif rec.strategy_label == '앙상블' %}bg-cyan-100 text-cyan-700
                     {% else %}bg-surface text-muted{% endif %}">
                     {{ rec.strategy_label }}
                 </span>

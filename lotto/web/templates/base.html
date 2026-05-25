@@ -41,7 +41,8 @@
         </div>
         <!-- 탭 네비게이션 -->
         <nav class="max-w-screen-xl mx-auto px-4">
-            <div class="flex space-x-1 border-t border-border pt-0">
+            <!-- 데스크톱 탭 -->
+            <div class="hidden md:flex space-x-1 border-t border-border pt-0">
                 <a href="/"
                    class="px-4 py-2 text-sm font-medium border-b-2 {% if active_tab == 'dashboard' %}border-data-blue text-data-blue{% else %}border-transparent text-muted hover:text-ink hover:border-border{% endif %}">
                     대시보드
@@ -71,7 +72,54 @@
                     API 문서
                 </a>
             </div>
+            <!-- 모바일 햄버거 영역 -->
+            <div class="md:hidden flex items-center justify-between border-t border-border py-2">
+                <span class="text-sm font-medium text-ink">
+                    {% if active_tab == 'dashboard' %}대시보드
+                    {% elif active_tab == 'collect' %}수집 현황
+                    {% elif active_tab == 'analyze' %}빈도 분석
+                    {% elif active_tab == 'recommend' %}추천 번호
+                    {% elif active_tab == 'simulate' %}시뮬레이션
+                    {% elif active_tab == 'history' %}히스토리
+                    {% else %}메뉴{% endif %}
+                </span>
+                <button id="mobile-menu-btn" aria-expanded="false" aria-label="메뉴 열기"
+                        class="p-2 rounded text-muted hover:text-ink hover:bg-surface transition-colors">
+                    <svg id="icon-menu" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+                    </svg>
+                    <svg id="icon-close" class="w-5 h-5 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <!-- 모바일 드롭다운 -->
+            <div id="mobile-menu" class="md:hidden hidden border-t border-border pb-2">
+                {% set nav_items = [('/', 'dashboard', '대시보드'), ('/collect', 'collect', '수집 현황'), ('/analyze', 'analyze', '빈도 분석'), ('/recommend', 'recommend', '추천 번호'), ('/simulate', 'simulate', '시뮬레이션'), ('/history', 'history', '히스토리'), ('/docs', 'docs', 'API 문서')] %}
+                {% for href, tab, label in nav_items %}
+                <a href="{{ href }}"
+                   class="block px-3 py-2 text-sm rounded-md {% if active_tab == tab %}bg-surface text-data-blue font-medium{% else %}text-muted hover:text-ink hover:bg-surface{% endif %}">
+                    {{ label }}
+                </a>
+                {% endfor %}
+            </div>
         </nav>
+        <script>
+        (function() {
+            var btn = document.getElementById('mobile-menu-btn');
+            var menu = document.getElementById('mobile-menu');
+            var iconMenu = document.getElementById('icon-menu');
+            var iconClose = document.getElementById('icon-close');
+            if (btn) {
+                btn.addEventListener('click', function() {
+                    var open = menu.classList.toggle('hidden');
+                    btn.setAttribute('aria-expanded', !open);
+                    iconMenu.classList.toggle('hidden', !open);
+                    iconClose.classList.toggle('hidden', open);
+                });
+            }
+        })();
+        </script>
     </header>
 
     <!-- 메인 콘텐츠 -->

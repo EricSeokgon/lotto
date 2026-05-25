@@ -57,6 +57,34 @@
         </div>
     </div>
 
+    <!-- 갭 분석: 미출현 회차 상위 번호 -->
+    {% if gap_rounds %}
+    {% set gap_top = gap_rounds.items() | sort(attribute=1, reverse=True) | list %}
+    {% set gap_nonzero = gap_top | selectattr(1, 'gt', 0) | list %}
+    {% if gap_nonzero %}
+    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold text-ink">갭 분석 — 미출현 회차</h3>
+            <span class="text-xs text-muted">최근 출현이 없는 번호일수록 갭이 높습니다</span>
+        </div>
+        <div class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-2">
+            {% for num, gap in gap_nonzero[:27] %}
+            {% if num <= 10 %}{% set bg = '#FBC400' %}{% set fg = '#1f2937' %}
+            {% elif num <= 20 %}{% set bg = '#69C8F2' %}{% set fg = '#ffffff' %}
+            {% elif num <= 30 %}{% set bg = '#FF7272' %}{% set fg = '#ffffff' %}
+            {% elif num <= 40 %}{% set bg = '#AAAAAA' %}{% set fg = '#ffffff' %}
+            {% else %}{% set bg = '#B0D840' %}{% set fg = '#ffffff' %}{% endif %}
+            <div class="rounded-lg p-2 text-center border border-border">
+                <span class="inline-flex w-8 h-8 rounded-full items-center justify-center text-sm font-bold"
+                      style="background-color: {{ bg }}; color: {{ fg }};">{{ num }}</span>
+                <div class="text-xs text-muted mt-1">{{ gap }}회</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+
     {% else %}
     <div class="bg-card rounded-lg border border-border p-8 text-center shadow-sm">
         <p class="text-muted">통계 데이터가 없습니다.</p>

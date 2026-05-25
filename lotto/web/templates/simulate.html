@@ -167,22 +167,41 @@
             var values = compData.map(function(d) { return d.hit_rate; });
             var colors = [
                 '#3B82F6','#8B5CF6','#22C55E','#F97316',
-                '#EC4899','#14B8A6','#6366F1','#FF7272'
+                '#EC4899','#14B8A6','#6366F1','#FF7272',
+                '#D97706','#06B6D4'
             ];
+            /* 막대 끝 수치 표시 플러그인 */
+            var stratLabels = {
+                id: 'stratLabels',
+                afterDatasetsDraw: function(chart) {
+                    var ctx = chart.ctx;
+                    var meta = chart.getDatasetMeta(0);
+                    ctx.save();
+                    ctx.font = '11px "Noto Sans KR", sans-serif';
+                    ctx.fillStyle = '#718096';
+                    ctx.textBaseline = 'middle';
+                    meta.data.forEach(function(bar, i) {
+                        ctx.fillText(values[i].toFixed(2) + '%', bar.x + 4, bar.y);
+                    });
+                    ctx.restore();
+                }
+            };
             new Chart(stratEl.getContext('2d'), {
                 type: 'bar',
+                plugins: [stratLabels],
                 data: {
                     labels: labels,
                     datasets: [{
                         label: '적중률 (%)',
                         data: values,
-                        backgroundColor: colors,
+                        backgroundColor: colors.slice(0, labels.length),
                         borderRadius: 4,
                     }]
                 },
                 options: {
                     indexAxis: 'y',
                     responsive: true,
+                    layout: { padding: { right: 52 } },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
