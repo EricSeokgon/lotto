@@ -553,6 +553,24 @@ async def add_manual_draw(req: ManualDrawRequest) -> dict[str, Any]:
     }
 
 
+@router.delete("/draws/{drw_no}", status_code=200)
+async def delete_draw(drw_no: int) -> dict[str, Any]:
+    """지정한 회차 데이터를 삭제합니다. 존재하지 않으면 404를 반환합니다."""
+
+    from lotto.collector import LottoCollector
+
+    collector = LottoCollector()
+    existing = collector.load_existing()
+    filtered = [d for d in existing if d.drwNo != drw_no]
+
+    if len(filtered) == len(existing):
+        raise HTTPException(status_code=404, detail=f"{drw_no}회차를 찾을 수 없습니다.")
+
+    collector.save_csv(filtered)
+    invalidate_cache()
+    return {"status": "ok", "message": f"{drw_no}회차가 삭제되었습니다.", "total": len(filtered)}
+
+
 def _scrape_worker() -> None:
     """블로그 크롤링 워커 — 두 URL에서 전체 회차 데이터를 수집합니다."""
     from lotto.collector import LottoCollector
