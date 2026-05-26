@@ -173,7 +173,7 @@ def test_add_manual_draw_deletes_empty_csv(
     client = TestClient(app)
     payload = {
         "drwNo": 9999,
-        "date": "2030-01-04",
+        "date": "20300104",
         "numbers": [1, 2, 3, 4, 5, 6],
         "bonus": 7,
     }

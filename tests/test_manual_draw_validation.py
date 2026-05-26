@@ -38,7 +38,7 @@ def test_manual_draw_422_does_not_persist_invalid_data(
     # 보너스가 당첨 번호와 중복 — 422 응답이어야 함
     response = c.post("/api/draws/manual", json={
         "drwNo": 12345,
-        "date": "2024-01-15",
+        "date": "20240115",
         "numbers": [1, 2, 3, 4, 5, 6],
         "bonus": 3,  # numbers와 중복
     })
@@ -56,7 +56,7 @@ def test_manual_draw_422_returns_detail_field() -> None:
     c = TestClient(app)
     response = c.post("/api/draws/manual", json={
         "drwNo": 99999,
-        "date": "2024-01-15",
+        "date": "20240115",
         "numbers": [1, 2, 3, 4, 5, 99],  # 99 is out of range
         "bonus": 7,
     })
@@ -67,16 +67,32 @@ def test_manual_draw_422_returns_detail_field() -> None:
 
 
 def test_manual_draw_accepts_valid_input(isolated_data_dir: Path) -> None:
-    """REQ-VAL-001 정상 경로: 모든 검증을 통과한 유효한 입력은 201을 반환."""
+    """REQ-VAL-001 정상 경로: YYYYMMDD 형식 날짜와 유효한 번호는 201을 반환."""
     from lotto.web.app import app
 
     c = TestClient(app)
     response = c.post("/api/draws/manual", json={
         "drwNo": 99998,
-        "date": "2024-06-01",
+        "date": "20240601",
         "numbers": [3, 7, 14, 21, 28, 35],
         "bonus": 42,
     })
 
     assert response.status_code == 201, \
         f"유효한 입력은 201을 반환해야 함. 실제: {response.status_code} - {response.text}"
+
+
+def test_manual_draw_422_invalid_date_format() -> None:
+    """REQ-VAL-001: YYYY-MM-DD 같은 비표준 형식은 422를 반환해야 한다."""
+    from lotto.web.app import app
+
+    c = TestClient(app)
+    response = c.post("/api/draws/manual", json={
+        "drwNo": 99997,
+        "date": "2024-06-01",  # YYYYMMDD 형식이 아님
+        "numbers": [3, 7, 14, 21, 28, 35],
+        "bonus": 42,
+    })
+
+    assert response.status_code == 422, \
+        f"YYYY-MM-DD 형식은 422여야 함. 실제: {response.status_code} - {response.text}"

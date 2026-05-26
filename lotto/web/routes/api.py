@@ -476,10 +476,12 @@ class ManualDrawRequest(BaseModel):
     @field_validator("date")
     @classmethod
     def validate_date(cls, v: str) -> str:
+        if len(v) != 8 or not v.isdigit():  # noqa: PLR2004
+            raise ValueError("날짜는 8자리 숫자(YYYYMMDD)여야 합니다.")
         try:
-            datetime.date.fromisoformat(v)
+            datetime.datetime.strptime(v, "%Y%m%d")
         except ValueError as err:
-            raise ValueError("날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)") from err
+            raise ValueError("날짜 형식이 올바르지 않습니다. (YYYYMMDD)") from err
         return v
 
     @field_validator("numbers")
@@ -532,7 +534,7 @@ async def add_manual_draw(req: ManualDrawRequest) -> dict[str, Any]:
 
     new_draw = DrawResult(
         drwNo=req.drwNo,
-        date=datetime.date.fromisoformat(req.date),
+        date=datetime.datetime.strptime(req.date, "%Y%m%d").date(),
         n1=req.numbers[0],
         n2=req.numbers[1],
         n3=req.numbers[2],
