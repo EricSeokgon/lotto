@@ -134,3 +134,18 @@ def test_draws_empty_result() -> None:
     body = response.json()
     assert body["total"] == 0
     assert body["items"] == []
+
+
+def test_draws_sort_desc_reverses_order() -> None:
+    """sort=desc 파라미터 적용 시 드로 목록이 역순으로 반환되어야 한다."""
+    from lotto.web.app import app
+
+    with patch("lotto.web.routes.api.get_draws", return_value=_make_mock_draws(1, 10)):
+        c = TestClient(app)
+        response = c.get("/api/draws?sort=desc&limit=10")
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) == 10
+    # 역순이면 drwNo가 내림차순이어야 함
+    assert items[0]["drwNo"] > items[-1]["drwNo"]

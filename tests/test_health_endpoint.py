@@ -184,6 +184,35 @@ async def test_health_handles_corrupt_last_sync(tmp_path: Path, monkeypatch) -> 
 
 
 @pytest.mark.asyncio
+async def test_health_csv_rows_zero_on_oserror(tmp_path: Path, monkeypatch) -> None:
+    """CSV 파일 읽기 중 OSError 발생 시 csv_rows=0으로 처리되어야 한다."""
+    monkeypatch.chdir(tmp_path)
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    csv_path = data_dir / "draws.csv"
+    csv_path.write_text("header\n")
+
+    from pathlib import Path as _Path
+
+    from lotto.web.app import app
+
+    _orig_open = _Path.open
+
+    def _raise_for_draws(self, *args, **kwargs):
+        if self.name == "draws.csv":
+            raise OSError("disk error")
+        return _orig_open(self, *args, **kwargs)
+
+    with patch.object(_Path, "open", _raise_for_draws):
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            response = await client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["csv_rows"] == 0
+
+
+@pytest.mark.asyncio
 async def test_health_version_unknown_when_package_not_installed() -> None:
     """패키지 메타데이터 미발견 시 version 은 'unknown'."""
     from importlib.metadata import PackageNotFoundError
