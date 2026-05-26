@@ -326,10 +326,10 @@ class LottoRecommender:
             if frozenset(picked) not in excluded:
                 return picked, label
 
-        # 모든 시도 실패 시 전체에서 무작위
+        # 모든 시도 실패 시 전체에서 무작위 (사실상 도달 불가 — 방어용 코드)
         warnings.warn("중복 없는 세트 생성 실패. 전체 범위에서 무작위 선택합니다.", stacklevel=2)
         all_nums = list(range(1, NUM_BALLS + 1))
-        for _ in range(1000):
+        for _ in range(1000):  # pragma: no cover
             picked = sorted(random.sample(all_nums, 6))
             if frozenset(picked) not in excluded:
                 return picked, label

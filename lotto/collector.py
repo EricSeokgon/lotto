@@ -10,7 +10,7 @@ import tempfile
 import time
 from typing import TYPE_CHECKING, Any
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from pathlib import Path
 
 import pandas as pd

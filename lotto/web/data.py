@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from lotto.config import settings
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from lotto.models import (
         DrawResult,
         Recommendation,

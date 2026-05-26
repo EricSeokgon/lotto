@@ -11,7 +11,7 @@ import logging
 from html.parser import HTMLParser
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from collections.abc import Callable
 
 import requests

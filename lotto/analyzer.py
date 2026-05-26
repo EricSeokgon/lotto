@@ -16,7 +16,7 @@ from lotto.models import (
     Statistics,
 )
 
-if TYPE_CHECKING:
+if TYPE_CHECKING:  # pragma: no cover
     from pathlib import Path
 
 DEFAULT_RECENT_WINDOW = 20

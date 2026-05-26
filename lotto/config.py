@@ -19,7 +19,7 @@ try:
     from dotenv import load_dotenv as _load_dotenv
 
     _DOTENV_AVAILABLE = True  # pragma: no cover
-except ImportError:
+except ImportError:  # pragma: no cover
     _DOTENV_AVAILABLE = False
 
     def _load_dotenv(*_args: object, **_kwargs: object) -> bool:
