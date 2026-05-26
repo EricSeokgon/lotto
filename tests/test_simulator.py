@@ -144,3 +144,32 @@ class TestPrizeTiers:
         )
         assert sim._evaluate_round([1, 2, 8, 9, 10, 11], actual) == "낙첨"
         assert sim._evaluate_round([8, 9, 10, 11, 12, 13], actual) == "낙첨"
+
+
+class TestSimulatorEdgeCases:
+    """시뮬레이터 엣지 케이스 커버리지 테스트."""
+
+    def test_simulate_empty_draws_returns_zero_total(self) -> None:
+        """draws가 빈 리스트이면 total_rounds=0인 SimulationResult를 반환해야 한다."""
+        sim = LottoSimulator([])
+        result = sim.simulate(rounds=5)
+
+        assert result.total_rounds == 0
+        assert result.hit_rate == 0.0
+        assert result.details == []
+
+    def test_simulate_few_draws_triggers_random_fallback(self) -> None:
+        """prior_draws < 3인 회차는 무작위 폴백을 사용해야 한다."""
+        # 3회차만 준비 — 최초 회차(drwNo=1) 실행 시 prior_draws=0개
+        draws = [
+            DrawResult(
+                drwNo=i, date=datetime.date(2024, 1, i),
+                n1=1, n2=2, n3=3, n4=4, n5=5, n6=6, bonus=7,
+            )
+            for i in range(1, 4)
+        ]
+        sim = LottoSimulator(draws)
+        result = sim.simulate(rounds=1)
+
+        assert result.total_rounds == 1
+        assert len(result.details) == 1

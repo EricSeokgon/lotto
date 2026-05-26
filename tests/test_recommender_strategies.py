@@ -203,3 +203,9 @@ class TestGapAndEnsembleStrategies:
         assert wr == pytest.approx(0.25)
         assert wp == pytest.approx(0.25)
         assert wg == pytest.approx(0.25)
+
+    def test_recommend_by_strategy_invalid_label_raises(self, stats) -> None:
+        """알 수 없는 전략 레이블은 ValueError를 발생시켜야 한다."""
+        recommender = LottoRecommender(stats)
+        with pytest.raises(ValueError, match="알 수 없는 전략"):
+            recommender.recommend_by_strategy("존재하지않는전략")
