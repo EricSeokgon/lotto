@@ -1,8 +1,8 @@
 # 로또 번호 추천 프로그램
 
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-429-green)](./tests/)
-[![Coverage](https://img.shields.io/badge/Coverage-98.51%-green)](#)
+[![Tests](https://img.shields.io/badge/Tests-460-green)](./tests/)
+[![Coverage](https://img.shields.io/badge/Coverage-99.85%-brightgreen)](#)
 
 통계 분석 기반의 로또 번호 추천 CLI 도구 및 웹 대시보드입니다. 동행복권 공식 데이터를 수집하여 다각적인 통계 분석을 수행하고, 가중치 기반 알고리즘으로 추천 번호를 생성합니다. 또한 과거 데이터에 대한 백테스팅으로 알고리즘의 유효성을 검증합니다.
 

@@ -6,6 +6,42 @@
 
 ---
 
+## [1.3.0] - 2026-05-26
+
+추천 전략 앙상블 고도화 및 웹 UI 개선 (SPEC-LOTTO-009·013)
+
+### 추가
+
+#### 갭분석 (Gap Analysis) — analyze 페이지 (SPEC-LOTTO-013)
+- 번호별 미출현 회차 수(갭) 시각화 — 오랫동안 안 나온 번호를 한눈에 확인
+- `gap_rounds` 컨텍스트 변수: `consecutive_pattern.current_streak` 음수값 활용
+- analyze 페이지 배지에 갭 정보 툴팁 표시
+
+#### 데이터 게이트웨이 캐싱 (SPEC-LOTTO-009)
+- `get_draws()` / `get_stats()` TTL 60초 모듈 레벨 캐시 도입
+- `invalidate_cache()` — collect/analyze/scrape 완료 후 자동 호출
+- `get_last_sync_date()` — last_sync.json 우선, draws.csv 최신 회차 폴백
+- 인덱스 페이지 헤더에 "최근 수집: YYYY-MM-DD" 표시
+
+### 개선
+
+#### 복합 앙상블 추천 전략 고도화 (SPEC-LOTTO-013)
+- 8가지 단일 전략을 복합 앙상블 모델로 통합
+- 갭분석 기반 "핫콜드혼합" 전략 정확도 개선
+
+#### 웹 UI 개선
+- 수집현황: 최신순 정렬 + 처음/마지막 페이징 버튼 추가
+- 추첨결과 테이블: 서버사이드 초기 렌더링으로 최신 회차 우선 표시
+- 시뮬레이션: 5등 적중률 계산 정확도 개선
+- 모바일 반응형 메뉴 (햄버거 메뉴)
+
+#### 테스트 커버리지 향상 (SPEC-LOTTO-011 완료)
+- 460개 테스트, 커버리지 98.51% → **99.85%** (statement miss 0건)
+- 갭분석·앙상블 전략 테스트 22개 추가 (SPEC-LOTTO-013)
+- TYPE_CHECKING 블록·방어용 폴백 코드에 `# pragma: no cover` 적용
+
+---
+
 ## [1.2.0] - 2026-05-21
 
 코드 품질 강화 및 운영 모니터링 지원 (SPEC-LOTTO-011~012)
