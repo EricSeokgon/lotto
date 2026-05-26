@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from lotto.web.routes import api, pages
+from lotto.web.routes import api, pages, purchases
 
 # 경로 상수
 _WEB_DIR = Path(__file__).parent
@@ -77,6 +77,7 @@ templates = Jinja2Templates(directory=str(_TEMPLATES_DIR))
 # 라우터 등록
 app.include_router(pages.router)
 app.include_router(api.router)
+app.include_router(purchases.router)
 
 
 @app.get("/health")
