@@ -1,8 +1,8 @@
 # 로또 번호 추천 프로그램
 
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-460-green)](./tests/)
-[![Coverage](https://img.shields.io/badge/Coverage-99.85%-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/Tests-511-green)](./tests/)
+[![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen)](#)
 
 통계 분석 기반의 로또 번호 추천 CLI 도구 및 웹 대시보드입니다. 동행복권 공식 데이터를 수집하여 다각적인 통계 분석을 수행하고, 가중치 기반 알고리즘으로 추천 번호를 생성합니다. 또한 과거 데이터에 대한 백테스팅으로 알고리즘의 유효성을 검증합니다.
 
@@ -30,7 +30,7 @@
 - 외부 데이터베이스 불필요 — 로컬 CSV/JSON 파일 기반
 - 원자적 파일 저장 — 쓰기 중 충돌 방지
 - 타입 안전성 — Python 3.9+ 호환
-- 높은 커버리지 — 429개 테스트, 98.51% 라인 커버리지
+- 높은 커버리지 — 511개 테스트, 100% 라인 커버리지
 
 ## 설치
 
@@ -99,7 +99,7 @@ http://localhost:8000 에서 확인 가능합니다.
 | `GET` | `/api/report/pdf` | PDF 리포트 다운로드 | — |
 | `POST` | `/api/collect` | 백그라운드 데이터 수집 시작 | `full`, `count` |
 | `GET` | `/api/collect/status` | 수집 진행 상태 조회 | — |
-| `POST` | `/api/draws/manual` | 회차 데이터 수동 추가 | `drwNo`, `date`, `numbers`, `bonus` |
+| `POST` | `/api/draws/manual` | 회차 데이터 수동 추가 | `drwNo`, `date`(YYYYMMDD), `numbers`, `bonus` |
 | `POST` | `/api/scrape` | 블로그 크롤링 시작 | — |
 | `POST` | `/api/history` | 구매 티켓 추가 | `drwNo`, `numbers`, `bought_at` |
 | `GET` | `/api/history` | 구매 히스토리 + 당첨 결과 조회 | — |
@@ -121,7 +121,7 @@ http://localhost:8000 에서 확인 가능합니다.
     "stats_exists": true,
     "last_sync": "2024-01-15"
   },
-  "version": "1.2.0"
+  "version": "1.4.0"
 }
 ```
 
