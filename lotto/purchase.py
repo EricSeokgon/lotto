@@ -11,7 +11,7 @@ import datetime
 import json
 import logging
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -23,6 +23,9 @@ if TYPE_CHECKING:  # pragma: no cover
     from lotto.models import DrawResult
 
 _log = logging.getLogger(__name__)
+
+# SPEC-LOTTO-015 REQ-PRIZE-003: 1매당 단가 (원). ROI 계산의 기준값.
+TICKET_PRICE_KRW: int = 1000
 
 # 등수별 고정 당첨금 (1등/2등은 변동이므로 0)
 _PRIZE_AMOUNTS: dict[str, int] = {
@@ -176,6 +179,58 @@ def delete_purchase(path: Path, purchase_id: int) -> bool:
         return False
     save_purchases(path, filtered)
     return True
+
+
+def calc_roi(responses: list[Any]) -> dict[str, Any]:
+    """ROI 요약을 계산합니다 (SPEC-LOTTO-015 REQ-PRIZE-003/004).
+
+    # @MX:ANCHOR: [AUTO] ROI 요약 단일 소스 - purchases_page, history_page에서 호출
+    # @MX:REASON: REQ-PRIZE-003/004 비즈니스 규칙 일관성 보장 (fan_in >= 2)
+    # @MX:SPEC: SPEC-LOTTO-015 REQ-PRIZE-003, REQ-PRIZE-004
+
+    pending 티켓은 ROI 분자(당첨금)와 분모(투자) 양쪽에서 제외됩니다.
+
+    Args:
+        responses: prize_rank, prize_amount 속성/키를 가진 객체/딕셔너리 목록
+
+    Returns:
+        {
+            "total_tickets": int,         # 전체 매수
+            "total_invested": int,        # 전체 투자 (매수 * 1000)
+            "total_won": int,             # 추첨 완료분의 당첨금 합계
+            "roi_pct": float,             # 추첨 완료분 기준 ROI %
+        }
+    """
+    total_tickets = len(responses)
+    total_invested = total_tickets * TICKET_PRICE_KRW
+
+    completed_count = 0
+    total_won = 0
+    for r in responses:
+        # SPEC-LOTTO-015: dict / Pydantic 모두 지원, 누락 시 안전한 기본값 사용
+        if isinstance(r, dict):
+            rank = r.get("prize_rank", "pending")
+            amount = r.get("prize_amount", 0)
+        else:
+            rank = getattr(r, "prize_rank", "pending")
+            amount = getattr(r, "prize_amount", 0)
+        if rank == "pending":
+            continue
+        completed_count += 1
+        total_won += int(amount)
+
+    completed_invested = completed_count * TICKET_PRICE_KRW
+    if completed_invested == 0:
+        roi_pct = 0.0
+    else:
+        roi_pct = (total_won - completed_invested) / completed_invested * 100
+
+    return {
+        "total_tickets": total_tickets,
+        "total_invested": total_invested,
+        "total_won": total_won,
+        "roi_pct": round(roi_pct, 1),
+    }
 
 
 def build_responses(

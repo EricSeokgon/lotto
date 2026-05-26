@@ -62,6 +62,30 @@
     </div>
     {% endif %}
 
+    {# SPEC-LOTTO-015 REQ-PRIZE-003: ROI 요약 카드 4종 (총 매수/투자/당첨금/ROI%) #}
+    {% if roi_summary %}
+    <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div class="bg-card rounded-lg border border-border p-4">
+            <p class="text-xs text-muted mb-1">총 매수</p>
+            <p class="text-2xl font-bold text-ink">{{ roi_summary.total_tickets }}<span class="text-sm text-muted ml-1">매</span></p>
+        </div>
+        <div class="bg-card rounded-lg border border-border p-4">
+            <p class="text-xs text-muted mb-1">총 투자</p>
+            <p class="text-2xl font-bold text-ink">{{ "{:,}".format(roi_summary.total_invested) }}<span class="text-sm text-muted ml-1">원</span></p>
+        </div>
+        <div class="bg-card rounded-lg border border-border p-4">
+            <p class="text-xs text-muted mb-1">총 당첨금</p>
+            <p class="text-2xl font-bold text-amber">{{ "{:,}".format(roi_summary.total_won) }}<span class="text-sm text-muted ml-1">원</span></p>
+        </div>
+        <div class="bg-card rounded-lg border border-border p-4">
+            <p class="text-xs text-muted mb-1">ROI</p>
+            <p class="text-2xl font-bold {% if roi_summary.roi_pct > 0 %}text-green-600{% elif roi_summary.roi_pct < 0 %}text-red-500{% else %}text-muted{% endif %}">
+                {% if roi_summary.roi_pct > 0 %}+{% endif %}{{ "%.1f"|format(roi_summary.roi_pct) }}<span class="text-sm ml-0.5">%</span>
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- 구매 이력 테이블 -->
     <div class="bg-card rounded-xl border border-border overflow-hidden">
         {% if purchases %}

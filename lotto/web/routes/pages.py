@@ -255,24 +255,35 @@ async def simulate_page(
 
 @router.get("/purchases")
 async def purchases_page(request: Request) -> TemplateResponse:
-    """구매 이력 페이지."""
+    """구매 이력 페이지.
+
+    SPEC-LOTTO-015 REQ-PRIZE-003: ROI 요약 카드 4종을 컨텍스트로 전달.
+    """
     import lotto.purchase as _pm
 
     data_status = get_data_status()
     records = _pm.load_purchases(_pm._PURCHASES_PATH)
     draws = get_draws()
-    draws_by_drw_no: dict[int, DrawResult] = {d.drwNo: d for d in draws}
+    draws_by_drw_no: dict[int, DrawResult] = {d.drwNo: d for d in draws} if draws else {}
     purchases = _pm.build_responses(records, draws_by_drw_no)
+    # SPEC-LOTTO-015 REQ-PRIZE-003: ROI 요약 계산 (pending 제외)
+    roi_summary = _pm.calc_roi(purchases)
     return _render(request, "purchases.html", {
         "active_tab": "purchases",
         "data_status": data_status,
         "purchases": purchases,
+        "roi_summary": roi_summary,
     })
 
 
 @router.get("/history")
 async def history_page(request: Request) -> TemplateResponse:
-    """구매 히스토리 페이지."""
+    """구매 히스토리 페이지.
+
+    SPEC-LOTTO-015 REQ-PRIZE-003: ROI 요약 카드 4종을 컨텍스트로 전달.
+    """
+    import lotto.purchase as _pm
+
     data_status = get_data_status()
     results = compute_ticket_results()
 
@@ -282,9 +293,14 @@ async def history_page(request: Request) -> TemplateResponse:
         prize = r["prize"]
         prize_counts[prize] = prize_counts.get(prize, 0) + 1
 
+    # SPEC-LOTTO-015 REQ-PRIZE-003: ROI 요약 계산
+    # compute_ticket_results는 dict 리스트를 반환하며 prize_rank/prize_amount 키 포함
+    roi_summary = _pm.calc_roi(results)
+
     return _render(request, "history.html", {
         "active_tab": "history",
         "data_status": data_status,
         "results": results,
         "prize_counts": prize_counts,
+        "roi_summary": roi_summary,
     })

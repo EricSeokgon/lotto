@@ -192,8 +192,26 @@ def save_history(tickets: list[dict[str, Any]]) -> None:
     )
 
 
+# SPEC-LOTTO-015 REQ-PRIZE-006: 영문 코드 → 한국어 라벨 매핑 (단일 소스)
+# 템플릿 rank_label과 동일한 매핑. 서버사이드에서 prize 한국어 필드 생성 시 사용.
+_RANK_KO_LABEL: dict[str, str] = {
+    "1st": "1등",
+    "2nd": "2등",
+    "3rd": "3등",
+    "4th": "4등",
+    "5th": "5등",
+    "none": "낙첨",
+    "pending": "미추첨",
+}
+
+
 def _calc_prize(matched: int, bonus: bool) -> str:
-    """일치 번호 수와 보너스 일치 여부로 등수를 계산합니다."""
+    """일치 번호 수와 보너스 일치 여부로 등수를 계산합니다.
+
+    # @MX:NOTE: [AUTO] SPEC-LOTTO-015 REQ-PRIZE-005 - lotto.purchase.calc_prize에 위임
+    # 한국어 라벨 반환 형식은 기존 호출자 (test_web_data.py, history.html 템플릿)와의
+    # 하위 호환을 위해 유지. 신규 코드는 lotto.purchase.calc_prize 직접 사용 권장.
+    """
     if matched == 6:  # noqa: PLR2004
         return "1등"
     if matched == 5 and bonus:  # noqa: PLR2004
@@ -212,7 +230,15 @@ def compute_ticket_results() -> list[dict[str, Any]]:
 
     # @MX:ANCHOR: [AUTO] 구매 히스토리와 추첨 데이터를 합산하는 핵심 함수
     # @MX:REASON: api.py의 /api/history GET과 pages.py의 /history 페이지 양쪽에서 호출됨
+    # @MX:SPEC: SPEC-LOTTO-015 REQ-PRIZE-001, REQ-PRIZE-002, REQ-PRIZE-005
+
+    SPEC-LOTTO-015 변경:
+    - prize_rank/prize_amount/matched_count/matched_bonus 7개 신규 필드 추가
+    - 등수 계산은 lotto.purchase.calc_prize에 위임 (단일 소스)
+    - 추첨 데이터 없는 회차는 prize_rank='pending' (REQ-PRIZE-002)
     """
+    from lotto.purchase import calc_prize  # 지연 import (순환 의존 방지)
+
     tickets = get_history()
     draws = get_draws()
     draw_map = {d.drwNo: d for d in draws} if draws else {}
@@ -221,31 +247,42 @@ def compute_ticket_results() -> list[dict[str, Any]]:
     for t in tickets:
         drw_no = t["drwNo"]
         draw = draw_map.get(drw_no)
-        if draw:
-            drawn = set(draw.numbers())
-            purchased = set(t["numbers"])
-            matched = len(drawn & purchased)
-            # Python 3.9 호환: zip(strict=True) 대신 명시적 길이 확인
-            bonus_match = draw.bonus in purchased and draw.bonus not in drawn
-            prize = _calc_prize(matched, bonus_match)
+        # SPEC-LOTTO-015 REQ-PRIZE-005: calc_prize 단일 호출로 등수/당첨금/일치/보너스 결정
+        rank, amount, matched, bonus_match = calc_prize(t["numbers"], draw)
+        prize_ko = _RANK_KO_LABEL.get(rank, "낙첨")
+
+        if draw is not None:
             results.append({
                 "ticket": t,
                 "draw_numbers": draw.numbers(),
                 "draw_bonus": draw.bonus,
                 "draw_date": str(draw.date),
+                # 기존 필드 (하위 호환)
                 "matched": matched,
                 "bonus_match": bonus_match,
-                "prize": prize,
+                "prize": prize_ko,
+                # SPEC-LOTTO-015 신규 필드
+                "prize_rank": rank,
+                "prize_amount": amount,
+                "matched_count": matched,
+                "matched_bonus": bonus_match,
             })
         else:
+            # 추첨 데이터 없음 → pending
             results.append({
                 "ticket": t,
                 "draw_numbers": [],
                 "draw_bonus": 0,
                 "draw_date": "",
+                # 기존 필드 (하위 호환)
                 "matched": 0,
                 "bonus_match": False,
                 "prize": "미추첨",
+                # SPEC-LOTTO-015 신규 필드
+                "prize_rank": "pending",
+                "prize_amount": 0,
+                "matched_count": 0,
+                "matched_bonus": False,
             })
     # 최신 회차 순
     results.sort(key=lambda r: r["ticket"]["drwNo"], reverse=True)
