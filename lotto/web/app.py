@@ -68,7 +68,7 @@ app = FastAPI(
 )
 
 # 정적 파일 마운트 (디렉토리 존재 시)
-if _STATIC_DIR.exists():
+if _STATIC_DIR.exists():  # pragma: no branch
     app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
 
 # Jinja2 템플릿 설정

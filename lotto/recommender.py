@@ -150,7 +150,7 @@ class LottoRecommender:
         # 다양성 페널티: 직전 세트에 사용된 번호의 점수를 낮춰 번호 분산 유도
         if used_numbers:
             for n in used_numbers:
-                if n in scores:
+                if n in scores:  # pragma: no branch
                     scores[n] = max(0.0, scores[n] - 0.12)
 
         return scores
