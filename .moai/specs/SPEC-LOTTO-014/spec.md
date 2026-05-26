@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-014
 version: 1.0.0
-status: draft
+status: completed
 created: 2026-05-26
 updated: 2026-05-26
 author: ircp
