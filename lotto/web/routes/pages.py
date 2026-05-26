@@ -15,6 +15,8 @@ from fastapi.templating import Jinja2Templates
 if TYPE_CHECKING:  # pragma: no cover
     from starlette.templating import _TemplateResponse as TemplateResponse
 
+    from lotto.models import DrawResult
+
 from lotto.web.data import (
     compute_frequency_percentiles,
     compute_ticket_results,
@@ -248,6 +250,23 @@ async def simulate_page(
         "budget_info": budget_info,
         "per_round_data": per_round_data,
         "strategy_comparison": strategy_comparison,
+    })
+
+
+@router.get("/purchases")
+async def purchases_page(request: Request) -> TemplateResponse:
+    """구매 이력 페이지."""
+    import lotto.purchase as _pm
+
+    data_status = get_data_status()
+    records = _pm.load_purchases(_pm._PURCHASES_PATH)
+    draws = get_draws()
+    draws_by_drw_no: dict[int, DrawResult] = {d.drwNo: d for d in draws}
+    purchases = _pm.build_responses(records, draws_by_drw_no)
+    return _render(request, "purchases.html", {
+        "active_tab": "purchases",
+        "data_status": data_status,
+        "purchases": purchases,
     })
 
 

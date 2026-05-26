@@ -544,7 +544,7 @@ def test_post_draws_manual_returns_201():
         c = TestClient(app)
         response = c.post("/api/draws/manual", json={
             "drwNo": 9999,
-            "date": "2024-01-15",
+            "date": "20240115",
             "numbers": [1, 2, 3, 4, 5, 6],
             "bonus": 7,
         })
@@ -571,7 +571,7 @@ def test_post_draws_manual_returns_409_on_duplicate():
         c = TestClient(app)
         response = c.post("/api/draws/manual", json={
             "drwNo": 9999,
-            "date": "2024-01-15",
+            "date": "20240115",
             "numbers": [1, 2, 3, 4, 5, 6],
             "bonus": 7,
         })
@@ -586,7 +586,7 @@ def test_post_draws_manual_invalid_bonus_in_numbers():
     c = TestClient(app)
     response = c.post("/api/draws/manual", json={
         "drwNo": 9999,
-        "date": "2024-01-15",
+        "date": "20240115",
         "numbers": [1, 2, 3, 4, 5, 6],
         "bonus": 3,  # 중복
     })
@@ -594,13 +594,13 @@ def test_post_draws_manual_invalid_bonus_in_numbers():
 
 
 def test_post_draws_manual_invalid_date():
-    """날짜 형식 오류 시 422 반환."""
+    """날짜 형식 오류 시 422 반환 (YYYY-MM-DD는 YYYYMMDD 형식이 아님)."""
     from lotto.web.app import app
 
     c = TestClient(app)
     response = c.post("/api/draws/manual", json={
         "drwNo": 9999,
-        "date": "20240115",
+        "date": "2024-01-15",  # YYYYMMDD 형식이 아니므로 422
         "numbers": [1, 2, 3, 4, 5, 6],
         "bonus": 7,
     })
@@ -614,7 +614,7 @@ def test_post_draws_manual_invalid_drw_no():
     c = TestClient(app)
     response = c.post("/api/draws/manual", json={
         "drwNo": 0,
-        "date": "2024-01-15",
+        "date": "20240115",
         "numbers": [1, 2, 3, 4, 5, 6],
         "bonus": 7,
     })

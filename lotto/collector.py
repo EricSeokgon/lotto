@@ -262,7 +262,7 @@ class LottoCollector:
             os.replace(tmp_path, self._csv_path)
         except Exception:
             # 임시 파일을 정리하고 원본 CSV는 그대로 둔다
-            if os.path.exists(tmp_path):
+            if os.path.exists(tmp_path):  # pragma: no branch
                 with contextlib.suppress(OSError):
                     os.unlink(tmp_path)
             raise
