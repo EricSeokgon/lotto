@@ -6,6 +6,59 @@
 
 ---
 
+## [1.5.0] - 2026-05-27
+
+신규 기능 5종 일괄 도입 (SPEC-LOTTO-016~021)
+
+### 추가
+
+#### 번호 즐겨찾기 관리 (SPEC-LOTTO-016)
+- `POST /api/favorites` — 번호 조합(6개) + 이름 즐겨찾기 추가 (중복 시 409)
+- `GET /api/favorites` — 즐겨찾기 전체 목록 반환
+- `DELETE /api/favorites/{fav_id}` — 즐겨찾기 단건 삭제
+- `data/favorites.json` 원자적 쓰기(tempfile + os.replace) 저장
+- 추천 페이지: 번호 직접 입력·이름 저장 폼 + 목록·삭제 UI
+- 시뮬레이션 페이지: 즐겨찾기 번호 선택 → 바로 시뮬레이션 실행
+
+#### 번호 패턴 분석 강화 (SPEC-LOTTO-019)
+- `GET /api/pattern-analysis` — 홀짝 비율·번호대 분포·연속 번호·합계 분포·끝자리 분포 반환
+- 분석 페이지 "패턴 분석" 탭: 홀짝 도넛·번호대 바·합계 히스토그램 Chart.js 차트
+
+#### 데이터 내보내기 (SPEC-LOTTO-020)
+- `GET /api/export/draws` → `lotto_draws_YYYYMMDD.csv` 파일 다운로드 (`from_drw`, `to_drw` 필터 지원)
+- `GET /api/export/history` → `lotto_history_YYYYMMDD.csv` 파일 다운로드
+- `GET /api/export/history?format=json` → JSON 파일 다운로드
+- 수집 현황 페이지: "추첨 데이터 내보내기 (CSV)" 버튼
+- 구매 내역 페이지: "CSV 내보내기" / "JSON 내보내기" 버튼
+- 데이터 없어도 빈 헤더 CSV 반환 (200, 404 아님)
+
+#### 다크모드 & 반응형 UI (SPEC-LOTTO-021)
+- `base.html` 헤더에 다크/라이트 토글 버튼 추가
+- `localStorage.theme` 설정 영속화 + 시스템 `prefers-color-scheme` 자동 감지
+- Tailwind CDN `darkMode: 'class'` 활성화
+- FOUC 방지 인라인 스크립트 (페이지 로드 전 `dark` 클래스 적용)
+- 모바일 햄버거 메뉴 토글 + 현재 페이지 활성화 표시
+- 전체 페이지 `dark:` 클래스 적용 (테이블·카드·네비게이션·차트 영역)
+
+#### 당첨금 분석 대시보드 (SPEC-LOTTO-017)
+- `DrawResult` 모델에 `prize1Amount: Optional[int]`, `prize1Winners: Optional[int]` 추가
+- `GET /api/prize-stats` — 평균·최대·최소 당첨금, 최근 20회차 데이터 반환
+- 인덱스 페이지: 1등 당첨금 추이 라인 차트 + 평균/최대/최소 통계 카드
+- 당첨금 데이터 없으면 차트 섹션 자동 숨김
+- 기존 CSV 하위 호환 유지 (새 컬럼 없어도 오류 없음)
+
+#### 추첨 회차 삭제
+- `DELETE /api/draws/{drw_no}` — 지정 회차 데이터 삭제 (없으면 404)
+- 수집 현황 테이블에 삭제 버튼 추가
+
+### 개선
+
+#### 테스트 커버리지
+- 541개 → **631개** 테스트 (+90개)
+- 즐겨찾기(17) · 패턴 분석(12) · 내보내기(21) · 다크모드(23) · 당첨금(17) 신규 테스트
+
+---
+
 ## [1.4.0] - 2026-05-26
 
 구매 이력 관리 및 수동 입력 날짜 형식 표준화 (SPEC-LOTTO-002·003·004·014)

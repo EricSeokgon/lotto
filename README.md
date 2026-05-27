@@ -1,7 +1,7 @@
 # 로또 번호 추천 프로그램
 
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-511-green)](./tests/)
+[![Tests](https://img.shields.io/badge/Tests-631-green)](./tests/)
 [![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen)](#)
 
 통계 분석 기반의 로또 번호 추천 CLI 도구 및 웹 대시보드입니다. 동행복권 공식 데이터를 수집하여 다각적인 통계 분석을 수행하고, 가중치 기반 알고리즘으로 추천 번호를 생성합니다. 또한 과거 데이터에 대한 백테스팅으로 알고리즘의 유효성을 검증합니다.
@@ -18,9 +18,13 @@
   - 연속 패턴: 연속 출현/부재 계수
   - 동반 출현: 자주 함께 나오는 번호 쌍
   - 보너스 번호 빈도: 보너스 번호별 출현 횟수
+- **번호 패턴 분석**: 홀짝 비율·번호대 분포·연속 번호·합계 분포·끝자리 분포
 - **8가지 전략 추천**: 사용자 정의 가중치 및 전략 레이블로 유연한 추천
+- **번호 즐겨찾기**: 자주 쓰는 번호 조합 저장·관리·시뮬레이션 연동
 - **인과 안전 백테스팅**: 과거 데이터로 알고리즘 효용성 검증
-- **웹 대시보드**: 브라우저 기반 5탭 대시보드 (FastAPI + Jinja2)
+- **웹 대시보드**: 브라우저 기반 대시보드 (FastAPI + Jinja2, 다크모드 지원)
+- **데이터 내보내기**: 추첨 데이터·구매 이력 CSV/JSON 다운로드
+- **당첨금 분석**: 1등 당첨금 추이 차트 및 평균/최대/최소 통계
 - **PDF 리포트**: 통계·추천·시뮬레이션 결과를 단일 PDF로 다운로드
 - **헬스체크 API**: `GET /api/health` — uptime, CSV 행 수, 데이터 상태 응답
 - **설정 외부화**: 환경 변수(LOTTO_*)로 모든 핵심 파라미터 오버라이드
@@ -30,7 +34,8 @@
 - 외부 데이터베이스 불필요 — 로컬 CSV/JSON 파일 기반
 - 원자적 파일 저장 — 쓰기 중 충돌 방지
 - 타입 안전성 — Python 3.9+ 호환
-- 높은 커버리지 — 511개 테스트, 100% 라인 커버리지
+- 높은 커버리지 — 631개 테스트, 100% 라인 커버리지
+- 다크모드 지원 — 시스템 테마 감지 + 수동 토글 (Tailwind CSS)
 
 ## 설치
 
@@ -75,12 +80,12 @@ python main.py web --port 8080 --reload
 http://localhost:8000 에서 확인 가능합니다.
 
 **탭 구성:**
-- 대시보드: 데이터 상태 및 기능 개요
-- 수집 현황: 수집된 당첨 번호 목록 (PDF 다운로드 버튼 포함)
-- 빈도 분석: 번호별 컬러 배지 및 차트 (PDF 다운로드 버튼 포함)
-- 추천 번호: 통계 기반 번호 세트 추천 (PDF 다운로드 버튼 포함)
-- 시뮬레이션: 도넛 차트 및 등수별 분포
-- 구매 내역: 구매 티켓 등록 및 당첨 결과 확인
+- 대시보드: 데이터 상태·당첨금 추이 차트 및 기능 개요
+- 수집 현황: 수집된 당첨 번호 목록 (삭제 버튼·CSV 내보내기 포함)
+- 빈도 분석: 번호별 컬러 배지·차트·패턴 분석 탭 (홀짝·번호대·합계 분포)
+- 추천 번호: 통계 기반 번호 추천 + 즐겨찾기 관리 (저장·삭제)
+- 시뮬레이션: 도넛 차트·등수별 분포·즐겨찾기 번호로 시뮬레이션
+- 구매 내역: 구매 티켓 등록·당첨 결과 확인·CSV/JSON 내보내기
 
 **API 문서:**
 - Swagger UI: http://localhost:8000/docs
@@ -104,6 +109,14 @@ http://localhost:8000 에서 확인 가능합니다.
 | `POST` | `/api/history` | 구매 티켓 추가 | `drwNo`, `numbers`, `bought_at` |
 | `GET` | `/api/history` | 구매 히스토리 + 당첨 결과 조회 | — |
 | `DELETE` | `/api/history/{ticket_id}` | 구매 티켓 삭제 | `ticket_id` |
+| `DELETE` | `/api/draws/{drw_no}` | 추첨 회차 삭제 | `drw_no` |
+| `POST` | `/api/favorites` | 즐겨찾기 번호 추가 | `numbers`, `name` |
+| `GET` | `/api/favorites` | 즐겨찾기 목록 조회 | — |
+| `DELETE` | `/api/favorites/{fav_id}` | 즐겨찾기 삭제 | `fav_id` |
+| `GET` | `/api/pattern-analysis` | 번호 패턴 통계 조회 | — |
+| `GET` | `/api/export/draws` | 추첨 데이터 CSV 다운로드 | `from_drw`, `to_drw` |
+| `GET` | `/api/export/history` | 구매 이력 내보내기 | `format` (csv/json) |
+| `GET` | `/api/prize-stats` | 1등 당첨금 통계 조회 | — |
 | `POST` | `/api/analyze` | 통계 분석 백그라운드 시작 | — |
 | `GET` | `/api/health` | 서버 상태 및 데이터 파일 존재 여부 | — |
 
@@ -121,7 +134,7 @@ http://localhost:8000 에서 확인 가능합니다.
     "stats_exists": true,
     "last_sync": "2024-01-15"
   },
-  "version": "1.4.0"
+  "version": "1.5.0"
 }
 ```
 

@@ -47,7 +47,9 @@ def test_delete_draw_success(client_with_draws: TestClient) -> None:
     assert body["total"] == 1
 
 
-def test_delete_draw_removes_from_csv(client_with_draws: TestClient, isolated_data_dir: Path) -> None:
+def test_delete_draw_removes_from_csv(
+    client_with_draws: TestClient, isolated_data_dir: Path
+) -> None:
     """삭제 후 CSV에서 해당 회차가 사라집니다."""
     from lotto.collector import LottoCollector
 

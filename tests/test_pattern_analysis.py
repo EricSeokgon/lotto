@@ -14,7 +14,6 @@ from fastapi.testclient import TestClient
 
 from lotto.models import DrawResult
 
-
 # ─────────────────────────────────────────────────────────────
 # REQ-PAT-001: pattern_analysis() 단위 테스트
 # ─────────────────────────────────────────────────────────────
@@ -40,9 +39,10 @@ def test_pattern_analysis_returns_dict_with_required_keys():
         result = wd.pattern_analysis()
 
     assert isinstance(result, dict)
-    assert {"odd_even", "range_dist", "consecutive", "sum_range", "last_digit", "total_draws"} <= set(
-        result.keys()
-    )
+    expected_keys = {
+        "odd_even", "range_dist", "consecutive", "sum_range", "last_digit", "total_draws"
+    }
+    assert expected_keys <= set(result.keys())
 
 
 def test_pattern_analysis_empty_when_no_draws():
