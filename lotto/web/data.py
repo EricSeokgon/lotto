@@ -6,8 +6,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
+import os
+import tempfile
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -28,6 +31,8 @@ STATS_PATH = settings.data_dir / "stats.json"
 _HISTORY_PATH = settings.data_dir / "history.json"
 # SPEC-LOTTO-009 REQ-LAST-002: last_sync.json은 SPEC-LOTTO-007에서 생성됨
 LAST_SYNC_PATH = settings.data_dir / "last_sync.json"
+# SPEC-LOTTO-016: 번호 즐겨찾기 저장 경로
+_FAVORITES_PATH = settings.data_dir / "favorites.json"
 
 # SPEC-LOTTO-002: 모듈 로거 — 무음 예외를 구조화 로깅으로 전환
 logger = logging.getLogger(__name__)
@@ -192,6 +197,48 @@ def save_history(tickets: list[dict[str, Any]]) -> None:
     )
 
 
+# SPEC-LOTTO-016: 즐겨찾기 데이터 접근자 — history와 동일한 JSON 리스트 모델
+def get_favorites() -> list[dict[str, Any]]:
+    """저장된 번호 즐겨찾기 목록을 저장 순서대로 반환합니다.
+
+    파일이 없거나 손상되어 있으면 빈 리스트를 반환한다.
+    """
+    if not _FAVORITES_PATH.exists():
+        return []
+    try:
+        data = json.loads(_FAVORITES_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        # SPEC-LOTTO-002 REQ-ERR-002: 손상된 파일은 무음으로 삼키지 않고 경고만 남김
+        logger.warning("Failed to read favorites.json: %s", exc, exc_info=True)
+        return []
+    if not isinstance(data, list):
+        logger.warning("favorites.json 최상위가 list 아님 — 빈 목록 반환")
+        return []
+    return data  # type: ignore[no-any-return]
+
+
+def save_favorites(favorites: list[dict[str, Any]]) -> None:
+    """즐겨찾기 목록을 원자적으로 저장합니다.
+
+    임시 파일에 먼저 기록한 뒤 os.replace로 최종 경로에 교체하여
+    쓰기 중단 시에도 기존 파일이 손상되지 않도록 한다.
+    """
+    _FAVORITES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    # 동일 디렉터리에 임시 파일 생성 — os.replace의 원자성 보장 조건
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".favorites_", suffix=".json.tmp", dir=str(_FAVORITES_PATH.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(favorites, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, _FAVORITES_PATH)
+    except Exception:
+        # 실패 시 임시 파일 정리 — 정리 실패 자체는 무시
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
+
+
 # SPEC-LOTTO-015 REQ-PRIZE-006: 영문 코드 → 한국어 라벨 매핑 (단일 소스)
 # 템플릿 rank_label과 동일한 매핑. 서버사이드에서 prize 한국어 필드 생성 시 사용.
 _RANK_KO_LABEL: dict[str, str] = {
@@ -289,6 +336,94 @@ def compute_ticket_results() -> list[dict[str, Any]]:
     return results
 
 
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-019 REQ-PAT-001 — 번호 패턴 분석 단일 진입점
+# @MX:REASON: /api/pattern-analysis 및 /analyze 페이지(REQ-PAT-002) 양쪽에서 호출됨
+# @MX:SPEC: SPEC-LOTTO-019 REQ-PAT-001
+def pattern_analysis(draws: list[DrawResult] | None = None) -> dict[str, Any]:
+    """전체 추첨 데이터에서 번호 패턴 분포를 계산합니다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+               호출자가 이미 draws를 보유한 경우 중복 CSV 파싱을 피하기 위해 전달.
+
+    반환 구조:
+        - odd_even: {"0".."6": draws-with-N-odd-numbers}
+        - range_dist: {"1-9","10-19","20-29","30-39","40-45": 누적 번호 개수}
+        - consecutive: 연속 번호 쌍을 포함한 회차 비율 (0.0~1.0)
+        - sum_range: 회차 합계의 10단위 버킷 분포 (예: "100-109")
+        - last_digit: {"0".."9": 모든 번호의 끝자리 누적 빈도}
+        - total_draws: 분석 회차 수
+
+    draws.csv 부재(get_draws() is None) 또는 빈 데이터인 경우
+    total_draws=0의 빈 구조를 반환한다.
+    """
+    # 빈/None 데이터에서도 키 셋이 일관되도록 0으로 초기화
+    odd_even: dict[str, int] = {str(i): 0 for i in range(7)}
+    range_dist: dict[str, int] = {
+        "1-9": 0, "10-19": 0, "20-29": 0, "30-39": 0, "40-45": 0,
+    }
+    last_digit: dict[str, int] = {str(i): 0 for i in range(10)}
+    sum_range: dict[str, int] = {}
+
+    if draws is None:
+        draws = get_draws()
+    if not draws:
+        return {
+            "odd_even": odd_even,
+            "range_dist": range_dist,
+            "consecutive": 0.0,
+            "sum_range": sum_range,
+            "last_digit": last_digit,
+            "total_draws": 0,
+        }
+
+    consecutive_count = 0
+    for draw in draws:
+        nums = draw.numbers()  # 정렬된 6개
+
+        # 홀짝 분포 (홀수 개수)
+        odd_count = sum(1 for n in nums if n % 2 == 1)
+        odd_even[str(odd_count)] = odd_even.get(str(odd_count), 0) + 1
+
+        # 범위 분포 (각 번호의 구간 누적)
+        for n in nums:
+            if n <= 9:  # noqa: PLR2004
+                range_dist["1-9"] += 1
+            elif n <= 19:  # noqa: PLR2004
+                range_dist["10-19"] += 1
+            elif n <= 29:  # noqa: PLR2004
+                range_dist["20-29"] += 1
+            elif n <= 39:  # noqa: PLR2004
+                range_dist["30-39"] += 1
+            else:  # 40~45
+                range_dist["40-45"] += 1
+
+        # 연속 번호 (정렬된 인접 차이 1)
+        has_consecutive = any(nums[i + 1] - nums[i] == 1 for i in range(len(nums) - 1))
+        if has_consecutive:
+            consecutive_count += 1
+
+        # 합계 10단위 버킷
+        total = sum(nums)
+        bucket_lo = (total // 10) * 10
+        bucket_key = f"{bucket_lo}-{bucket_lo + 9}"
+        sum_range[bucket_key] = sum_range.get(bucket_key, 0) + 1
+
+        # 끝자리 (6개 모두 누적)
+        for n in nums:
+            last_digit[str(n % 10)] += 1
+
+    total_draws = len(draws)
+    return {
+        "odd_even": odd_even,
+        "range_dist": range_dist,
+        "consecutive": consecutive_count / total_draws if total_draws else 0.0,
+        "sum_range": sum_range,
+        "last_digit": last_digit,
+        "total_draws": total_draws,
+    }
+
+
 def get_simulation(rounds: int = 1000) -> SimulationResult | None:
     """시뮬레이션 결과를 반환합니다. draws.csv 없으면 None."""
     if not DRAWS_PATH.exists():
@@ -341,6 +476,71 @@ def get_strategy_comparison(rounds: int = 100) -> list[dict[str, Any]] | None:
             "total_rounds": len(test_draws),
         })
     return comparison
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-017 REQ-PRIZE-D-002 — 1등 당첨금 통계 단일 진입점
+# @MX:REASON: /api/prize-stats 및 홈 페이지 카드 양쪽에서 호출되는 공개 데이터 함수
+# @MX:SPEC: SPEC-LOTTO-017 REQ-PRIZE-D-002
+def get_prize_stats(recent_limit: int = 20) -> dict[str, Any]:
+    """1등 당첨금 통계를 계산하여 반환합니다.
+
+    prize 데이터가 있는 회차(prize1Amount is not None)만 통계에 포함한다.
+    데이터가 전혀 없으면 nulls 와 빈 recent 리스트를 반환한다.
+
+    반환 구조:
+        - total_draws: 전체 회차 수
+        - draws_with_prize_data: prize 데이터 있는 회차 수
+        - avg_prize1: 평균 1등 당첨금 (정수, 없으면 None)
+        - max_prize1: 최대 1등 당첨금 (정수, 없으면 None)
+        - min_prize1: 최소 1등 당첨금 (정수, 없으면 None)
+        - recent: 최근 recent_limit 개 회차 [{drwNo, date, prize1Amount, prize1Winners}]
+    """
+    draws = get_draws()
+    if not draws:
+        return {
+            "total_draws": 0,
+            "draws_with_prize_data": 0,
+            "avg_prize1": None,
+            "max_prize1": None,
+            "min_prize1": None,
+            "recent": [],
+        }
+
+    with_prize = [d for d in draws if d.prize1Amount is not None]
+    total = len(draws)
+    count = len(with_prize)
+
+    if count == 0:
+        return {
+            "total_draws": total,
+            "draws_with_prize_data": 0,
+            "avg_prize1": None,
+            "max_prize1": None,
+            "min_prize1": None,
+            "recent": [],
+        }
+
+    amounts = [d.prize1Amount for d in with_prize if d.prize1Amount is not None]
+    avg = int(sum(amounts) // len(amounts))
+    # 최근 drwNo 기준 내림차순 정렬 후 recent_limit 만큼
+    recent_sorted = sorted(with_prize, key=lambda d: d.drwNo, reverse=True)[:recent_limit]
+    recent_payload = [
+        {
+            "drwNo": d.drwNo,
+            "date": str(d.date),
+            "prize1Amount": d.prize1Amount,
+            "prize1Winners": d.prize1Winners,
+        }
+        for d in recent_sorted
+    ]
+    return {
+        "total_draws": total,
+        "draws_with_prize_data": count,
+        "avg_prize1": avg,
+        "max_prize1": max(amounts),
+        "min_prize1": min(amounts),
+        "recent": recent_payload,
+    }
 
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-009 REQ-LAST-002 — last_sync.json 우선, draws 최신 회차 폴백

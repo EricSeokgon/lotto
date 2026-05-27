@@ -4,12 +4,12 @@
 <div class="space-y-6">
     <!-- 페이지 타이틀 -->
     <div class="flex items-center justify-between">
-        <h2 class="text-2xl font-bold text-ink">구매 이력</h2>
-        <span class="text-sm text-muted">총 {{ purchases|length }}건</span>
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">구매 이력</h2>
+        <span class="text-sm text-muted dark:text-gray-400">총 {{ purchases|length }}건</span>
     </div>
 
     <!-- 구매 추가 폼 -->
-    <div class="bg-card rounded-xl border border-border p-5">
+    <div class="bg-card rounded-xl border border-border dark:bg-gray-800 dark:border-gray-700 p-5">
         <h3 class="text-lg font-semibold text-ink mb-4">구매 번호 등록</h3>
         <form id="purchase-form" class="space-y-4">
             <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -43,19 +43,19 @@
             {% elif p.prize_rank == 'none' %}{% set stats.none = stats.none + 1 %}
             {% else %}{% set stats.prize = stats.prize + 1 %}{% endif %}
         {% endfor %}
-        <div class="bg-card rounded-lg border border-border p-4">
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
             <p class="text-xs text-muted mb-1">총 구매</p>
             <p class="text-2xl font-bold text-ink">{{ stats.total }}</p>
         </div>
-        <div class="bg-card rounded-lg border border-border p-4">
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
             <p class="text-xs text-muted mb-1">당첨</p>
             <p class="text-2xl font-bold text-amber">{{ stats.prize }}</p>
         </div>
-        <div class="bg-card rounded-lg border border-border p-4">
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
             <p class="text-xs text-muted mb-1">낙첨</p>
             <p class="text-2xl font-bold text-muted">{{ stats.none }}</p>
         </div>
-        <div class="bg-card rounded-lg border border-border p-4">
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
             <p class="text-xs text-muted mb-1">미추첨</p>
             <p class="text-2xl font-bold text-slate-blue">{{ stats.pending }}</p>
         </div>
@@ -65,19 +65,19 @@
     {# SPEC-LOTTO-015 REQ-PRIZE-003: ROI 요약 카드 4종 (총 매수/투자/당첨금/ROI%) #}
     {% if roi_summary %}
     <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <div class="bg-card rounded-lg border border-border p-4">
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
             <p class="text-xs text-muted mb-1">총 매수</p>
             <p class="text-2xl font-bold text-ink">{{ roi_summary.total_tickets }}<span class="text-sm text-muted ml-1">매</span></p>
         </div>
-        <div class="bg-card rounded-lg border border-border p-4">
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
             <p class="text-xs text-muted mb-1">총 투자</p>
             <p class="text-2xl font-bold text-ink">{{ "{:,}".format(roi_summary.total_invested) }}<span class="text-sm text-muted ml-1">원</span></p>
         </div>
-        <div class="bg-card rounded-lg border border-border p-4">
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
             <p class="text-xs text-muted mb-1">총 당첨금</p>
             <p class="text-2xl font-bold text-amber">{{ "{:,}".format(roi_summary.total_won) }}<span class="text-sm text-muted ml-1">원</span></p>
         </div>
-        <div class="bg-card rounded-lg border border-border p-4">
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
             <p class="text-xs text-muted mb-1">ROI</p>
             <p class="text-2xl font-bold {% if roi_summary.roi_pct > 0 %}text-green-600{% elif roi_summary.roi_pct < 0 %}text-red-500{% else %}text-muted{% endif %}">
                 {% if roi_summary.roi_pct > 0 %}+{% endif %}{{ "%.1f"|format(roi_summary.roi_pct) }}<span class="text-sm ml-0.5">%</span>
@@ -87,7 +87,7 @@
     {% endif %}
 
     <!-- 구매 이력 테이블 -->
-    <div class="bg-card rounded-xl border border-border overflow-hidden">
+    <div class="bg-card rounded-xl border border-border dark:bg-gray-800 dark:border-gray-700 overflow-hidden">
         {% if purchases %}
         <table class="w-full text-sm">
             <thead class="bg-surface border-b border-border">

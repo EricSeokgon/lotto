@@ -3,25 +3,25 @@
 {% block content %}
 <div class="space-y-6">
     <div>
-        <h2 class="text-2xl font-bold text-ink mb-1">구매 히스토리</h2>
-        <p class="text-muted text-sm">구매한 로또 티켓과 당첨 결과를 확인합니다.</p>
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100 mb-1">구매 히스토리</h2>
+        <p class="text-muted dark:text-gray-400 text-sm">구매한 로또 티켓과 당첨 결과를 확인합니다.</p>
     </div>
 
     <!-- 통계 바 (prize_counts는 Python에서 전달) -->
     <div id="stats-bar" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div class="bg-card border border-border rounded-lg p-4 text-center">
+        <div class="bg-card border border-border rounded-lg dark:bg-gray-800 dark:border-gray-700 p-4 text-center">
             <div class="text-2xl font-bold text-ink">{{ results | length }}</div>
             <div class="text-xs text-muted mt-1">전체 티켓</div>
         </div>
-        <div class="bg-card border border-border rounded-lg p-4 text-center">
+        <div class="bg-card border border-border rounded-lg dark:bg-gray-800 dark:border-gray-700 p-4 text-center">
             <div class="text-2xl font-bold text-amber">{{ (prize_counts.get('1등', 0) + prize_counts.get('2등', 0) + prize_counts.get('3등', 0)) }}</div>
             <div class="text-xs text-muted mt-1">1~3등</div>
         </div>
-        <div class="bg-card border border-border rounded-lg p-4 text-center">
+        <div class="bg-card border border-border rounded-lg dark:bg-gray-800 dark:border-gray-700 p-4 text-center">
             <div class="text-2xl font-bold text-data-blue">{{ (prize_counts.get('4등', 0) + prize_counts.get('5등', 0)) }}</div>
             <div class="text-xs text-muted mt-1">4~5등</div>
         </div>
-        <div class="bg-card border border-border rounded-lg p-4 text-center">
+        <div class="bg-card border border-border rounded-lg dark:bg-gray-800 dark:border-gray-700 p-4 text-center">
             <div class="text-2xl font-bold text-muted">{{ prize_counts.get('미추첨', 0) }}</div>
             <div class="text-xs text-muted mt-1">미추첨</div>
         </div>
@@ -30,19 +30,19 @@
     {# SPEC-LOTTO-015 REQ-PRIZE-003: ROI 요약 카드 4종 #}
     {% if roi_summary %}
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div class="bg-card border border-border rounded-lg p-4 text-center">
+        <div class="bg-card border border-border rounded-lg dark:bg-gray-800 dark:border-gray-700 p-4 text-center">
             <div class="text-2xl font-bold text-ink">{{ roi_summary.total_tickets }}<span class="text-sm text-muted ml-1">매</span></div>
             <div class="text-xs text-muted mt-1">총 매수</div>
         </div>
-        <div class="bg-card border border-border rounded-lg p-4 text-center">
+        <div class="bg-card border border-border rounded-lg dark:bg-gray-800 dark:border-gray-700 p-4 text-center">
             <div class="text-2xl font-bold text-ink">{{ "{:,}".format(roi_summary.total_invested) }}<span class="text-sm text-muted ml-1">원</span></div>
             <div class="text-xs text-muted mt-1">총 투자</div>
         </div>
-        <div class="bg-card border border-border rounded-lg p-4 text-center">
+        <div class="bg-card border border-border rounded-lg dark:bg-gray-800 dark:border-gray-700 p-4 text-center">
             <div class="text-2xl font-bold text-amber">{{ "{:,}".format(roi_summary.total_won) }}<span class="text-sm text-muted ml-1">원</span></div>
             <div class="text-xs text-muted mt-1">총 당첨금</div>
         </div>
-        <div class="bg-card border border-border rounded-lg p-4 text-center">
+        <div class="bg-card border border-border rounded-lg dark:bg-gray-800 dark:border-gray-700 p-4 text-center">
             <div class="text-2xl font-bold {% if roi_summary.roi_pct > 0 %}text-green-600{% elif roi_summary.roi_pct < 0 %}text-red-500{% else %}text-muted{% endif %}">
                 {% if roi_summary.roi_pct > 0 %}+{% endif %}{{ "%.1f"|format(roi_summary.roi_pct) }}<span class="text-sm ml-0.5">%</span>
             </div>
@@ -51,8 +51,24 @@
     </div>
     {% endif %}
 
+    <!-- SPEC-LOTTO-020 REQ-EXP-004: 구매 이력 내보내기 -->
+    <div class="bg-card border border-border rounded-lg dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <h3 class="font-semibold text-ink mb-3">구매 이력 내보내기</h3>
+        <p class="text-xs text-muted mb-3">구매한 티켓과 당첨 결과를 파일로 다운로드합니다.</p>
+        <div class="flex flex-wrap gap-2">
+            <a href="/api/export/history" download
+               class="inline-block px-4 py-2 text-sm font-medium rounded border border-data-blue text-data-blue hover:bg-data-blue hover:text-white transition-colors">
+                CSV 내보내기
+            </a>
+            <a href="/api/export/history?format=json" download
+               class="inline-block px-4 py-2 text-sm font-medium rounded border border-border text-muted hover:border-data-blue hover:text-data-blue transition-colors">
+                JSON 내보내기
+            </a>
+        </div>
+    </div>
+
     <!-- 티켓 입력 폼 -->
-    <div class="bg-card border border-border rounded-lg p-5 shadow-sm">
+    <div class="bg-card border border-border rounded-lg dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
         <h3 class="font-semibold text-ink mb-4">티켓 추가</h3>
         <form id="add-form" onsubmit="addTicket(event)" class="space-y-4">
             <div class="flex flex-wrap gap-4 items-end">
@@ -98,7 +114,7 @@
     </div>
 
     <!-- 티켓 목록 -->
-    <div class="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
+    <div class="bg-card border border-border rounded-lg dark:bg-gray-800 dark:border-gray-700 shadow-sm overflow-hidden">
         <div class="px-5 py-3 border-b border-border">
             <h3 class="font-semibold text-ink">티켓 목록</h3>
         </div>

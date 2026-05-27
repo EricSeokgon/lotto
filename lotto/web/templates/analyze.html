@@ -4,8 +4,8 @@
 <div class="space-y-6">
     <div class="flex items-center justify-between flex-wrap gap-3">
         <div>
-            <h2 class="text-2xl font-bold text-ink mb-1">빈도 분석</h2>
-            <p class="text-muted text-sm">1~45 번호별 출현 빈도를 시각화합니다. 색이 진할수록 출현 빈도가 높습니다.</p>
+            <h2 class="text-2xl font-bold text-ink dark:text-gray-100 mb-1">빈도 분석</h2>
+            <p class="text-muted dark:text-gray-400 text-sm">1~45 번호별 출현 빈도를 시각화합니다. 색이 진할수록 출현 빈도가 높습니다.</p>
         </div>
         <!-- SPEC-LOTTO-005 REQ-PDF-005: PDF 다운로드 버튼 -->
         <a href="/api/report/pdf"
@@ -16,7 +16,7 @@
 
     {% if stats %}
     <!-- 시그니처 배지 그리드 -->
-    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
         <h3 class="font-semibold text-ink mb-4">번호별 빈도 배지</h3>
         <div class="grid grid-cols-9 gap-1">
             {% for num in numbers %}
@@ -41,7 +41,7 @@
     </div>
 
     <!-- 상위 20개 빈도 차트 -->
-    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
         <div class="flex items-center justify-between mb-4">
             <h3 class="font-semibold text-ink">빈도 상위 20개 번호</h3>
             <div class="flex items-center gap-3 text-xs text-muted">
@@ -62,7 +62,7 @@
     {% set gap_top = gap_rounds.items() | sort(attribute=1, reverse=True) | list %}
     {% set gap_nonzero = gap_top | selectattr(1, 'gt', 0) | list %}
     {% if gap_nonzero %}
-    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
         <div class="flex items-center justify-between mb-3">
             <h3 class="font-semibold text-ink">갭 분석 — 미출현 회차</h3>
             <span class="text-xs text-muted">최근 출현이 없는 번호일수록 갭이 높습니다</span>
@@ -85,8 +85,30 @@
     {% endif %}
     {% endif %}
 
+    <!-- SPEC-LOTTO-019 REQ-PAT-002: 패턴 분석 섹션 (홀짝 / 범위 분포) -->
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-ink">패턴 분석</h3>
+            <span id="patternMeta" class="text-xs text-muted">불러오는 중...</span>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+                <h4 class="text-sm font-medium text-ink mb-2">홀짝 분포 (회차별 홀수 개수)</h4>
+                <div style="position:relative; height:240px;">
+                    <canvas id="oddEvenChart"></canvas>
+                </div>
+            </div>
+            <div>
+                <h4 class="text-sm font-medium text-ink mb-2">번호 범위 분포</h4>
+                <div style="position:relative; height:240px;">
+                    <canvas id="rangeDistChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
     {% else %}
-    <div class="bg-card rounded-lg border border-border p-8 text-center shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-8 text-center shadow-sm">
         <p class="text-muted">통계 데이터가 없습니다.</p>
         <p class="text-sm text-muted mt-1">CLI에서 <code class="bg-surface px-1 rounded">python main.py analyze</code> 명령을 실행하세요.</p>
     </div>
@@ -183,6 +205,79 @@
             }
         }
     });
+})();
+</script>
+
+<!-- SPEC-LOTTO-019 REQ-PAT-002: 패턴 분석 차트 렌더링 -->
+<script>
+(function() {
+    fetch('/api/pattern-analysis')
+        .then(function(res) {
+            if (!res.ok) { throw new Error('HTTP ' + res.status); }
+            return res.json();
+        })
+        .then(function(data) {
+            var meta = document.getElementById('patternMeta');
+            if (meta) {
+                var consecPct = (data.consecutive * 100).toFixed(1);
+                meta.textContent = '총 ' + data.total_draws + '회차 · 연속 번호 포함: ' + consecPct + '%';
+            }
+
+            // 홀짝 분포 차트
+            var oddCtxEl = document.getElementById('oddEvenChart');
+            if (oddCtxEl && data.odd_even) {
+                var labels = ['0','1','2','3','4','5','6'];
+                var values = labels.map(function(k) { return data.odd_even[k] || 0; });
+                new Chart(oddCtxEl.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: labels.map(function(k) { return k + '개'; }),
+                        datasets: [{
+                            label: '회차 수',
+                            data: values,
+                            backgroundColor: '#3B82F6',
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+            }
+
+            // 번호 범위 분포 차트
+            var rangeCtxEl = document.getElementById('rangeDistChart');
+            if (rangeCtxEl && data.range_dist) {
+                var rLabels = ['1-9','10-19','20-29','30-39','40-45'];
+                var rColors = ['#FBC400','#69C8F2','#FF7272','#AAAAAA','#B0D840'];
+                var rValues = rLabels.map(function(k) { return data.range_dist[k] || 0; });
+                new Chart(rangeCtxEl.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: rLabels,
+                        datasets: [{
+                            label: '번호 출현 횟수',
+                            data: rValues,
+                            backgroundColor: rColors,
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+            }
+        })
+        .catch(function(err) {
+            var meta = document.getElementById('patternMeta');
+            if (meta) { meta.textContent = '패턴 데이터를 불러올 수 없습니다.'; }
+        });
 })();
 </script>
 {% endif %}

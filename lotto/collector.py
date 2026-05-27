@@ -81,12 +81,29 @@ class LottoCollector:
             return None
 
     def load_existing(self) -> list[DrawResult]:
-        """기존 CSV에서 DrawResult 목록을 로드합니다."""
+        """기존 CSV에서 DrawResult 목록을 로드합니다.
+
+        SPEC-LOTTO-017 REQ-PRIZE-D-001: prize1Amount/prize1Winners 컬럼이
+        없는 레거시 CSV 도 하위 호환되도록 처리한다 (없으면 None).
+        """
         if not self._csv_path.exists():
             return []
         df = pd.read_csv(self._csv_path)
+        has_prize_amount = "prize1Amount" in df.columns
+        has_prize_winners = "prize1Winners" in df.columns
         results = []
         for _, row in df.iterrows():
+            # SPEC-LOTTO-017: 컬럼이 없거나 값이 NaN 이면 None 처리
+            prize_amount: int | None = None
+            if has_prize_amount:
+                raw = row["prize1Amount"]
+                if pd.notna(raw):
+                    prize_amount = int(raw)
+            prize_winners: int | None = None
+            if has_prize_winners:
+                raw_w = row["prize1Winners"]
+                if pd.notna(raw_w):
+                    prize_winners = int(raw_w)
             results.append(
                 DrawResult(
                     drwNo=int(row["drwNo"]),
@@ -98,6 +115,8 @@ class LottoCollector:
                     n5=int(row["n5"]),
                     n6=int(row["n6"]),
                     bonus=int(row["bonus"]),
+                    prize1Amount=prize_amount,
+                    prize1Winners=prize_winners,
                 )
             )
         return results
@@ -223,8 +242,13 @@ class LottoCollector:
 
     # @MX:ANCHOR: [AUTO] DrawResult → DataFrame 변환 헬퍼 (save_csv/append_draws 공용)
     # @MX:REASON: 두 저장 경로가 동일한 컬럼 순서를 유지해야 데이터 무결성이 보장됨
+    # @MX:SPEC: SPEC-LOTTO-017 REQ-PRIZE-D-001
     def _to_dataframe(self, draws: list[DrawResult]) -> pd.DataFrame:
-        """DrawResult 목록을 DataFrame으로 변환합니다."""
+        """DrawResult 목록을 DataFrame으로 변환합니다.
+
+        SPEC-LOTTO-017: prize1Amount/prize1Winners 컬럼을 항상 포함하여
+        저장한다. None 값은 CSV 에서 빈 셀로 직렬화된다.
+        """
         rows = [
             {
                 "drwNo": d.drwNo,
@@ -236,6 +260,8 @@ class LottoCollector:
                 "n5": d.n5,
                 "n6": d.n6,
                 "bonus": d.bonus,
+                "prize1Amount": d.prize1Amount,
+                "prize1Winners": d.prize1Winners,
             }
             for d in draws
         ]

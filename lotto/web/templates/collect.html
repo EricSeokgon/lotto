@@ -3,12 +3,12 @@
 {% block content %}
 <div class="space-y-6">
     <div>
-        <h2 class="text-2xl font-bold text-ink mb-1">수집 현황</h2>
-        <p class="text-muted text-sm">동행복권 API에서 수집한 당첨 번호 데이터 상태입니다.</p>
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100 mb-1">수집 현황</h2>
+        <p class="text-muted dark:text-gray-400 text-sm">동행복권 API에서 수집한 당첨 번호 데이터 상태입니다.</p>
     </div>
 
     <!-- 블로그 크롤링 (권장) -->
-    <div class="bg-card rounded-lg border border-data-blue p-5 shadow-sm">
+    <div class="bg-card rounded-lg border border-data-blue p-5 shadow-sm dark:bg-gray-800">
         <div class="mb-3">
             <div class="flex items-center gap-2 mb-1">
                 <h3 class="font-semibold text-ink">블로그 크롤링 수집</h3>
@@ -23,7 +23,7 @@
     </div>
 
     <!-- API 자동 수집 -->
-    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
         <div class="mb-4">
             <h3 class="font-semibold text-ink">API 자동 수집</h3>
             <p class="text-xs text-muted mt-0.5">동행복권 API에서 당첨 번호를 가져옵니다. 네트워크 환경에 따라 차단될 수 있습니다.</p>
@@ -72,8 +72,18 @@
         <div id="collect-result" class="hidden text-sm rounded px-3 py-2 mt-3"></div>
     </div>
 
+    <!-- SPEC-LOTTO-020 REQ-EXP-004: 데이터 내보내기 -->
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <h3 class="font-semibold text-ink mb-3">데이터 내보내기</h3>
+        <p class="text-xs text-muted mb-3">수집된 추첨 데이터를 CSV 파일로 다운로드합니다.</p>
+        <a href="/api/export/draws" download
+           class="inline-block px-4 py-2 text-sm font-medium rounded border border-data-blue text-data-blue hover:bg-data-blue hover:text-white transition-colors">
+            추첨 데이터 내보내기 (CSV)
+        </a>
+    </div>
+
     <!-- 데이터 파일 상태 -->
-    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
         <h3 class="font-semibold text-ink mb-3">데이터 파일 상태</h3>
         <div class="space-y-2">
             <div class="flex items-center justify-between py-2 border-b border-border">
@@ -92,7 +102,7 @@
     </div>
 
     <!-- 수동 입력 폼 -->
-    <div class="bg-card rounded-lg border border-border shadow-sm overflow-hidden">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 shadow-sm overflow-hidden">
         <button id="toggle-manual" onclick="toggleManualForm()"
                 class="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-surface transition-colors">
             <span class="font-semibold text-ink">수동 데이터 입력</span>
@@ -138,7 +148,7 @@
 
     {% if draws %}
     <!-- 수집 데이터 요약 -->
-    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
         <h3 class="font-semibold text-ink mb-3">수집 데이터 요약</h3>
         <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
             <div>
@@ -157,7 +167,7 @@
     </div>
 
     <!-- 추첨 결과 (클라이언트 사이드 페이지네이션, SPEC-LOTTO-010) -->
-    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
         <h3 class="font-semibold text-ink mb-3">추첨 결과</h3>
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
@@ -215,7 +225,7 @@
         </div>
     </div>
     {% else %}
-    <div class="bg-card rounded-lg border border-border p-8 text-center shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-8 text-center shadow-sm">
         <p class="text-muted">수집된 데이터가 없습니다.</p>
         <p class="text-sm text-muted mt-1">CLI에서 <code class="bg-surface px-1 rounded">python main.py collect</code> 명령을 실행하세요.</p>
     </div>

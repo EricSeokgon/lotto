@@ -7,25 +7,34 @@
 from __future__ import annotations
 
 import datetime
+import io
 import logging
 import threading
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
-    Optional,  # noqa: UP035 — FastAPI requires Optional for Query params on Python 3.9
+    Optional,  # noqa: UP045 — FastAPI requires Optional for Query params on Python 3.9
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, field_validator, model_validator
 
 from lotto.config import settings
 from lotto.web.data import (
     get_draws,
+    get_favorites,
+    get_history,
     get_recommendations,
     get_simulation,
     get_stats,
     invalidate_cache,
+    pattern_analysis,
+    save_favorites,
 )
 
 # SPEC-LOTTO-002: 모듈 로거 — 무음 예외를 구조화 로깅으로 전환
@@ -233,6 +242,43 @@ async def get_recommendation_list(
     return [r.model_dump() for r in recs]
 
 
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-019 REQ-PAT-001 — 번호 패턴 분석 API 경계
+# @MX:REASON: 외부 클라이언트(analyze 페이지 JS)에서 직접 호출되는 공개 API
+# @MX:SPEC: SPEC-LOTTO-019 REQ-PAT-001
+@router.get("/pattern-analysis")
+async def get_pattern_analysis() -> dict[str, Any]:
+    """전체 추첨 데이터의 번호 패턴 분포를 반환합니다.
+
+    REQ-PAT-001: odd_even/range_dist/consecutive/sum_range/last_digit/total_draws
+    draws.csv 부재 시 503.
+    """
+    draws = get_draws()
+    if draws is None:
+        raise HTTPException(
+            503,
+            detail={
+                "error": "data_unavailable",
+                "message": "데이터가 없습니다. 먼저 수집을 실행해주세요.",
+            },
+        )
+    return pattern_analysis(draws)
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-017 REQ-PRIZE-D-002 — 1등 당첨금 통계 공개 API
+# @MX:SPEC: SPEC-LOTTO-017 REQ-PRIZE-D-002
+@router.get("/prize-stats")
+async def get_prize_statistics() -> dict[str, Any]:
+    """1등 당첨금 통계를 반환합니다.
+
+    데이터 부재 시에도 200 으로 정상 응답 (nulls + 빈 recent).
+    이는 홈 페이지 카드가 빈 상태 메시지를 자연스럽게 렌더링하도록 한다.
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.get_prize_stats()
+
+
 @router.get("/simulation")
 async def run_simulation_results(
     rounds: int = Query(default=1000, ge=1, le=100000, description="시뮬레이션 회차 수 (1~100000)"),
@@ -266,6 +312,155 @@ async def download_pdf_report() -> Response:
         headers={
             "Content-Disposition": "attachment; filename=lotto_report.pdf",
         },
+    )
+
+
+# ─── SPEC-LOTTO-020: 데이터 내보내기 (CSV/JSON) ────────────────────────────
+
+# @MX:NOTE: [AUTO] 추첨/구매이력 데이터를 외부 도구(Excel 등)로 내보내는 다운로드 엔드포인트
+# @MX:SPEC: SPEC-LOTTO-020 REQ-EXP-001~003
+
+_DRAWS_CSV_COLUMNS: list[str] = [
+    "drwNo", "date", "n1", "n2", "n3", "n4", "n5", "n6", "bonus",
+]
+_HISTORY_CSV_COLUMNS: list[str] = [
+    "id", "purchase_date", "numbers", "draw_no", "prize_rank", "prize_amount",
+]
+
+
+def _today_yyyymmdd() -> str:
+    """오늘 날짜를 YYYYMMDD 형식으로 반환합니다."""
+    return datetime.date.today().strftime("%Y%m%d")
+
+
+def _draws_csv_iter(draws: list[Any]) -> Iterator[str]:
+    """추첨 데이터를 CSV 행 단위로 yield 하는 제너레이터."""
+    import csv
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(_DRAWS_CSV_COLUMNS)
+    yield buffer.getvalue()
+    buffer.seek(0)
+    buffer.truncate(0)
+
+    for d in draws:
+        writer.writerow([
+            d.drwNo, str(d.date),
+            d.n1, d.n2, d.n3, d.n4, d.n5, d.n6, d.bonus,
+        ])
+        yield buffer.getvalue()
+        buffer.seek(0)
+        buffer.truncate(0)
+
+
+@router.get("/export/draws")
+async def export_draws_csv(
+    from_drw: Optional[int] = Query(  # noqa: UP045
+        default=None, ge=1, description="시작 회차 (포함, >=1)"
+    ),
+    to_drw: Optional[int] = Query(  # noqa: UP045
+        default=None, ge=1, description="끝 회차 (포함, >=1)"
+    ),
+) -> StreamingResponse:
+    """추첨 데이터를 CSV 파일로 내보냅니다 (SPEC-LOTTO-020 REQ-EXP-001).
+
+    - 컬럼: drwNo, date, n1~n6, bonus
+    - 파일명: lotto_draws_YYYYMMDD.csv (today)
+    - 데이터 없어도 200 + 헤더만 있는 CSV 반환
+    - from_drw/to_drw 로 회차 범위 필터링
+    """
+    draws = get_draws() or []
+    if from_drw is not None:
+        draws = [d for d in draws if d.drwNo >= from_drw]
+    if to_drw is not None:
+        draws = [d for d in draws if d.drwNo <= to_drw]
+
+    filename = f"lotto_draws_{_today_yyyymmdd()}.csv"
+    return StreamingResponse(
+        _draws_csv_iter(draws),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _build_history_rows(tickets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """티켓 목록을 export용 행 dict 리스트로 변환합니다.
+
+    당첨 결과(prize_rank, prize_amount)는 compute_ticket_results 와 동일한
+    purchase 계산을 사용한다.
+    """
+    from lotto.purchase import calc_prize
+
+    draws = get_draws() or []
+    draw_map = {d.drwNo: d for d in draws}
+
+    rows: list[dict[str, Any]] = []
+    for t in tickets:
+        drw_no = t.get("drwNo", 0)
+        draw = draw_map.get(drw_no)
+        rank, amount, _matched, _bonus = calc_prize(t.get("numbers", []), draw)
+        rows.append({
+            "id": t.get("id", ""),
+            "purchase_date": t.get("bought_at", ""),
+            "numbers": ",".join(str(n) for n in t.get("numbers", [])),
+            "draw_no": drw_no,
+            "prize_rank": rank,
+            "prize_amount": amount,
+        })
+    return rows
+
+
+def _history_csv_iter(rows: list[dict[str, Any]]) -> Iterator[str]:
+    """구매 이력 행을 CSV 단위로 yield 한다."""
+    import csv
+
+    buffer = io.StringIO()
+    writer = csv.DictWriter(buffer, fieldnames=_HISTORY_CSV_COLUMNS)
+    writer.writeheader()
+    yield buffer.getvalue()
+    buffer.seek(0)
+    buffer.truncate(0)
+
+    for row in rows:
+        writer.writerow(row)
+        yield buffer.getvalue()
+        buffer.seek(0)
+        buffer.truncate(0)
+
+
+@router.get("/export/history")
+async def export_history(
+    format: str = Query(  # noqa: A002
+        default="csv", description="내보내기 형식 (csv 또는 json)",
+    ),
+) -> Response:
+    """구매 이력을 CSV 또는 JSON 으로 내보냅니다 (REQ-EXP-002, REQ-EXP-003).
+
+    - 기본 format=csv: text/csv 다운로드
+    - format=json: application/json 다운로드
+    - 파일명: lotto_history_YYYYMMDD.(csv|json)
+    - 이력이 없어도 200 + 빈 CSV(헤더만) 또는 빈 JSON 배열 반환
+    """
+    import json as _json
+
+    tickets = get_history()
+    rows = _build_history_rows(tickets)
+    date_suffix = _today_yyyymmdd()
+
+    if format.lower() == "json":
+        filename = f"lotto_history_{date_suffix}.json"
+        return Response(
+            content=_json.dumps(rows, ensure_ascii=False, indent=2),
+            media_type="application/json; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    filename = f"lotto_history_{date_suffix}.csv"
+    return StreamingResponse(
+        _history_csv_iter(rows),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
@@ -571,6 +766,124 @@ async def delete_draw(drw_no: int) -> dict[str, Any]:
     return {"status": "ok", "message": f"{drw_no}회차가 삭제되었습니다.", "total": len(filtered)}
 
 
+# ─── SPEC-LOTTO-016: 번호 즐겨찾기 (favorites) ──────────────────────────────
+
+
+class FavoriteRequest(BaseModel):
+    """즐겨찾기 추가 요청 모델 (REQ-FAV-001).
+
+    - numbers: 1~45 범위의 중복 없는 6개 정수 (정렬 후 저장)
+    - name: 선택, 최대 20자. 생략 시 서버에서 "번호조합 N" 자동 부여
+    """
+
+    numbers: list[int]
+    name: Optional[str] = None  # noqa: UP045 — Pydantic + Python 3.9 호환
+
+    @field_validator("numbers")
+    @classmethod
+    def validate_numbers(cls, v: list[int]) -> list[int]:
+        if len(v) != 6:  # noqa: PLR2004
+            raise ValueError("번호는 정확히 6개여야 합니다.")
+        if len(set(v)) != 6:  # noqa: PLR2004
+            raise ValueError("번호에 중복이 있습니다.")
+        for n in v:
+            if not (1 <= n <= 45):  # noqa: PLR2004
+                raise ValueError(f"번호 {n}은 1~45 범위를 벗어납니다.")
+        return sorted(v)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, v: Optional[str]) -> Optional[str]:  # noqa: UP045
+        if v is None:
+            return None
+        # 최대 20자 (인수 기준)
+        if len(v) > 20:  # noqa: PLR2004
+            raise ValueError("이름은 최대 20자여야 합니다.")
+        return v
+
+
+def _next_auto_name(favorites: list[dict[str, Any]]) -> str:
+    """기존 '번호조합 N' 형식 이름을 보고 다음 자동 이름을 결정한다.
+
+    사용자 지정 이름이 섞여 있어도 자동 카운터만 단조 증가하도록 한다.
+    """
+    prefix = "번호조합 "
+    max_n = 0
+    for fav in favorites:
+        name = fav.get("name", "")
+        if isinstance(name, str) and name.startswith(prefix):
+            tail = name[len(prefix):]
+            if tail.isdigit():
+                try:
+                    n = int(tail)
+                except ValueError:
+                    continue
+                if n > max_n:
+                    max_n = n
+    return f"{prefix}{max_n + 1}"
+
+
+@router.post("/favorites", status_code=201)
+async def add_favorite(req: FavoriteRequest) -> dict[str, Any]:
+    """번호 조합을 즐겨찾기에 추가합니다 (REQ-FAV-001).
+
+    - 동일 번호 집합(순서 무관)이 이미 존재하면 409를 반환한다.
+    - 이름이 생략되면 "번호조합 N" 형식으로 자동 부여한다.
+    """
+    import uuid
+
+    favorites = get_favorites()
+
+    # 중복 검사 (순서 무관 — set 비교)
+    req_set = set(req.numbers)
+    for fav in favorites:
+        existing_nums = fav.get("numbers", [])
+        if isinstance(existing_nums, list) and set(existing_nums) == req_set:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "duplicate",
+                    "message": "동일한 번호 조합이 이미 존재합니다.",
+                },
+            )
+
+    name = req.name if req.name else _next_auto_name(favorites)
+    favorite = {
+        "id": str(uuid.uuid4()),
+        "name": name,
+        "numbers": req.numbers,  # validator에서 정렬 보장
+    }
+    favorites.append(favorite)
+    save_favorites(favorites)
+    # SPEC-LOTTO-009 REQ-CACHE-003: 다른 데이터 무효화 패턴 일관성 유지
+    invalidate_cache()
+    return favorite
+
+
+@router.get("/favorites")
+async def list_favorites() -> list[dict[str, Any]]:
+    """저장된 즐겨찾기를 저장 순서대로 반환합니다 (REQ-FAV-002)."""
+    return get_favorites()
+
+
+@router.delete("/favorites/{fav_id}", status_code=200)
+async def delete_favorite(fav_id: str) -> dict[str, Any]:
+    """지정한 ID의 즐겨찾기를 삭제합니다 (REQ-FAV-003).
+
+    존재하지 않는 ID면 404를 반환한다.
+    """
+    favorites = get_favorites()
+    new_favorites = [fav for fav in favorites if fav.get("id") != fav_id]
+    if len(new_favorites) == len(favorites):
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": "즐겨찾기를 찾을 수 없습니다."},
+        )
+    save_favorites(new_favorites)
+    invalidate_cache()
+    return {"status": "ok"}
+
+
 def _scrape_worker() -> None:
     """블로그 크롤링 워커 — 두 URL에서 전체 회차 데이터를 수집합니다."""
     from lotto.collector import LottoCollector
@@ -673,8 +986,10 @@ class PurchaseRequest(BaseModel):
 @router.get("/history")
 async def list_history() -> list[dict[str, Any]]:
     """저장된 구매 티켓 목록과 각 회차의 당첨 결과를 함께 반환합니다."""
-    from lotto.web.data import compute_ticket_results
-    return compute_ticket_results()
+    # 기존 테스트(test_web_api.py)가 lotto.web.data.compute_ticket_results를
+    # 직접 patch 하므로 로컬 import를 유지한다.
+    from lotto.web.data import compute_ticket_results as _compute
+    return _compute()
 
 
 @router.post("/history", status_code=201)
@@ -682,7 +997,9 @@ async def add_history(req: PurchaseRequest) -> dict[str, Any]:
     """구매 티켓(회차·번호·구매일)을 히스토리에 추가하고 UUID를 발급합니다."""
     import uuid
 
-    from lotto.web.data import get_history, save_history
+    # 기존 테스트가 lotto.web.data 의 함수를 직접 patch 하므로 로컬 import 유지
+    from lotto.web.data import get_history as _get_history
+    from lotto.web.data import save_history as _save_history
 
     # 번호 검증 (Python 3.9 호환: 명시적 길이 확인)
     nums = sorted(set(req.numbers))
@@ -694,7 +1011,7 @@ async def add_history(req: PurchaseRequest) -> dict[str, Any]:
                 "message": "번호를 확인하세요. (1~45 범위의 중복 없는 6개)",
             },
         )
-    tickets = get_history()
+    tickets = _get_history()
     ticket = {
         "id": str(uuid.uuid4()),
         "drwNo": req.drwNo,
@@ -702,23 +1019,25 @@ async def add_history(req: PurchaseRequest) -> dict[str, Any]:
         "bought_at": req.bought_at,
     }
     tickets.append(ticket)
-    save_history(tickets)
+    _save_history(tickets)
     return {"status": "ok", "ticket": ticket}
 
 
 @router.delete("/history/{ticket_id}", status_code=200)
 async def delete_history(ticket_id: str) -> dict[str, Any]:
     """지정한 UUID의 구매 티켓을 삭제합니다. 존재하지 않으면 404를 반환합니다."""
-    from lotto.web.data import get_history, save_history
+    # 기존 테스트가 lotto.web.data 의 함수를 직접 patch 하므로 로컬 import 유지
+    from lotto.web.data import get_history as _get_history
+    from lotto.web.data import save_history as _save_history
 
-    tickets = get_history()
+    tickets = _get_history()
     new_tickets = [t for t in tickets if t["id"] != ticket_id]
     if len(new_tickets) == len(tickets):
         raise HTTPException(
             404,
             detail={"error": "not_found", "message": "티켓을 찾을 수 없습니다."},
         )
-    save_history(new_tickets)
+    _save_history(new_tickets)
     return {"status": "ok"}
 
 
