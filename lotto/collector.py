@@ -11,6 +11,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover
+    from collections.abc import Callable
     from pathlib import Path
 
 import pandas as pd
@@ -59,13 +60,23 @@ class LottoCollector:
         return None
 
     def fetch_draw(self, drw_no: int) -> DrawResult | None:
-        """단일 회차 데이터를 API에서 가져옵니다. 실패 시 None 반환."""
+        """단일 회차 데이터를 API에서 가져옵니다. 실패 시 None 반환.
+
+        SPEC-LOTTO-022 REQ-PRIZE-C-001: firstWinamnt / firstPrzwnerCo 필드를
+        파싱하여 DrawResult.prize1Amount / prize1Winners에 저장한다.
+        해당 필드가 응답에 없으면 None 으로 처리 (방어 코드).
+        """
         data = self._fetch_with_retry(drw_no)
         if data is None:
             return None
         if data.get("returnValue") != "success":
             return None
         try:
+            # SPEC-LOTTO-022 REQ-PRIZE-C-001: prize 필드는 옵셔널 — 누락 시 None
+            raw_amount = data.get("firstWinamnt")
+            raw_winners = data.get("firstPrzwnerCo")
+            prize_amount = int(raw_amount) if raw_amount is not None else None
+            prize_winners = int(raw_winners) if raw_winners is not None else None
             return DrawResult(
                 drwNo=int(data["drwNo"]),
                 date=datetime.date.fromisoformat(str(data["drwNoDate"])),
@@ -76,6 +87,8 @@ class LottoCollector:
                 n5=int(data["drwtNo5"]),
                 n6=int(data["drwtNo6"]),
                 bonus=int(data["bnusNo"]),
+                prize1Amount=prize_amount,
+                prize1Winners=prize_winners,
             )
         except (KeyError, ValueError):
             return None
@@ -178,6 +191,49 @@ class LottoCollector:
 
         self.save_csv(collected)
         return collected
+
+    # @MX:NOTE: [AUTO] SPEC-LOTTO-022 REQ-PRIZE-C-002 — 1등 당첨금 소급 업데이트
+    def update_prizes(
+        self,
+        on_progress: Callable[[int, int, int], None] | None = None,
+    ) -> int:
+        """기존 회차 중 prize1Amount=None 인 행만 API 재요청하여 업데이트한다.
+
+        SPEC-LOTTO-022 REQ-PRIZE-C-002:
+        - prize 데이터가 이미 있는 행은 건너뛰어 API 부하 최소화
+        - fetch 실패한 행은 None 유지 + 카운트에 포함하지 않음
+        - 처리 진행률 콜백 지원 (on_progress(current, total, drw_no))
+
+        Returns:
+            성공적으로 업데이트된 회차 수
+        """
+        existing = self.load_existing()
+        if not existing:
+            return 0
+
+        missing = [d for d in existing if d.prize1Amount is None]
+        total = len(missing)
+        if total == 0:
+            return 0
+
+        # by drwNo 인덱스 — fetch 결과 머지
+        by_drw_no: dict[int, DrawResult] = {d.drwNo: d for d in existing}
+        updated_count = 0
+
+        for idx, draw in enumerate(missing, 1):
+            fetched = self.fetch_draw(draw.drwNo)
+            # SPEC-LOTTO-007 REQUEST_DELAY_MS: 200ms 딜레이 (API 부하 보호)
+            time.sleep(REQUEST_DELAY_MS / 1000.0)
+            if fetched is not None and fetched.prize1Amount is not None:
+                by_drw_no[draw.drwNo] = fetched
+                updated_count += 1
+            if on_progress is not None:
+                on_progress(idx, total, draw.drwNo)
+
+        # 전체 재저장 — drwNo 순 정렬 유지
+        merged = sorted(by_drw_no.values(), key=lambda d: d.drwNo)
+        self.save_csv(merged)
+        return updated_count
 
     # @MX:NOTE: [AUTO] SPEC-LOTTO-007 REQ-SYNC-004 — 데이터 갭(누락 회차) 감지
     def detect_gaps(self, draws: list[DrawResult] | None = None) -> list[int]:

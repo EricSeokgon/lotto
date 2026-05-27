@@ -607,13 +607,77 @@ async def collect_status() -> dict[str, Any]:
         return dict(_collect_state)
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-022 REQ-PRIZE-C-002 — 1등 당첨금 소급 업데이트 백그라운드 워커
+def _update_prizes_worker() -> None:
+    """기존 데이터의 prize1Amount=None 행만 API 재요청하여 업데이트한다.
+
+    진행 상태를 _collect_state에 기록하여 /api/collect/status로 폴링 가능.
+    """
+    from lotto.collector import LottoCollector
+
+    global _collect_state  # noqa: PLW0603
+
+    collector = LottoCollector()
+
+    # 누락 행 카운트
+    existing = collector.load_existing()
+    missing_count = sum(1 for d in existing if d.prize1Amount is None)
+
+    with _collect_lock:
+        _collect_state.update({
+            "status": "running",
+            "current": 0,
+            "total": missing_count,
+            "collected": 0,
+            "message": "1등 당첨금 업데이트 중...",
+        })
+
+    if missing_count == 0:
+        with _collect_lock:
+            _collect_state.update({
+                "status": "done",
+                "message": "업데이트할 누락 회차가 없습니다.",
+            })
+        invalidate_cache()
+        return
+
+    def _on_progress(current: int, total: int, drw_no: int) -> None:
+        with _collect_lock:
+            _collect_state["current"] = current
+            _collect_state["message"] = f"{drw_no}회차 당첨금 업데이트 중..."
+
+    try:
+        updated = collector.update_prizes(on_progress=_on_progress)
+        with _collect_lock:
+            _collect_state.update({
+                "status": "done",
+                "collected": updated,
+                "message": f"1등 당첨금 업데이트 완료 — {updated}회차 갱신",
+            })
+    except Exception as exc:  # noqa: BLE001
+        with _collect_lock:
+            _collect_state.update({
+                "status": "error",
+                "message": f"당첨금 업데이트 실패: {exc}",
+            })
+        # SPEC-LOTTO-002 REQ-ERR-002: 실패는 로그에 흔적을 남김
+        logger.warning("Prize update worker failed: %s", exc, exc_info=True)
+    # SPEC-LOTTO-009 REQ-CACHE-003: 성공·실패 모두 캐시 무효화로 최신성 보장
+    invalidate_cache()
+
+
 @router.post("/collect", status_code=202)
 async def trigger_collect(
     background_tasks: BackgroundTasks,
     full: bool = Query(default=False, description="True면 전체 재수집"),
     count: int = Query(default=0, ge=0, description="최근 N회 수집 (0=증분, full=True면 무시)"),
+    update_prizes: bool = Query(  # noqa: FBT001 — FastAPI Query 패턴
+        default=False,
+        description="True면 기존 데이터의 1등 당첨금만 소급 업데이트 (SPEC-LOTTO-022)",
+    ),
 ) -> dict[str, Any]:
     """데이터 수집을 백그라운드에서 시작합니다.
+    - update_prizes=true: 기존 회차 중 prize1Amount=None 행만 재요청
     - full=true: 1회차부터 전체 재수집
     - count>0: 최근 N회차 수집
     - 기본: 마지막 저장 회차 이후 증분 수집
@@ -628,6 +692,14 @@ async def trigger_collect(
     csv_path = Path("data/draws.csv")
     if csv_path.exists() and csv_path.stat().st_size < 10:
         csv_path.unlink()
+
+    # SPEC-LOTTO-022 REQ-PRIZE-C-002: update_prizes 최우선 분기
+    if update_prizes:
+        background_tasks.add_task(_update_prizes_worker)
+        return {
+            "status": "started",
+            "message": "1등 당첨금 소급 업데이트를 시작했습니다.",
+        }
 
     from lotto.collector import LottoCollector
 

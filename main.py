@@ -32,12 +32,47 @@ def _get_data_dir() -> Path:
 @app.command()
 def collect(
     full: Annotated[bool, typer.Option("--full", help="전체 히스토리 재수집")] = False,
+    update_prizes: Annotated[
+        bool,
+        typer.Option(
+            "--update-prizes",
+            help="기존 데이터의 1등 당첨금만 소급 업데이트 (SPEC-LOTTO-022)",
+        ),
+    ] = False,
 ) -> None:
     """동행복권 API에서 당첨 번호를 수집합니다."""
+    from rich.progress import Progress, SpinnerColumn, TextColumn
+
     from lotto.collector import CollectAbortError, LottoCollector
 
     data_dir = _get_data_dir()
     collector = LottoCollector(data_dir=data_dir)
+
+    # SPEC-LOTTO-022 REQ-PRIZE-C-002: --update-prizes 우선 분기
+    if update_prizes:
+        existing = collector.load_existing()
+        missing = sum(1 for d in existing if d.prize1Amount is None)
+        if missing == 0:
+            console.print("[yellow]업데이트할 누락 회차가 없습니다.[/yellow]")
+            return
+        console.print(f"[bold]{missing}회차의 1등 당첨금을 업데이트합니다...[/bold]")
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task_id = progress.add_task("업데이트 중...", total=missing)
+
+            def _on_progress(current: int, total: int, drw_no: int) -> None:
+                progress.update(
+                    task_id,
+                    completed=current,
+                    description=f"{drw_no}회차 처리 중 ({current}/{total})",
+                )
+
+            updated = collector.update_prizes(on_progress=_on_progress)
+        console.print(f"[green]업데이트 완료: {updated}회차 갱신[/green]")
+        return
 
     try:
         if full:
