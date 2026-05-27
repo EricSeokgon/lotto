@@ -1279,3 +1279,25 @@ async def scheduler_trigger() -> dict[str, Any]:
     from lotto.web import scheduler as _sched
 
     return _sched.trigger_now()
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-025 REQ-NOTIF-004 — 알림 이력/설정 공개 API
+# @MX:SPEC: SPEC-LOTTO-025 REQ-NOTIF-004,005
+@router.get("/notifications")
+async def list_notifications() -> dict[str, Any]:
+    """알림 이력 최근 50건과 마스킹된 설정 상태를 반환한다 (REQ-NOTIF-004,005).
+
+    Response: {"settings": {...}, "items": [...]}
+    파일 부재 시 items=[] (graceful).
+    """
+    from lotto.web import notifier as _notifier
+
+    history = _notifier.load_history()
+    # 최신순 정렬 (sent_at desc) 후 최대 50건
+    sorted_history = sorted(
+        history, key=lambda e: e.get("sent_at", ""), reverse=True,
+    )[:50]
+    return {
+        "settings": _notifier.get_settings_status(),
+        "items": sorted_history,
+    }

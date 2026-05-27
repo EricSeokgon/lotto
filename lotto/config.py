@@ -44,6 +44,11 @@ _DEFAULT_BONUS_AVOIDANCE_WEIGHT = "0.0"
 _DEFAULT_SCHEDULE_ENABLED = "true"
 _DEFAULT_SCHEDULE_CRON = "10 21 * * 6"
 _DEFAULT_SCHEDULE_TZ = "Asia/Seoul"
+# SPEC-LOTTO-025 REQ-NOTIF-001: 알림 설정 기본값
+# - 임계값 0 = 비활성, webhook/email 미설정 = 비활성
+# - SMTP 포트 기본 587 (TLS)
+_DEFAULT_NOTIFY_PRIZE_THRESHOLD = "0"
+_DEFAULT_NOTIFY_SMTP_PORT = "587"
 
 
 def _parse_weights(raw: str) -> tuple[float, float, float, float]:
@@ -103,6 +108,16 @@ class Settings:
     schedule_enabled: bool = True
     schedule_cron: str = "10 21 * * 6"
     schedule_tz: str = "Asia/Seoul"
+    # SPEC-LOTTO-025 REQ-NOTIF-001: 조건부 알림 설정
+    # threshold=0 또는 채널 미설정 시 알림 비활성
+    notify_prize_threshold: int = 0
+    notify_webhook_url: str = ""
+    notify_email_to: str = ""
+    notify_email_from: str = ""
+    notify_smtp_host: str = ""
+    notify_smtp_port: int = 587
+    notify_smtp_user: str = ""
+    notify_smtp_pass: str = ""
 
 
 def _load_settings() -> Settings:
@@ -140,6 +155,21 @@ def _load_settings() -> Settings:
     schedule_enabled = raw_enabled.strip().lower() in {"true", "1", "yes", "on"}
     schedule_cron = os.environ.get("LOTTO_SCHEDULE_CRON", _DEFAULT_SCHEDULE_CRON)
     schedule_tz = os.environ.get("LOTTO_SCHEDULE_TZ", _DEFAULT_SCHEDULE_TZ)
+    # SPEC-LOTTO-025 REQ-NOTIF-001: 알림 설정 — 환경 변수 우선, 기본값 폴백
+    notify_prize_threshold = _parse_int(
+        os.environ.get("LOTTO_NOTIFY_PRIZE_THRESHOLD", _DEFAULT_NOTIFY_PRIZE_THRESHOLD),
+        "LOTTO_NOTIFY_PRIZE_THRESHOLD",
+    )
+    notify_webhook_url = os.environ.get("LOTTO_NOTIFY_WEBHOOK_URL", "")
+    notify_email_to = os.environ.get("LOTTO_NOTIFY_EMAIL_TO", "")
+    notify_email_from = os.environ.get("LOTTO_NOTIFY_EMAIL_FROM", "")
+    notify_smtp_host = os.environ.get("LOTTO_NOTIFY_SMTP_HOST", "")
+    notify_smtp_port = _parse_int(
+        os.environ.get("LOTTO_NOTIFY_SMTP_PORT", _DEFAULT_NOTIFY_SMTP_PORT),
+        "LOTTO_NOTIFY_SMTP_PORT",
+    )
+    notify_smtp_user = os.environ.get("LOTTO_NOTIFY_SMTP_USER", "")
+    notify_smtp_pass = os.environ.get("LOTTO_NOTIFY_SMTP_PASS", "")
 
     return Settings(
         api_url=api_url,
@@ -153,6 +183,14 @@ def _load_settings() -> Settings:
         schedule_enabled=schedule_enabled,
         schedule_cron=schedule_cron,
         schedule_tz=schedule_tz,
+        notify_prize_threshold=notify_prize_threshold,
+        notify_webhook_url=notify_webhook_url,
+        notify_email_to=notify_email_to,
+        notify_email_from=notify_email_from,
+        notify_smtp_host=notify_smtp_host,
+        notify_smtp_port=notify_smtp_port,
+        notify_smtp_user=notify_smtp_user,
+        notify_smtp_pass=notify_smtp_pass,
     )
 
 

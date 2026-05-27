@@ -78,6 +78,25 @@ def _scheduled_collect_job() -> None:
         # 3. 캐시 무효화 (REQ-SCHED-001)
         wd.invalidate_cache()
 
+        # 4. SPEC-LOTTO-025 REQ-NOTIF-002~004: 조건부 알림 발사
+        # 최신 회차 정보를 알림 모듈로 위임. 실패는 흡수 (로그만 남김).
+        try:
+            from lotto.web import notifier as _notifier
+
+            refreshed = LottoCollector().load_existing()
+            if refreshed:
+                latest = max(refreshed, key=lambda d: d.drwNo)
+                draw_info = {
+                    "drwNo": latest.drwNo,
+                    "numbers": latest.numbers(),
+                    "bonus": latest.bonus,
+                    "prize1Amount": latest.prize1Amount,
+                    "prize1Winners": latest.prize1Winners,
+                }
+                _notifier.notify(draw_info)
+        except Exception as exc:  # noqa: BLE001 — 알림 실패가 스케줄 결과를 뒤집지 않음
+            logger.warning("Post-collect notification failed: %s", exc, exc_info=True)
+
         with _state_lock:
             _last_run_state.update({
                 "last_run_at": started_at,

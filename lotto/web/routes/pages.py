@@ -80,12 +80,15 @@ async def index(request: Request) -> TemplateResponse:
 
     SPEC-LOTTO-009 REQ-LAST-001: 헤더에 표시할 last_date 컨텍스트를 전달한다.
     SPEC-LOTTO-023 REQ-SCHED-004: 다음 자동 수집 예정 시각을 컨텍스트로 노출한다.
+    SPEC-LOTTO-025 REQ-NOTIF-005: 알림 설정 상태 카드를 컨텍스트로 노출한다.
     """
+    from lotto.web import notifier as _notifier
     from lotto.web import scheduler as _sched
 
     data_status = get_data_status()
     last_date = get_last_sync_date()
     sched_status = _sched.get_status()
+    notify_status = _notifier.get_settings_status()
     return _render(request, "index.html", {
         "active_tab": "dashboard",
         "data_status": data_status,
@@ -93,6 +96,8 @@ async def index(request: Request) -> TemplateResponse:
         # REQ-SCHED-004: 스케줄러 비활성 시 next_run 은 None → 템플릿에서 숨김
         "scheduler_enabled": sched_status["enabled"],
         "scheduler_next_run": sched_status["next_run"],
+        # REQ-NOTIF-005: 알림 설정 상태 (마스킹 처리됨 — URL/이메일 미노출)
+        "notify_status": notify_status,
     })
 
 

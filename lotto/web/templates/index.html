@@ -16,6 +16,32 @@
     </div>
     {% endif %}
 
+    {# SPEC-LOTTO-025 REQ-NOTIF-005: 알림 설정 상태 카드 (URL/이메일은 마스킹) #}
+    {% if notify_status %}
+    <div id="notify-settings" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-semibold text-ink dark:text-gray-100">알림 설정</h3>
+            <a href="/api/notifications" class="text-xs text-muted dark:text-gray-400 hover:underline">이력 보기 →</a>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div>
+                <p class="text-muted dark:text-gray-400">임계값 (1등)</p>
+                <p class="font-mono text-ink dark:text-gray-100" data-testid="notify-threshold">
+                    {% if notify_status.threshold > 0 %}{{ "{:,}".format(notify_status.threshold) }}원{% else %}비활성{% endif %}
+                </p>
+            </div>
+            <div>
+                <p class="text-muted dark:text-gray-400">Webhook</p>
+                <p class="font-mono text-ink dark:text-gray-100" data-testid="notify-webhook">{{ notify_status.webhook }}</p>
+            </div>
+            <div>
+                <p class="text-muted dark:text-gray-400">Email</p>
+                <p class="font-mono text-ink dark:text-gray-100" data-testid="notify-email">{{ notify_status.email }}</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- 데이터 상태 카드 -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4 shadow-sm">
