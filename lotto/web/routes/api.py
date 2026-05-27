@@ -1132,3 +1132,123 @@ async def trigger_analyze(background_tasks: BackgroundTasks) -> dict[str, Any]:
 
     background_tasks.add_task(_run_analyze)
     return {"status": "started", "message": "통계 분석을 시작했습니다."}
+
+
+# ─── SPEC-LOTTO-024: 번호 즉시 검증 도구 ──────────────────────────────────
+
+# 등수별 고정 당첨금 (정수 키 기반, lotto.purchase._PRIZE_AMOUNTS 와 동일 정책)
+_CHECK_PRIZE_AMOUNTS: dict[int, int] = {
+    1: 0,           # 변동 (당첨자 수에 따라)
+    2: 0,           # 변동
+    3: 1_500_000,
+    4: 50_000,
+    5: 5_000,
+    0: 0,           # 미당첨
+}
+
+
+def _parse_numbers_csv(raw: str) -> list[int]:
+    """콤마 구분 문자열 "1,7,13,22,35,44" 를 정수 리스트로 파싱.
+
+    형식 오류는 ValueError 로 위임 (호출부에서 422 변환).
+    """
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    return [int(p) for p in parts]
+
+
+def _calc_check_rank(
+    user_numbers: list[int],
+    draw: Any,  # noqa: ANN401 — DrawResult; runtime duck-typed for monkeypatch 호환
+) -> tuple[int, list[int], bool]:
+    """사용자 번호와 추첨 결과를 비교하여 (등수, 일치 번호, 보너스 일치) 반환.
+
+    등수 매핑:
+    - 6개 일치: 1등
+    - 5개 일치 + 보너스: 2등
+    - 5개 일치, 보너스 미일치: 3등
+    - 4개 일치: 4등
+    - 3개 일치: 5등
+    - 그 외: 0 (미당첨)
+    """
+    draw_numbers = set(draw.numbers())
+    user_set = set(user_numbers)
+    matched_set = user_set & draw_numbers
+    matched_count = len(matched_set)
+    bonus_matched = draw.bonus in user_set
+
+    if matched_count == 6:  # noqa: PLR2004
+        rank = 1
+    elif matched_count == 5 and bonus_matched:  # noqa: PLR2004
+        rank = 2
+    elif matched_count == 5:  # noqa: PLR2004
+        rank = 3
+    elif matched_count == 4:  # noqa: PLR2004
+        rank = 4
+    elif matched_count == 3:  # noqa: PLR2004
+        rank = 5
+    else:
+        rank = 0
+
+    return rank, sorted(matched_set), bonus_matched
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-024 REQ-CHECK-001 — 번호 즉시 검증 공개 API
+# @MX:REASON: 외부 클라이언트(check 페이지 JS)에서 직접 호출되는 공개 경계
+# @MX:SPEC: SPEC-LOTTO-024 REQ-CHECK-001
+@router.get("/check")
+async def check_numbers(
+    drw_no: int = Query(..., ge=1, description="확인할 추첨 회차 번호"),
+    numbers: str = Query(..., description="확인할 6개 번호 (콤마 구분, 예: 1,7,13,22,35,44)"),
+) -> dict[str, Any]:
+    """입력 번호의 등수를 즉시 계산하여 반환합니다 (REQ-CHECK-001).
+
+    - 응답: {drwNo, rank, matched, bonus_matched, prize_amount, draw_date}
+    - rank: 1~5 (당첨), 0 (미당첨)
+    - 회차 미존재 시 404, 번호 형식 오류 시 422
+    """
+    # 번호 파싱 — 형식 오류는 422
+    try:
+        parsed = _parse_numbers_csv(numbers)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_numbers", "message": f"번호 형식이 올바르지 않습니다: {err}"},
+        ) from err
+
+    # 길이/범위/중복 검증
+    if len(parsed) != 6:  # noqa: PLR2004
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_count", "message": "번호는 정확히 6개여야 합니다."},
+        )
+    if any(not (1 <= n <= 45) for n in parsed):  # noqa: PLR2004
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "out_of_range", "message": "번호는 1~45 범위여야 합니다."},
+        )
+    if len(set(parsed)) != 6:  # noqa: PLR2004
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "duplicate", "message": "번호에 중복이 있습니다."},
+        )
+
+    # 회차 조회 — lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    draws = wd.get_draws() or []
+    draw = next((d for d in draws if d.drwNo == drw_no), None)
+    if draw is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "draw_not_found", "message": f"{drw_no}회차를 찾을 수 없습니다."},
+        )
+
+    rank, matched, bonus_matched = _calc_check_rank(parsed, draw)
+    return {
+        "drwNo": drw_no,
+        "rank": rank,
+        "matched": matched,
+        "bonus_matched": bonus_matched,
+        "prize_amount": _CHECK_PRIZE_AMOUNTS[rank],
+        "draw_date": str(draw.date),
+    }

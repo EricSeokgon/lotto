@@ -276,6 +276,28 @@ async def purchases_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-024 REQ-CHECK-002 — 번호 즉시 검증 페이지
+# @MX:SPEC: SPEC-LOTTO-024 REQ-CHECK-002
+@router.get("/check")
+async def check_page(request: Request) -> TemplateResponse:
+    """번호 즉시 검증 페이지 — 회차/번호 입력 후 등수 확인 (REQ-CHECK-002).
+
+    최신 회차 번호를 기본값으로 채워준다 (인수 조건).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    data_status = get_data_status()
+    draws = wd.get_draws()
+    # 인수 조건: 최신 회차를 기본값으로 (draws가 없으면 1)
+    latest_drw_no = max((d.drwNo for d in draws), default=1) if draws else 1
+    return _render(request, "check.html", {
+        "active_tab": "check",
+        "data_status": data_status,
+        "latest_drw_no": latest_drw_no,
+    })
+
+
 @router.get("/history")
 async def history_page(request: Request) -> TemplateResponse:
     """구매 히스토리 페이지.

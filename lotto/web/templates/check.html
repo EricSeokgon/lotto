@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+        <div>
+            <h2 class="text-2xl font-bold text-ink dark:text-gray-100 mb-1">번호 확인</h2>
+            <p class="text-muted dark:text-gray-400 text-sm">회차와 6개 번호를 입력하면 즉시 등수를 알려드립니다.</p>
+        </div>
+    </div>
+
+    <!-- 입력 폼 -->
+    <section class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div class="space-y-4">
+            <!-- 회차 입력 -->
+            <div class="flex flex-wrap items-center gap-3">
+                <label for="check-drw-no" class="text-sm font-medium text-ink dark:text-gray-100">회차:</label>
+                <input id="check-drw-no" name="drw_no" type="number" min="1"
+                       value="{{ latest_drw_no }}"
+                       class="w-32 px-3 py-2 text-sm border border-border rounded bg-card text-ink dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                       placeholder="예: 1234">
+                <span class="text-xs text-muted dark:text-gray-400">최신 회차가 기본값으로 채워져 있습니다.</span>
+            </div>
+
+            <!-- 번호 입력 (6개) -->
+            <div>
+                <label class="block text-sm font-medium text-ink dark:text-gray-100 mb-2">번호 (6개, 1~45):</label>
+                <div class="flex flex-wrap items-center gap-2">
+                    {% for i in range(6) %}
+                    <input type="number" min="1" max="45"
+                           class="check-num w-16 px-2 py-2 text-sm text-center border border-border rounded bg-card text-ink dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                           data-index="{{ i }}">
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- 버튼 -->
+            <div class="flex flex-wrap items-center gap-2 pt-2">
+                <button id="check-submit"
+                        class="px-4 py-2 text-sm font-medium rounded bg-data-blue text-white hover:opacity-90 transition-opacity">
+                    확인
+                </button>
+                <button id="load-favorites"
+                        class="px-4 py-2 text-sm font-medium rounded border border-border bg-card text-ink hover:bg-surface dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100 dark:hover:bg-gray-600 transition-colors">
+                    즐겨찾기 불러오기
+                </button>
+                <button id="check-reset"
+                        class="px-4 py-2 text-sm font-medium rounded border border-border bg-card text-muted hover:bg-surface dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors">
+                    초기화
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- 결과 영역 -->
+    <section id="check-result" class="hidden bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div id="check-result-content"></div>
+    </section>
+
+    <!-- 오류 메시지 -->
+    <section id="check-error" class="hidden bg-red-50 border border-red-200 dark:bg-red-900/30 dark:border-red-800 rounded-lg p-4">
+        <p id="check-error-message" class="text-sm text-red-700 dark:text-red-300"></p>
+    </section>
+</div>
+
+<!-- 즐겨찾기 모달 -->
+<div id="favorites-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div class="bg-card dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[80vh] overflow-hidden flex flex-col">
+        <div class="px-4 py-3 border-b border-border dark:border-gray-700 flex items-center justify-between">
+            <h3 class="text-base font-semibold text-ink dark:text-gray-100">즐겨찾기 선택</h3>
+            <button id="favorites-close" class="text-muted hover:text-ink dark:text-gray-400 dark:hover:text-gray-100">✕</button>
+        </div>
+        <div id="favorites-list" class="overflow-y-auto p-4 space-y-2">
+            <p class="text-sm text-muted dark:text-gray-400">불러오는 중...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    // 공식 색상 (pages.py _ball_color 와 일치)
+    function ballColor(n) {
+        if (n <= 10) return '#FBC400';
+        if (n <= 20) return '#69C8F2';
+        if (n <= 30) return '#FF7272';
+        if (n <= 40) return '#AAAAAA';
+        return '#B0D840';
+    }
+
+    function ballHTML(n, highlight) {
+        var bg = ballColor(n);
+        var fg = (n >= 11 && n <= 20) || (n >= 21 && n <= 30) || (n >= 41 && n <= 45) ? '#fff' : '#1f2937';
+        var ring = highlight ? 'box-shadow:0 0 0 3px #10b981;' : '';
+        return '<span class="inline-flex w-9 h-9 rounded-full items-center justify-center text-sm font-bold" style="background-color:' + bg + ';color:' + fg + ';' + ring + '">' + n + '</span>';
+    }
+
+    function rankBadge(rank) {
+        var labels = {1: '1등', 2: '2등', 3: '3등', 4: '4등', 5: '5등', 0: '낙첨'};
+        var classes = {
+            1: 'bg-yellow-400 text-yellow-900',
+            2: 'bg-yellow-200 text-yellow-800',
+            3: 'bg-orange-200 text-orange-800',
+            4: 'bg-green-200 text-green-800',
+            5: 'bg-blue-200 text-blue-800',
+            0: 'bg-gray-200 text-gray-600'
+        };
+        return '<span class="inline-block px-3 py-1 rounded-full text-sm font-semibold ' + classes[rank] + '">' + labels[rank] + '</span>';
+    }
+
+    function getInputs() {
+        return Array.from(document.querySelectorAll('.check-num'));
+    }
+
+    function readNumbers() {
+        return getInputs()
+            .map(function(el) { return el.value.trim(); })
+            .filter(function(v) { return v !== ''; })
+            .map(function(v) { return parseInt(v, 10); });
+    }
+
+    function showError(msg) {
+        var box = document.getElementById('check-error');
+        document.getElementById('check-error-message').textContent = msg;
+        box.classList.remove('hidden');
+        document.getElementById('check-result').classList.add('hidden');
+    }
+
+    function hideError() {
+        document.getElementById('check-error').classList.add('hidden');
+    }
+
+    function showResult(data) {
+        hideError();
+        var box = document.getElementById('check-result');
+        var content = document.getElementById('check-result-content');
+
+        var matchedSet = new Set(data.matched);
+        var userNumbers = readNumbers().sort(function(a, b) { return a - b; });
+
+        var ballsHTML = userNumbers.map(function(n) {
+            return ballHTML(n, matchedSet.has(n));
+        }).join(' ');
+
+        var prizeHTML = '';
+        if (data.rank > 0) {
+            var amount = data.prize_amount > 0
+                ? data.prize_amount.toLocaleString('ko-KR') + '원'
+                : '변동 (당첨자 수에 따라)';
+            prizeHTML = '<div class="text-sm text-ink dark:text-gray-100"><strong>당첨금:</strong> ' + amount + '</div>';
+        } else {
+            prizeHTML = '<div class="text-sm text-muted dark:text-gray-400">아쉽네요! <a href="/recommend" class="text-data-blue dark:text-data-muted underline">추천 번호 보러가기</a></div>';
+        }
+
+        content.innerHTML =
+            '<div class="space-y-3">' +
+            '<div class="flex items-center gap-3 flex-wrap">' +
+              '<span class="text-sm text-muted dark:text-gray-400">' + data.drwNo + '회차 (' + data.draw_date + ')</span>' +
+              rankBadge(data.rank) +
+              (data.bonus_matched ? '<span class="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-medium">보너스 일치</span>' : '') +
+            '</div>' +
+            '<div class="flex flex-wrap gap-2">' + ballsHTML + '</div>' +
+            '<div class="text-sm text-muted dark:text-gray-400">일치 개수: <strong class="text-ink dark:text-gray-100">' + data.matched.length + '개</strong></div>' +
+            prizeHTML +
+            '</div>';
+        box.classList.remove('hidden');
+    }
+
+    async function doCheck() {
+        var drwNoEl = document.getElementById('check-drw-no');
+        var drwNo = parseInt(drwNoEl.value, 10);
+        if (!drwNo || drwNo < 1) {
+            showError('회차 번호를 입력하세요.');
+            return;
+        }
+        var nums = readNumbers();
+        if (nums.length !== 6) {
+            showError('번호를 정확히 6개 입력하세요.');
+            return;
+        }
+        if (nums.some(function(n) { return isNaN(n) || n < 1 || n > 45; })) {
+            showError('번호는 1~45 범위여야 합니다.');
+            return;
+        }
+        if (new Set(nums).size !== 6) {
+            showError('중복된 번호가 있습니다.');
+            return;
+        }
+
+        try {
+            var url = '/api/check?drw_no=' + drwNo + '&numbers=' + nums.join(',');
+            var res = await fetch(url);
+            var body = await res.json();
+            if (res.status === 404) {
+                showError((body.detail && body.detail.message) || drwNo + '회차를 찾을 수 없습니다.');
+                return;
+            }
+            if (!res.ok) {
+                showError((body.detail && body.detail.message) || '검증에 실패했습니다.');
+                return;
+            }
+            showResult(body);
+        } catch (e) {
+            showError('네트워크 오류: ' + e.message);
+        }
+    }
+
+    function setNumbers(nums) {
+        var inputs = getInputs();
+        inputs.forEach(function(el, i) {
+            el.value = (i < nums.length) ? nums[i] : '';
+        });
+    }
+
+    async function openFavorites() {
+        var modal = document.getElementById('favorites-modal');
+        var list = document.getElementById('favorites-list');
+        modal.classList.remove('hidden');
+        list.innerHTML = '<p class="text-sm text-muted dark:text-gray-400">불러오는 중...</p>';
+        try {
+            var res = await fetch('/api/favorites');
+            var favs = await res.json();
+            if (!Array.isArray(favs) || favs.length === 0) {
+                list.innerHTML = '<p class="text-sm text-muted dark:text-gray-400">저장된 즐겨찾기가 없습니다. <a href="/recommend" class="text-data-blue underline">추천 번호 페이지</a>에서 추가하세요.</p>';
+                return;
+            }
+            list.innerHTML = favs.map(function(fav) {
+                var ballsHTML = (fav.numbers || []).map(function(n) {
+                    return ballHTML(n, false);
+                }).join(' ');
+                return '<button class="fav-item w-full text-left p-3 rounded border border-border dark:border-gray-600 hover:bg-surface dark:hover:bg-gray-700 transition-colors" data-numbers="' + (fav.numbers || []).join(',') + '">' +
+                    '<div class="text-sm font-medium text-ink dark:text-gray-100 mb-1">' + (fav.name || '이름없음') + '</div>' +
+                    '<div class="flex gap-1.5">' + ballsHTML + '</div>' +
+                '</button>';
+            }).join('');
+            list.querySelectorAll('.fav-item').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var nums = btn.getAttribute('data-numbers').split(',').map(function(s) { return parseInt(s, 10); });
+                    setNumbers(nums);
+                    closeFavorites();
+                });
+            });
+        } catch (e) {
+            list.innerHTML = '<p class="text-sm text-red-600 dark:text-red-400">불러오기 실패: ' + e.message + '</p>';
+        }
+    }
+
+    function closeFavorites() {
+        document.getElementById('favorites-modal').classList.add('hidden');
+    }
+
+    function resetAll() {
+        setNumbers([]);
+        document.getElementById('check-result').classList.add('hidden');
+        hideError();
+    }
+
+    document.getElementById('check-submit').addEventListener('click', doCheck);
+    document.getElementById('check-reset').addEventListener('click', resetAll);
+    document.getElementById('load-favorites').addEventListener('click', openFavorites);
+    document.getElementById('favorites-close').addEventListener('click', closeFavorites);
+    document.getElementById('favorites-modal').addEventListener('click', function(e) {
+        if (e.target.id === 'favorites-modal') closeFavorites();
+    });
+})();
+</script>
+{% endblock %}
