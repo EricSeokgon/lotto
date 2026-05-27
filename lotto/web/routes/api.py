@@ -1252,3 +1252,30 @@ async def check_numbers(
         "prize_amount": _CHECK_PRIZE_AMOUNTS[rank],
         "draw_date": str(draw.date),
     }
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-023 REQ-SCHED-003 — 스케줄러 상태 / 수동 트리거 API
+# @MX:SPEC: SPEC-LOTTO-023 REQ-SCHED-003
+@router.get("/scheduler/status")
+async def scheduler_status() -> dict[str, Any]:
+    """주간 자동 수집 스케줄러의 현재 상태를 반환한다 (REQ-SCHED-003).
+
+    Returns:
+        enabled, running, next_run, last_run_at, last_run_result, last_run_error,
+        cron, tz
+    """
+    # 함수 내부 임포트: 순환 임포트 방지 및 테스트에서 patch 가능하도록
+    from lotto.web import scheduler as _sched
+
+    return _sched.get_status()
+
+
+@router.post("/scheduler/trigger", status_code=200)
+async def scheduler_trigger() -> dict[str, Any]:
+    """주간 수집 작업을 즉시 수동 트리거한다 (REQ-SCHED-003).
+
+    실행은 백그라운드 스레드에서 진행되며, 응답은 즉시 반환된다.
+    """
+    from lotto.web import scheduler as _sched
+
+    return _sched.trigger_now()

@@ -38,6 +38,12 @@ _DEFAULT_SCRAPER_URL_1 = "https://signalfire85.tistory.com/798"
 _DEFAULT_SCRAPER_URL_2 = "https://signalfire85.tistory.com/28"
 # SPEC-LOTTO-003 REQ-BONUS-004: 보너스 회피 가중치 기본값 (0.0 = 비활성 → 기존 동작 보존)
 _DEFAULT_BONUS_AVOIDANCE_WEIGHT = "0.0"
+# SPEC-LOTTO-023 REQ-SCHED-002: 스케줄러 설정 기본값
+# - 활성화 여부, 크론 표현식, 타임존
+# - 기본: 매주 토요일 21:10 KST (당첨 결과 발표 직후)
+_DEFAULT_SCHEDULE_ENABLED = "true"
+_DEFAULT_SCHEDULE_CRON = "10 21 * * 6"
+_DEFAULT_SCHEDULE_TZ = "Asia/Seoul"
 
 
 def _parse_weights(raw: str) -> tuple[float, float, float, float]:
@@ -93,6 +99,10 @@ class Settings:
     scraper_urls: list[str] = field(default_factory=list)
     # SPEC-LOTTO-003 REQ-BONUS-004: 보너스 회피 가중치 (기본 0.0 = 비활성)
     bonus_avoidance_weight: float = 0.0
+    # SPEC-LOTTO-023 REQ-SCHED-002: 주간 자동 수집 스케줄러 설정
+    schedule_enabled: bool = True
+    schedule_cron: str = "10 21 * * 6"
+    schedule_tz: str = "Asia/Seoul"
 
 
 def _load_settings() -> Settings:
@@ -125,6 +135,11 @@ def _load_settings() -> Settings:
         os.environ.get("LOTTO_BONUS_AVOIDANCE_WEIGHT", _DEFAULT_BONUS_AVOIDANCE_WEIGHT),
         "LOTTO_BONUS_AVOIDANCE_WEIGHT",
     )
+    # SPEC-LOTTO-023 REQ-SCHED-002: 스케줄러 설정 — 환경 변수 우선, 기본값 폴백
+    raw_enabled = os.environ.get("LOTTO_SCHEDULE_ENABLED", _DEFAULT_SCHEDULE_ENABLED)
+    schedule_enabled = raw_enabled.strip().lower() in {"true", "1", "yes", "on"}
+    schedule_cron = os.environ.get("LOTTO_SCHEDULE_CRON", _DEFAULT_SCHEDULE_CRON)
+    schedule_tz = os.environ.get("LOTTO_SCHEDULE_TZ", _DEFAULT_SCHEDULE_TZ)
 
     return Settings(
         api_url=api_url,
@@ -135,6 +150,9 @@ def _load_settings() -> Settings:
         checkpoint_interval=checkpoint_interval,
         scraper_urls=scraper_urls,
         bonus_avoidance_weight=bonus_avoidance_weight,
+        schedule_enabled=schedule_enabled,
+        schedule_cron=schedule_cron,
+        schedule_tz=schedule_tz,
     )
 
 

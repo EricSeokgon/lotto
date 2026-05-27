@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from lotto.web import scheduler as _scheduler_mod
 from lotto.web.routes import api, pages, purchases
 
 # 경로 상수
@@ -52,9 +53,15 @@ async def _weekly_collect_task() -> None:
 async def _lifespan(app_: FastAPI) -> AsyncIterator[None]:
     # SPEC-LOTTO-012 REQ-HLT-004: 서버 시작 시각을 lifespan 진입 시점으로 재설정
     api._startup_time = datetime.datetime.now()
+    # SPEC-LOTTO-023 REQ-SCHED-001: APScheduler 기반 주간 자동 수집 스케줄러 시작
+    # (LOTTO_SCHEDULE_ENABLED=false 이면 내부적으로 no-op)
+    _scheduler_mod.start_scheduler()
+    # 기존 asyncio weekly task 도 병행 유지 — test_app_lifespan.py 호환 목적
     task = asyncio.create_task(_weekly_collect_task())
     yield
     task.cancel()
+    # SPEC-LOTTO-023: 웹 서버 종료 시 스케줄러를 안전하게 종료 (Graceful shutdown)
+    _scheduler_mod.shutdown_scheduler(wait=False)
 
 
 # FastAPI 앱 초기화
