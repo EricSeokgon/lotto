@@ -7,6 +7,41 @@
         <p class="text-muted dark:text-gray-400 text-sm">동행복권 API에서 수집한 당첨 번호 데이터 상태입니다.</p>
     </div>
 
+    <!-- SPEC-LOTTO-031: 수집 현황 요약 카드 -->
+    {% if summary and summary.total_collected > 0 %}
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <h3 class="font-semibold text-ink dark:text-gray-100 mb-4">수집 요약</h3>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-surface dark:bg-gray-700 rounded-lg p-4">
+                <p class="text-xs text-muted dark:text-gray-400 mb-1">총 회차</p>
+                <p class="text-xl font-bold text-ink dark:text-gray-100">{{ summary.total_collected }}</p>
+            </div>
+            <div class="bg-surface dark:bg-gray-700 rounded-lg p-4">
+                <p class="text-xs text-muted dark:text-gray-400 mb-1">최신 / 최오래된</p>
+                <p class="text-xl font-bold text-ink dark:text-gray-100">{{ summary.latest_drw_no }} / {{ summary.oldest_drw_no }}</p>
+            </div>
+            <div class="bg-surface dark:bg-gray-700 rounded-lg p-4">
+                <p class="text-xs text-muted dark:text-gray-400 mb-1">누락 회차 수</p>
+                <p class="text-xl font-bold text-ink dark:text-gray-100">{{ summary.missing_count }}</p>
+            </div>
+            <div class="bg-surface dark:bg-gray-700 rounded-lg p-4">
+                <p class="text-xs text-muted dark:text-gray-400 mb-1">커버리지</p>
+                <p class="text-xl font-bold text-ink dark:text-gray-100">{{ "%.2f"|format(summary.coverage_pct) }}%</p>
+            </div>
+        </div>
+        {% if summary.missing_count > 0 %}
+        <div class="mt-4 text-sm">
+            <span class="text-muted dark:text-gray-400">누락 회차: </span>
+            <span class="text-ink dark:text-gray-100 font-medium">
+                {% for n in summary.missing_drw_nos[:10] %}{{ n }}{% if not loop.last %}, {% endif %}{% endfor %}{% if summary.missing_count > 10 %} 외 {{ summary.missing_count - 10 }}개{% endif %}
+            </span>
+        </div>
+        {% else %}
+        <p class="mt-4 text-sm text-green-600 dark:text-green-400">누락된 회차가 없습니다.</p>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <!-- 블로그 크롤링 (권장) -->
     <div class="bg-card rounded-lg border border-data-blue p-5 shadow-sm dark:bg-gray-800">
         <div class="mb-3">
