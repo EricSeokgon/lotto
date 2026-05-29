@@ -214,7 +214,7 @@ def get_favorites() -> list[dict[str, Any]]:
     if not isinstance(data, list):
         logger.warning("favorites.json 최상위가 list 아님 — 빈 목록 반환")
         return []
-    return data  # type: ignore[no-any-return]
+    return data
 
 
 def save_favorites(favorites: list[dict[str, Any]]) -> None:
@@ -422,6 +422,160 @@ def pattern_analysis(draws: list[DrawResult] | None = None) -> dict[str, Any]:
         "last_digit": last_digit,
         "total_draws": total_draws,
     }
+
+
+# SPEC-LOTTO-026: 트렌드 히트맵에서 허용하는 기간 단위
+_TREND_PERIODS = ("yearly", "quarterly")
+
+# SPEC-LOTTO-026: draws 인자 미전달 vs 명시적 None을 구분하기 위한 센티넬.
+# - 인자 생략(센티넬): 내부에서 get_draws()로 자동 로드 (단위 테스트 호환)
+# - 명시적 None 전달: 데이터 없음으로 처리 (API가 get_draws() 결과를 그대로 위임)
+_UNSET: Any = object()
+
+
+def _period_key(d: DrawResult, period: str) -> str:
+    """추첨 결과를 period 단위 그룹 키로 변환합니다.
+
+    - yearly:    "YYYY"        (예: "2020")
+    - quarterly: "YYYY-Qn"     (예: "2020-Q1")
+    """
+    if period == "quarterly":
+        quarter = (d.date.month - 1) // 3 + 1
+        return f"{d.date.year}-Q{quarter}"
+    return str(d.date.year)
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-026 REQ-TREND-001 — 번호 트렌드 히트맵 단일 진입점
+# @MX:REASON: /api/trend-heatmap 및 /analyze 트렌드 탭(REQ-TREND-002) 양쪽에서 호출됨
+# @MX:SPEC: SPEC-LOTTO-026 REQ-TREND-001
+def trend_heatmap(
+    period: str = "yearly",
+    draws: list[DrawResult] | None = _UNSET,
+) -> dict[str, Any]:
+    """번호(1~45) × 기간(연도/분기)별 출현 빈도 행렬을 계산합니다.
+
+    Args:
+        period: "yearly" 또는 "quarterly". 그 외 값은 yearly로 처리한다.
+                (유효성 검증은 API 레이어에서 수행 — 여기서는 안전한 기본값 폴백)
+        draws:  분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+
+    반환 구조:
+        - period:  요청한 기간 단위 문자열
+        - periods: 시간순 정렬된 기간 라벨 리스트 (예: ["2020", "2021"])
+        - numbers: 번호 축 — 항상 [1..45]
+        - matrix:  numbers × periods 빈도 행렬. matrix[i][j] = (i+1)번 번호가
+                   periods[j] 기간에 출현한 횟수
+
+    draws.csv 부재 또는 빈 데이터인 경우 periods/matrix를 빈 리스트로,
+    numbers는 [1..45]로 반환한다.
+    """
+    numbers = list(range(1, 46))
+    if period not in _TREND_PERIODS:
+        period = "yearly"
+
+    if draws is _UNSET:
+        draws = get_draws()
+    if not draws:
+        return {
+            "period": period,
+            "periods": [],
+            "numbers": numbers,
+            "matrix": [],
+        }
+
+    # 기간 라벨별 {번호: 출현 횟수} 누적
+    period_counts: dict[str, dict[int, int]] = {}
+    for d in draws:
+        key = _period_key(d, period)
+        bucket = period_counts.setdefault(key, {})
+        for n in d.numbers():
+            bucket[n] = bucket.get(n, 0) + 1
+
+    # 기간 라벨은 문자열 정렬로 시간순 보장 ("2020" < "2021", "2020-Q1" < "2020-Q3")
+    periods = sorted(period_counts.keys())
+
+    # matrix[번호인덱스][기간인덱스]
+    matrix = [
+        [period_counts[p].get(num, 0) for p in periods]
+        for num in numbers
+    ]
+
+    return {
+        "period": period,
+        "periods": periods,
+        "numbers": numbers,
+        "matrix": matrix,
+    }
+
+
+# SPEC-LOTTO-026: 핫/콜드 분석에서 반환하는 상위/하위 항목 수
+_HOT_COLD_TOP_N = 10
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-026 REQ-TREND-003 — 핫/콜드 번호 분석 단일 진입점
+# @MX:REASON: /api/hot-cold 및 /analyze 트렌드 탭(REQ-TREND-004) 양쪽에서 호출됨
+# @MX:SPEC: SPEC-LOTTO-026 REQ-TREND-003
+def hot_cold_analysis(
+    recent_n: int = 20,
+    draws: list[DrawResult] | None = _UNSET,
+) -> dict[str, Any]:
+    """최근 N회 출현 빈도를 전체 평균과 비교하여 핫/콜드 번호를 산출합니다.
+
+    각 번호에 대해:
+        - recent_count: 최근 N회(또는 가용 전체) 내 출현 횟수
+        - avg_count:    전체 데이터 기준, 동일 표본 크기(window)에서 기대되는 평균 출현 횟수
+                        = 전체 출현 횟수 / 전체 회차 수 * window
+        - diff:         recent_count - avg_count (양수=핫, 음수=콜드)
+
+    hot은 diff 내림차순 상위 10개, cold는 diff 오름차순 하위 10개를 반환한다.
+
+    Args:
+        recent_n: 최근 회차 표본 크기. 총 회차 수보다 크면 가용한 전체를 사용한다.
+        draws:    분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+
+    반환 구조:
+        - recent_n: 요청한 recent_n (가용 회차로 잘리더라도 요청값 그대로 반영)
+        - hot:  [{number, recent_count, avg_count, diff}, ...]  (diff 내림차순)
+        - cold: [{number, recent_count, avg_count, diff}, ...]  (diff 오름차순)
+
+    draws.csv 부재 또는 빈 데이터인 경우 hot/cold를 빈 리스트로 반환한다.
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+    if not draws:
+        return {"recent_n": recent_n, "hot": [], "cold": []}
+
+    total_draws = len(draws)
+    # 최근 N회 (요청값이 더 크면 가용한 전체 사용)
+    window = min(recent_n, total_draws)
+    recent_draws = draws[-window:]
+
+    # 전체 / 최근 출현 횟수 집계
+    total_counts: dict[int, int] = dict.fromkeys(range(1, 46), 0)
+    recent_counts: dict[int, int] = dict.fromkeys(range(1, 46), 0)
+    for d in draws:
+        for n in d.numbers():
+            total_counts[n] += 1
+    for d in recent_draws:
+        for n in d.numbers():
+            recent_counts[n] += 1
+
+    # 각 번호의 (recent vs 동일 window 기대치) 비교
+    items: list[dict[str, Any]] = []
+    for n in range(1, 46):
+        avg_count = total_counts[n] / total_draws * window
+        items.append({
+            "number": n,
+            "recent_count": recent_counts[n],
+            "avg_count": round(avg_count, 2),
+            "diff": round(recent_counts[n] - avg_count, 2),
+        })
+
+    # 핫: diff 내림차순 (동률은 번호 오름차순) / 콜드: diff 오름차순
+    hot = sorted(items, key=lambda x: (-x["diff"], x["number"]))[:_HOT_COLD_TOP_N]
+    cold = sorted(items, key=lambda x: (x["diff"], x["number"]))[:_HOT_COLD_TOP_N]
+
+    return {"recent_n": recent_n, "hot": hot, "cold": cold}
 
 
 def get_simulation(rounds: int = 1000) -> SimulationResult | None:

@@ -15,13 +15,14 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Optional,  # noqa: UP045 — FastAPI requires Optional for Query params on Python 3.9
+    Union,  # noqa: UP035 — FastAPI는 Python 3.9에서 런타임 평가를 위해 Union 필요
 )
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, field_validator, model_validator
 
 from lotto.config import settings
@@ -32,9 +33,11 @@ from lotto.web.data import (
     get_recommendations,
     get_simulation,
     get_stats,
+    hot_cold_analysis,
     invalidate_cache,
     pattern_analysis,
     save_favorites,
+    trend_heatmap,
 )
 
 # SPEC-LOTTO-002: 모듈 로거 — 무음 예외를 구조화 로깅으로 전환
@@ -262,6 +265,49 @@ async def get_pattern_analysis() -> dict[str, Any]:
             },
         )
     return pattern_analysis(draws)
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-026 REQ-TREND-002 — 번호 트렌드 히트맵 공개 API
+# @MX:SPEC: SPEC-LOTTO-026 REQ-TREND-002
+@router.get("/trend-heatmap")
+async def get_trend_heatmap(
+    period: str = Query(
+        default="yearly",
+        description="집계 기간 단위 (yearly | quarterly)",
+    ),
+) -> dict[str, Any]:
+    """번호(1~45) × 기간별 출현 빈도 행렬을 반환합니다 (REQ-TREND-002).
+
+    - period: yearly(기본) | quarterly. 그 외 값은 400.
+    - 데이터 부재 시에도 200으로 정상 응답 (빈 periods/matrix).
+    """
+    if period not in ("yearly", "quarterly"):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "invalid_period",
+                "message": "period는 yearly 또는 quarterly여야 합니다.",
+            },
+        )
+    return trend_heatmap(period, get_draws())
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-026 REQ-TREND-004 — 핫/콜드 번호 분석 공개 API
+# @MX:SPEC: SPEC-LOTTO-026 REQ-TREND-004
+@router.get("/hot-cold")
+async def get_hot_cold(
+    recent_n: int = Query(
+        default=20,
+        ge=1,
+        description="최근 N회 표본 크기 (최소 1, 기본 20)",
+    ),
+) -> dict[str, Any]:
+    """최근 N회 vs 전체 평균 비교로 핫/콜드 번호를 반환합니다 (REQ-TREND-004).
+
+    - recent_n: 최소 1, 기본 20. 총 회차보다 크면 가용 전체 사용.
+    - 데이터 부재 시에도 200으로 정상 응답 (빈 hot/cold).
+    """
+    return hot_cold_analysis(recent_n, get_draws())
 
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-017 REQ-PRIZE-D-002 — 1등 당첨금 통계 공개 API
@@ -1301,3 +1347,81 @@ async def list_notifications() -> dict[str, Any]:
         "settings": _notifier.get_settings_status(),
         "items": sorted_history,
     }
+
+
+# SPEC-LOTTO-027 REQ-SET-005: 테스트 발송에 사용할 샘플 페이로드
+# (실데이터 대신 고정 샘플 — 외부 발송 시 "테스트 알림"임을 식별)
+_TEST_DRAW_INFO: dict[str, Any] = {
+    "drwNo": 0,
+    "numbers": [1, 7, 13, 22, 35, 44],
+    "bonus": 9,
+    "prize1Amount": 0,
+    "prize1Winners": 0,
+}
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-027 REQ-SET-002 — 설정 현황 공개 API (마스킹)
+# @MX:SPEC: SPEC-LOTTO-027 REQ-SET-002
+@router.get("/settings")
+async def get_settings() -> dict[str, Any]:
+    """현재 설정 상태를 마스킹하여 반환한다 (REQ-SET-002).
+
+    Response: {webhook_enabled, webhook_url_masked, email_enabled,
+               email_to_masked, scheduler_enabled, collect_cron, notify_threshold}
+    실제 URL/이메일 값은 노출되지 않는다.
+    """
+    from lotto.web import notifier as _notifier
+
+    return _notifier.get_full_settings_status()
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-027 REQ-SET-003 — Webhook 테스트 발송 API
+# @MX:SPEC: SPEC-LOTTO-027 REQ-SET-003
+@router.post("/settings/test-webhook", response_model=None)
+async def test_webhook() -> Union[Response, dict[str, Any]]:  # noqa: UP007 — Python 3.9 런타임 호환
+    """Webhook 테스트 발송 (REQ-SET-003).
+
+    - 미설정 시 HTTP 400 + {sent: False, reason: "not_configured"}
+    - 발송 성공 시 {sent: True}
+    - 발송 실패(예외/False) 시 {sent: False, reason: <메시지>}
+    """
+    from lotto.web import notifier as _notifier
+
+    if not _notifier.is_webhook_configured():
+        return JSONResponse(
+            status_code=400,
+            content={"sent": False, "reason": "not_configured"},
+        )
+    try:
+        sent = _notifier.send_webhook(_TEST_DRAW_INFO)
+    except Exception as exc:  # noqa: BLE001 — 발송 실패는 사유와 함께 정상 응답
+        return {"sent": False, "reason": str(exc)}
+    if sent:
+        return {"sent": True}
+    return {"sent": False, "reason": "Webhook 전송 실패 (상세는 로그 참조)"}
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-027 REQ-SET-004 — Email 테스트 발송 API
+# @MX:SPEC: SPEC-LOTTO-027 REQ-SET-004
+@router.post("/settings/test-email", response_model=None)
+async def test_email() -> Union[Response, dict[str, Any]]:  # noqa: UP007 — Python 3.9 런타임 호환
+    """이메일 테스트 발송 (REQ-SET-004).
+
+    - 미설정(host/to/from 중 누락) 시 HTTP 400 + {sent: False, reason: "not_configured"}
+    - 발송 성공 시 {sent: True}
+    - 발송 실패(예외/False) 시 {sent: False, reason: <메시지>}
+    """
+    from lotto.web import notifier as _notifier
+
+    if not _notifier.is_email_configured():
+        return JSONResponse(
+            status_code=400,
+            content={"sent": False, "reason": "not_configured"},
+        )
+    try:
+        sent = _notifier.send_email(_TEST_DRAW_INFO)
+    except Exception as exc:  # noqa: BLE001 — 발송 실패는 사유와 함께 정상 응답
+        return {"sent": False, "reason": str(exc)}
+    if sent:
+        return {"sent": True}
+    return {"sent": False, "reason": "Email 전송 실패 (상세는 로그 참조)"}
