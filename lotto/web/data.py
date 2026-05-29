@@ -697,6 +697,215 @@ def get_prize_stats(recent_limit: int = 20) -> dict[str, Any]:
     }
 
 
+# SPEC-LOTTO-030: 번호 상세 통계에서 사용하는 위치 라벨 (정렬된 6개 번호의 1~6번째)
+_POSITION_LABELS = ("1st", "2nd", "3rd", "4th", "5th", "6th")
+# SPEC-LOTTO-030: 동반 번호 / 최근 출현 윈도 상수
+_COMPANION_TOP_N = 5
+_RECENT_WINDOW = 20
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-030 REQ-NUMSTAT-001 — 번호별 상세 통계 단일 진입점
+# @MX:REASON: /api/numbers/{n}/stats, /numbers, /numbers/{n} 세 라우트에서 호출됨
+# @MX:SPEC: SPEC-LOTTO-030
+def number_stats(
+    number: int,
+    draws: list[DrawResult] | None = _UNSET,
+) -> dict[str, Any]:
+    """특정 번호(1~45)의 전체 출현 이력과 상세 통계를 계산합니다.
+
+    Args:
+        number: 통계를 계산할 번호 (1~45). 범위 검증은 API 레이어가 수행한다.
+        draws:  분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+
+    반환 구조:
+        - number:           대상 번호
+        - total_count:      본번호로 출현한 총 횟수
+        - total_draws:      전체 회차 수
+        - frequency_pct:    출현율(%) = total_count / total_draws * 100 (소수 2자리)
+        - last_appeared:    마지막 출현 회차 번호 (없으면 None)
+        - gap_since_last:   최신 회차 - 마지막 출현 회차 (없으면 None)
+        - longest_absence:  최장 연속 미출현 회차 수
+        - avg_gap:          출현 간 평균 간격 (소수 1자리, 출현 1회 이하면 0.0)
+        - recent_20_count:  최근 20회 내 출현 횟수
+        - companion_top5:   동반 출현 상위 5개 [{number, count}] (자기 자신 제외)
+        - by_position:      정렬된 당첨번호 중 위치(1st~6th)별 출현 빈도
+
+    draws가 비어 있으면 모든 카운트 0, 리스트 빈값, 적절한 None을 반환한다.
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+
+    # 위치 빈도는 항상 6개 키가 존재하도록 0으로 초기화
+    by_position: dict[str, int] = dict.fromkeys(_POSITION_LABELS, 0)
+
+    if not draws:
+        return {
+            "number": number,
+            "total_count": 0,
+            "total_draws": 0,
+            "frequency_pct": 0.0,
+            "last_appeared": None,
+            "gap_since_last": None,
+            "longest_absence": 0,
+            "avg_gap": 0.0,
+            "recent_20_count": 0,
+            "companion_top5": [],
+            "by_position": by_position,
+        }
+
+    # 회차 오름차순 정렬 — 간격/미출현 계산은 시간순 전제
+    sorted_draws = sorted(draws, key=lambda d: d.drwNo)
+    total_draws = len(sorted_draws)
+    latest_drw_no = sorted_draws[-1].drwNo
+
+    appeared_drw_nos: list[int] = []  # number가 출현한 회차 번호 (오름차순)
+    companion_counts: dict[int, int] = {}
+
+    for draw in sorted_draws:
+        nums = draw.numbers()  # 정렬된 6개
+        if number in nums:
+            appeared_drw_nos.append(draw.drwNo)
+            # 위치(1-based) 빈도
+            position_idx = nums.index(number)  # 0~5
+            by_position[_POSITION_LABELS[position_idx]] += 1
+            # 동반 번호 집계 (자기 자신 제외)
+            for n in nums:
+                if n != number:
+                    companion_counts[n] = companion_counts.get(n, 0) + 1
+
+    total_count = len(appeared_drw_nos)
+    frequency_pct = round(total_count / total_draws * 100, 2) if total_draws else 0.0
+
+    # 마지막 출현 회차 / 최신 회차와의 간격
+    last_appeared = appeared_drw_nos[-1] if appeared_drw_nos else None
+    gap_since_last = (latest_drw_no - last_appeared) if last_appeared is not None else None
+
+    # 최장 연속 미출현 회차 수 — 출현 회차 인덱스 사이의 빈 회차 + 마지막 출현 이후
+    longest_absence = _compute_longest_absence(sorted_draws, appeared_drw_nos)
+
+    # 평균 출현 간격 — 인접 출현 회차 차이의 평균 (출현 2회 미만이면 0.0)
+    if total_count >= 2:  # noqa: PLR2004
+        gaps = [
+            appeared_drw_nos[i + 1] - appeared_drw_nos[i]
+            for i in range(total_count - 1)
+        ]
+        avg_gap = round(sum(gaps) / len(gaps), 1)
+    else:
+        avg_gap = 0.0
+
+    # 최근 N회 내 출현 횟수
+    window = min(_RECENT_WINDOW, total_draws)
+    recent_draws = sorted_draws[-window:]
+    recent_20_count = sum(1 for d in recent_draws if number in d.numbers())
+
+    # 동반 번호 top5 (count 내림차순, 동률은 번호 오름차순)
+    companion_top5 = [
+        {"number": n, "count": c}
+        for n, c in sorted(companion_counts.items(), key=lambda x: (-x[1], x[0]))[:_COMPANION_TOP_N]
+    ]
+
+    return {
+        "number": number,
+        "total_count": total_count,
+        "total_draws": total_draws,
+        "frequency_pct": frequency_pct,
+        "last_appeared": last_appeared,
+        "gap_since_last": gap_since_last,
+        "longest_absence": longest_absence,
+        "avg_gap": avg_gap,
+        "recent_20_count": recent_20_count,
+        "companion_top5": companion_top5,
+        "by_position": by_position,
+    }
+
+
+def _compute_longest_absence(
+    sorted_draws: list[DrawResult],
+    appeared_drw_nos: list[int],
+) -> int:
+    """정렬된 회차 목록에서 대상 번호의 최장 연속 미출현 회차 수를 계산합니다.
+
+    출현 회차 집합을 기준으로 전체 회차를 훑으며 연속 미출현 구간의 최댓값을 구한다.
+    한 번도 출현하지 않았다면 전체 회차 수가 곧 최장 미출현 구간이다.
+    """
+    appeared_set = set(appeared_drw_nos)
+    longest = 0
+    current = 0
+    for draw in sorted_draws:
+        if draw.drwNo in appeared_set:
+            current = 0
+        else:
+            current += 1
+            longest = max(longest, current)
+    return longest
+
+
+# SPEC-LOTTO-031: 누락 회차 목록 최대 반환 개수
+_MISSING_LIMIT = 50
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-031 — 수집 현황 요약 + 누락 회차 감지
+# @MX:SPEC: SPEC-LOTTO-031
+def collect_summary(
+    draws: list[DrawResult] | None = _UNSET,
+) -> dict[str, Any]:
+    """데이터 수집 현황을 요약하고 누락 회차를 감지합니다 (SPEC-LOTTO-031).
+
+    Args:
+        draws: 분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+
+    반환 구조:
+        - total_collected: 수집된 회차 수
+        - latest_drw_no:   최신(최대) 회차 번호 (없으면 0)
+        - oldest_drw_no:   최오래된(최소) 회차 번호 (없으면 0)
+        - missing_drw_nos: 1 ~ latest 범위에서 빠진 회차 번호 목록 (최대 50개)
+        - missing_count:   누락 회차 전체 개수 (50개 초과 시에도 전체 개수)
+        - coverage_pct:    수집률(%) = total_collected / latest * 100 (소수 2자리)
+        - date_range:      {"from": 최오래된 회차 날짜, "to": 최신 회차 날짜} (없으면 None)
+
+    데이터 부재 시 모든 수치 0, 빈 리스트, None 날짜를 반환한다.
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+
+    if not draws:
+        return {
+            "total_collected": 0,
+            "latest_drw_no": 0,
+            "oldest_drw_no": 0,
+            "missing_drw_nos": [],
+            "missing_count": 0,
+            "coverage_pct": 0.0,
+            "date_range": {"from": None, "to": None},
+        }
+
+    sorted_draws = sorted(draws, key=lambda d: d.drwNo)
+    existing_nos = {d.drwNo for d in sorted_draws}
+    oldest = sorted_draws[0].drwNo
+    latest = sorted_draws[-1].drwNo
+    total_collected = len(sorted_draws)
+
+    # 1 ~ latest 범위에서 누락된 회차 (전체 개수 + 최대 50개 반환)
+    all_missing = [n for n in range(1, latest + 1) if n not in existing_nos]
+    missing_count = len(all_missing)
+    missing_drw_nos = all_missing[:_MISSING_LIMIT]
+
+    coverage_pct = round(total_collected / latest * 100, 2) if latest else 0.0
+
+    return {
+        "total_collected": total_collected,
+        "latest_drw_no": latest,
+        "oldest_drw_no": oldest,
+        "missing_drw_nos": missing_drw_nos,
+        "missing_count": missing_count,
+        "coverage_pct": coverage_pct,
+        "date_range": {
+            "from": str(sorted_draws[0].date),
+            "to": str(sorted_draws[-1].date),
+        },
+    }
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-009 REQ-LAST-002 — last_sync.json 우선, draws 최신 회차 폴백
 def get_last_sync_date() -> str | None:
     """마지막 수집 날짜를 YYYY-MM-DD 형식 문자열로 반환합니다.

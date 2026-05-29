@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi import Path as FastAPIPath  # noqa: N814 — pathlib.Path와 충돌 방지 별칭
 from fastapi.templating import Jinja2Templates
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -155,16 +156,25 @@ async def draw_detail_page(request: Request, drw_no: int) -> TemplateResponse:
 
 @router.get("/collect")
 async def collect_page(request: Request) -> TemplateResponse:
-    """수집 현황 페이지."""
+    """수집 현황 페이지.
+
+    SPEC-LOTTO-031: 상단에 수집 현황 요약 카드 + 누락 회차 목록을 전달한다.
+    """
+    from lotto.web.data import collect_summary
+
     data_status = get_data_status()
-    draws = get_draws()
+    # 기존 테스트가 pages.get_draws 를 패치하므로 모듈 임포트 심볼을 그대로 사용
+    draws = get_draws() or []
     # 서버사이드 초기 렌더링: 최신 회차부터 표시 (브라우저 캐시 무관)
     initial_draws = list(reversed(draws))[:20]
+    # SPEC-LOTTO-031: 수집 요약 (누락 회차 감지 포함)
+    summary = collect_summary(draws)
     return _render(request, "collect.html", {
         "active_tab": "collect",
         "data_status": data_status,
         "draws": draws,
         "initial_draws": initial_draws,
+        "summary": summary,
     })
 
 
@@ -359,6 +369,55 @@ async def check_page(request: Request) -> TemplateResponse:
         "active_tab": "check",
         "data_status": data_status,
         "latest_drw_no": latest_drw_no,
+    })
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-030 — 번호 통계 목록 페이지
+# @MX:SPEC: SPEC-LOTTO-030
+@router.get("/numbers")
+async def numbers_page(request: Request) -> TemplateResponse:
+    """번호 통계 목록 페이지 — 1~45 전체의 출현 횟수/출현율/미출현 간격 (SPEC-LOTTO-030).
+
+    각 번호 행 클릭 시 /numbers/{number} 상세 페이지로 이동한다.
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    data_status = get_data_status()
+    draws = wd.get_draws()
+    # 번호별 요약 — 목록은 가벼운 핵심 지표만 사용 (number_stats 재사용)
+    rows = [wd.number_stats(n, draws) for n in range(1, 46)]
+    return _render(request, "numbers.html", {
+        "active_tab": "numbers",
+        "data_status": data_status,
+        "rows": rows,
+    })
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-030 — 번호 상세 통계 페이지
+# @MX:SPEC: SPEC-LOTTO-030
+@router.get("/numbers/{number}")
+async def number_detail_page(
+    request: Request,
+    number: int = FastAPIPath(..., ge=1, le=45, description="조회할 번호 (1~45)"),
+) -> TemplateResponse:
+    """번호 상세 페이지 — stats 데이터, 동반 번호 top5, 위치별 빈도 바 차트 (SPEC-LOTTO-030).
+
+    number는 1~45. 범위 초과 시 FastAPI Path 검증으로 422.
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    data_status = get_data_status()
+    stats = wd.number_stats(number, wd.get_draws())
+    # 위치 바 차트용 최댓값 (0 나눗셈 방지)
+    by_position = stats["by_position"]
+    position_max = max(by_position.values()) if by_position else 0
+    return _render(request, "number_detail.html", {
+        "active_tab": "numbers",
+        "data_status": data_status,
+        "stats": stats,
+        "position_max": position_max,
     })
 
 

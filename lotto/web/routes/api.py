@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi import Path as FastAPIPath  # noqa: N814 — pathlib.Path와 충돌 방지 별칭
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, field_validator, model_validator
 
@@ -363,6 +364,23 @@ async def get_prize_statistics() -> dict[str, Any]:
     return wd.get_prize_stats()
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-030 — 번호별 상세 통계 공개 API
+# @MX:SPEC: SPEC-LOTTO-030
+@router.get("/numbers/{number}/stats")
+async def get_number_statistics(
+    number: int = FastAPIPath(..., ge=1, le=45, description="조회할 번호 (1~45)"),
+) -> dict[str, Any]:
+    """특정 번호의 출현 이력과 상세 통계를 반환합니다 (SPEC-LOTTO-030).
+
+    - number: 1~45. FastAPI Path 검증으로 범위 초과 시 422.
+    - 데이터 부재 시에도 200 으로 정상 응답 (카운트 0, 빈 리스트, nulls).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.number_stats(number, wd.get_draws())
+
+
 @router.get("/simulation")
 async def run_simulation_results(
     rounds: int = Query(default=1000, ge=1, le=100000, description="시뮬레이션 회차 수 (1~100000)"),
@@ -689,6 +707,20 @@ async def collect_status() -> dict[str, Any]:
     """데이터 수집 진행 상태(idle/running/done/error)와 진행률을 반환합니다."""
     with _collect_lock:
         return dict(_collect_state)
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-031 — 수집 현황 요약 + 누락 회차 감지 공개 API
+# @MX:SPEC: SPEC-LOTTO-031
+@router.get("/collect/summary")
+async def collect_summary_endpoint() -> dict[str, Any]:
+    """데이터 수집 현황 요약을 반환합니다 (SPEC-LOTTO-031).
+
+    데이터 부재 시에도 200 으로 정상 응답 (zeros + 빈 리스트).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.collect_summary(wd.get_draws())
 
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-022 REQ-PRIZE-C-002 — 1등 당첨금 소급 업데이트 백그라운드 워커

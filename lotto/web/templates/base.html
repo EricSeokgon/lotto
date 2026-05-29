@@ -71,7 +71,7 @@
         <nav class="max-w-screen-xl mx-auto px-4">
             <!-- 데스크톱 탭 -->
             <div class="hidden md:flex space-x-1 border-t border-border dark:border-gray-700 pt-0">
-                {% set desktop_nav_items = [('/', 'dashboard', '대시보드'), ('/collect', 'collect', '수집 현황'), ('/analyze', 'analyze', '빈도 분석'), ('/recommend', 'recommend', '추천 번호'), ('/check', 'check', '번호 확인'), ('/simulate', 'simulate', '시뮬레이션'), ('/history', 'history', '히스토리'), ('/purchases', 'purchases', '구매 이력'), ('/settings', 'settings', '설정')] %}
+                {% set desktop_nav_items = [('/', 'dashboard', '대시보드'), ('/collect', 'collect', '수집 현황'), ('/analyze', 'analyze', '빈도 분석'), ('/numbers', 'numbers', '번호 통계'), ('/recommend', 'recommend', '추천 번호'), ('/check', 'check', '번호 확인'), ('/simulate', 'simulate', '시뮬레이션'), ('/history', 'history', '히스토리'), ('/purchases', 'purchases', '구매 이력'), ('/settings', 'settings', '설정')] %}
                 {% for href, tab, label in desktop_nav_items %}
                 <a href="{{ href }}"
                    class="px-4 py-2 text-sm font-medium border-b-2 {% if active_tab == tab %}border-data-blue text-data-blue dark:text-data-muted dark:border-data-muted{% else %}border-transparent text-muted hover:text-ink hover:border-border dark:text-gray-400 dark:hover:text-gray-100 dark:hover:border-gray-600{% endif %}">
@@ -109,7 +109,7 @@
             </div>
             <!-- 모바일 드롭다운 -->
             <div id="mobile-menu" class="md:hidden hidden border-t border-border dark:border-gray-700 pb-2">
-                {% set nav_items = [('/', 'dashboard', '대시보드'), ('/collect', 'collect', '수집 현황'), ('/analyze', 'analyze', '빈도 분석'), ('/recommend', 'recommend', '추천 번호'), ('/check', 'check', '번호 확인'), ('/simulate', 'simulate', '시뮬레이션'), ('/history', 'history', '히스토리'), ('/purchases', 'purchases', '구매 이력'), ('/settings', 'settings', '설정'), ('/docs', 'docs', 'API 문서')] %}
+                {% set nav_items = [('/', 'dashboard', '대시보드'), ('/collect', 'collect', '수집 현황'), ('/analyze', 'analyze', '빈도 분석'), ('/numbers', 'numbers', '번호 통계'), ('/recommend', 'recommend', '추천 번호'), ('/check', 'check', '번호 확인'), ('/simulate', 'simulate', '시뮬레이션'), ('/history', 'history', '히스토리'), ('/purchases', 'purchases', '구매 이력'), ('/settings', 'settings', '설정'), ('/docs', 'docs', 'API 문서')] %}
                 {% for href, tab, label in nav_items %}
                 <a href="{{ href }}"
                    class="block px-3 py-2 text-sm rounded-md {% if active_tab == tab %}bg-surface text-data-blue font-medium dark:bg-gray-700 dark:text-data-muted{% else %}text-muted hover:text-ink hover:bg-surface dark:text-gray-400 dark:hover:text-gray-100 dark:hover:bg-gray-700{% endif %}">

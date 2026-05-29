@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center gap-3">
+        <a href="/numbers" class="text-sm text-data-blue hover:underline">&larr; 번호 통계 목록</a>
+    </div>
+
+    <!-- 헤더: 번호 볼 + 핵심 지표 -->
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-6 shadow-sm">
+        <div class="flex items-center gap-4 mb-4">
+            <span class="inline-flex items-center justify-center w-14 h-14 rounded-full text-white text-2xl font-bold"
+                  style="background-color: {{ stats.number | ball_color }}">
+                {{ stats.number }}
+            </span>
+            <div>
+                <h2 class="text-2xl font-bold text-ink dark:text-gray-100">{{ stats.number }}번 상세 통계</h2>
+                <p class="text-muted dark:text-gray-400 text-sm">전체 {{ stats.total_draws }}회차 기준</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-surface dark:bg-gray-700 rounded-lg p-4">
+                <p class="text-xs text-muted dark:text-gray-400 mb-1">총 출현</p>
+                <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.total_count }}회</p>
+            </div>
+            <div class="bg-surface dark:bg-gray-700 rounded-lg p-4">
+                <p class="text-xs text-muted dark:text-gray-400 mb-1">출현율</p>
+                <p class="text-xl font-bold text-ink dark:text-gray-100">{{ "%.2f"|format(stats.frequency_pct) }}%</p>
+            </div>
+            <div class="bg-surface dark:bg-gray-700 rounded-lg p-4">
+                <p class="text-xs text-muted dark:text-gray-400 mb-1">최근 20회</p>
+                <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.recent_20_count }}회</p>
+            </div>
+            <div class="bg-surface dark:bg-gray-700 rounded-lg p-4">
+                <p class="text-xs text-muted dark:text-gray-400 mb-1">미출현 간격</p>
+                <p class="text-xl font-bold text-ink dark:text-gray-100">
+                    {% if stats.gap_since_last is none %}-{% else %}{{ stats.gap_since_last }}회{% endif %}
+                </p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mt-4 text-sm">
+            <div>
+                <span class="text-muted dark:text-gray-400">마지막 출현 회차</span>
+                <span class="font-medium text-ink dark:text-gray-100">
+                    {% if stats.last_appeared is none %}없음{% else %}{{ stats.last_appeared }}회{% endif %}
+                </span>
+            </div>
+            <div>
+                <span class="text-muted dark:text-gray-400">최장 미출현</span>
+                <span class="font-medium text-ink dark:text-gray-100">{{ stats.longest_absence }}회</span>
+            </div>
+            <div>
+                <span class="text-muted dark:text-gray-400">평균 출현 간격</span>
+                <span class="font-medium text-ink dark:text-gray-100">{{ "%.1f"|format(stats.avg_gap) }}회</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- 동반 번호 top5 -->
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-6 shadow-sm">
+        <h3 class="font-semibold text-ink dark:text-gray-100 mb-4">함께 나온 동반 번호 TOP 5</h3>
+        {% if stats.companion_top5 %}
+        <div class="flex flex-wrap gap-3">
+            {% for c in stats.companion_top5 %}
+            <a href="/numbers/{{ c.number }}"
+               class="flex flex-col items-center gap-1 bg-surface dark:bg-gray-700 rounded-lg p-3 w-20 hover:ring-2 hover:ring-data-blue transition">
+                <span class="inline-flex items-center justify-center w-10 h-10 rounded-full text-white text-sm font-bold"
+                      style="background-color: {{ c.number | ball_color }}">
+                    {{ c.number }}
+                </span>
+                <span class="text-xs text-muted dark:text-gray-400">{{ c.count }}회</span>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted dark:text-gray-400 text-sm">동반 출현 데이터가 없습니다.</p>
+        {% endif %}
+    </div>
+
+    <!-- 위치별 출현 빈도 바 차트 (CSS 기반) -->
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-6 shadow-sm">
+        <h3 class="font-semibold text-ink dark:text-gray-100 mb-4">위치별 출현 빈도</h3>
+        <p class="text-xs text-muted dark:text-gray-400 mb-4">정렬된 당첨번호 6개 중 몇 번째 위치에 나왔는지 분포입니다.</p>
+        <div class="space-y-3">
+            {% for label, count in stats.by_position.items() %}
+            <div class="flex items-center gap-3">
+                <span class="w-10 text-sm text-muted dark:text-gray-400">{{ label }}</span>
+                <div class="flex-1 bg-surface dark:bg-gray-700 rounded h-6 overflow-hidden">
+                    <div class="bg-data-blue h-6 rounded transition-all"
+                         style="width: {% if position_max > 0 %}{{ (count / position_max * 100) | round(1) }}{% else %}0{% endif %}%"></div>
+                </div>
+                <span class="w-10 text-right text-sm font-medium text-ink dark:text-gray-100">{{ count }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
