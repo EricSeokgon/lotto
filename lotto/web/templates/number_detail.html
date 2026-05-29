@@ -96,5 +96,76 @@
             {% endfor %}
         </div>
     </div>
+
+    <!-- SPEC-LOTTO-036: 번호 메모 인라인 편집 섹션 -->
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-6 shadow-sm">
+        <h3 class="font-semibold text-ink dark:text-gray-100 mb-2">내 메모</h3>
+        <p class="text-xs text-muted dark:text-gray-400 mb-4">이 번호에 대한 개인 메모를 남길 수 있습니다. 내용을 비우고 저장하면 메모가 삭제됩니다.</p>
+        <textarea id="note-input" rows="3"
+                  placeholder="예: 최근 핫한 번호"
+                  class="w-full text-sm border border-border rounded px-3 py-2 bg-surface dark:bg-gray-700 text-ink dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-data-blue"></textarea>
+        <div class="flex items-center gap-3 mt-3">
+            <button id="note-save"
+                    class="text-sm px-4 py-1.5 rounded bg-data-blue text-white hover:opacity-90 transition">저장</button>
+            <button id="note-delete"
+                    class="text-sm px-4 py-1.5 rounded border border-border bg-card text-ink hover:bg-surface transition">삭제</button>
+            <span id="note-status" class="text-xs text-muted dark:text-gray-400"></span>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            // SPEC-LOTTO-036: 번호 메모 로드/저장/삭제 (/api/numbers/{{ stats.number }}/note)
+            var noteApi = "/api/numbers/{{ stats.number }}/note";
+            var input = document.getElementById("note-input");
+            var statusEl = document.getElementById("note-status");
+            var saveBtn = document.getElementById("note-save");
+            var delBtn = document.getElementById("note-delete");
+
+            function setStatus(msg) {
+                if (statusEl) { statusEl.textContent = msg; }
+            }
+
+            function loadNote() {
+                fetch(noteApi).then(function (res) {
+                    return res.ok ? res.json() : null;
+                }).then(function (body) {
+                    if (body && input) {
+                        input.value = body.note || "";
+                        setStatus(body.updated_at ? "저장됨" : "");
+                    }
+                }).catch(function () { setStatus("메모를 불러오지 못했습니다."); });
+            }
+
+            function postNote(note) {
+                fetch(noteApi, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ note: note })
+                }).then(function (res) {
+                    if (!res.ok) { setStatus("저장에 실패했습니다."); return null; }
+                    return res.json();
+                }).then(function (body) {
+                    if (body) {
+                        setStatus(body.note ? "저장되었습니다." : "메모를 삭제했습니다.");
+                    }
+                }).catch(function () { setStatus("네트워크 오류가 발생했습니다."); });
+            }
+
+            if (saveBtn) {
+                saveBtn.addEventListener("click", function () {
+                    postNote(input ? input.value : "");
+                });
+            }
+            if (delBtn) {
+                delBtn.addEventListener("click", function () {
+                    if (input) { input.value = ""; }
+                    postNote("");
+                });
+            }
+
+            loadNote();
+        })();
+    </script>
 </div>
 {% endblock %}

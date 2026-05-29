@@ -246,6 +246,51 @@ def save_favorites(favorites: list[dict[str, Any]]) -> None:
         raise
 
 
+# ─── SPEC-LOTTO-036: 번호 메모 (number_notes) ───────────────────────────────
+
+# SPEC-LOTTO-036: 번호 메모 저장 경로 — {번호(str): {"note": str, "updated_at": ISO str}}
+_NUMBER_NOTES_PATH = settings.data_dir / "number_notes.json"
+
+
+def get_number_notes() -> dict[str, dict[str, Any]]:
+    """저장된 번호 메모 전체를 dict로 반환합니다 (SPEC-LOTTO-036).
+
+    구조는 {번호(str): {"note": str, "updated_at": ISO str}} 이며,
+    파일이 없거나 손상되어 있으면 빈 dict를 반환한다.
+    """
+    if not _NUMBER_NOTES_PATH.exists():
+        return {}
+    try:
+        data = json.loads(_NUMBER_NOTES_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Failed to read number_notes.json: %s", exc, exc_info=True)
+        return {}
+    if not isinstance(data, dict):
+        logger.warning("number_notes.json 최상위가 dict 아님 — 빈 dict 반환")
+        return {}
+    return data
+
+
+def save_number_notes(notes: dict[str, dict[str, Any]]) -> None:
+    """번호 메모 전체를 원자적으로 저장합니다 (SPEC-LOTTO-036).
+
+    임시 파일에 먼저 기록한 뒤 os.replace로 교체하여 쓰기 중단 시에도
+    기존 파일이 손상되지 않도록 한다 (favorites와 동일 패턴).
+    """
+    _NUMBER_NOTES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".number_notes_", suffix=".json.tmp", dir=str(_NUMBER_NOTES_PATH.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(notes, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, _NUMBER_NOTES_PATH)
+    except Exception:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
+
+
 # ─── SPEC-LOTTO-033: 번호 생성 이력 (gen_history) ──────────────────────────
 
 

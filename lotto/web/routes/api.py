@@ -1149,6 +1149,215 @@ async def delete_favorite(fav_id: str) -> dict[str, Any]:
     return {"status": "ok"}
 
 
+# ─── SPEC-LOTTO-036: 번호 메모 (number_notes) ───────────────────────────────
+
+
+class NoteRequest(BaseModel):
+    """번호 메모 저장 요청 모델 (SPEC-LOTTO-036).
+
+    note가 빈 문자열이면 해당 번호 메모를 삭제 처리한다.
+    """
+
+    note: str = ""
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-036 — 번호 메모 저장/삭제 API
+# @MX:SPEC: SPEC-LOTTO-036
+@router.post("/numbers/{number}/note")
+async def save_number_note(
+    req: NoteRequest,
+    number: int = FastAPIPath(..., ge=1, le=45, description="메모를 달 번호 (1~45)"),
+) -> dict[str, Any]:
+    """특정 번호(1~45)에 메모를 저장합니다 (SPEC-LOTTO-036).
+
+    - number: 1~45. 범위 초과 시 FastAPI Path 검증으로 422.
+    - note가 빈 문자열이면 해당 번호 메모를 삭제하고 updated_at=None을 반환한다.
+    - note가 있으면 저장 후 갱신된 updated_at(ISO-8601)을 반환한다.
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    notes = wd.get_number_notes()
+    key = str(number)
+    stripped = req.note.strip()
+
+    if stripped == "":
+        # 빈 문자열 → 삭제 처리 (없으면 무동작)
+        notes.pop(key, None)
+        wd.save_number_notes(notes)
+        return {"number": number, "note": "", "updated_at": None}
+
+    # SPEC-LOTTO-036: UTC ISO-8601 (Python 3.9 호환)
+    updated_at = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()  # noqa: UP017
+    notes[key] = {"note": stripped, "updated_at": updated_at}
+    wd.save_number_notes(notes)
+    return {"number": number, "note": stripped, "updated_at": updated_at}
+
+
+@router.get("/numbers/notes")
+async def list_number_notes() -> dict[str, Any]:
+    """메모가 등록된 번호 전체를 번호 오름차순으로 반환합니다 (SPEC-LOTTO-036).
+
+    Response: {"total": N, "items": [{"number", "note", "updated_at"}, ...]}
+    """
+    from lotto.web import data as wd
+
+    notes = wd.get_number_notes()
+    items: list[dict[str, Any]] = []
+    for key, value in notes.items():
+        if not isinstance(value, dict):
+            continue
+        try:
+            num = int(key)
+        except ValueError:
+            continue
+        items.append({
+            "number": num,
+            "note": value.get("note", ""),
+            "updated_at": value.get("updated_at"),
+        })
+    # 번호 오름차순 정렬
+    items.sort(key=lambda i: i["number"])
+    return {"total": len(items), "items": items}
+
+
+@router.get("/numbers/{number}/note")
+async def get_number_note(
+    number: int = FastAPIPath(..., ge=1, le=45, description="조회할 번호 (1~45)"),
+) -> dict[str, Any]:
+    """특정 번호의 메모를 조회합니다 (SPEC-LOTTO-036).
+
+    - number: 1~45. 범위 초과 시 422.
+    - 메모가 없으면 note="", updated_at=None 으로 정상 응답(200)한다.
+    """
+    from lotto.web import data as wd
+
+    notes = wd.get_number_notes()
+    entry = notes.get(str(number))
+    if not isinstance(entry, dict):
+        return {"number": number, "note": "", "updated_at": None}
+    return {
+        "number": number,
+        "note": entry.get("note", ""),
+        "updated_at": entry.get("updated_at"),
+    }
+
+
+# ─── SPEC-LOTTO-037: 고급 필터 추천 (filtered recommend) ─────────────────────
+
+# SPEC-LOTTO-037: 조합 생성 기본값 / 한계
+_FILTER_SUM_MIN = 21       # 1+2+3+4+5+6
+_FILTER_SUM_MAX = 255      # 40+41+42+43+44+45
+_FILTER_ODD_MIN = 0
+_FILTER_ODD_MAX = 6
+_FILTER_MAX_INCLUDE = 6
+_FILTER_MAX_ATTEMPTS = 1000
+
+
+class FilteredRecommendRequest(BaseModel):
+    """고급 필터 추천 요청 모델 (SPEC-LOTTO-037).
+
+    모든 필드는 선택 사항이며, 생략 시 합 21~255 / 홀수 0~6 / 포함·제외 빈 리스트 /
+    count=5 기본값이 적용된다.
+    """
+
+    sum_min: int = _FILTER_SUM_MIN
+    sum_max: int = _FILTER_SUM_MAX
+    odd_min: int = _FILTER_ODD_MIN
+    odd_max: int = _FILTER_ODD_MAX
+    include_numbers: list[int] = []  # noqa: RUF012 — Pydantic 기본 빈 리스트는 인스턴스별 복제됨
+    exclude_numbers: list[int] = []  # noqa: RUF012
+    count: int = 5
+
+    @field_validator("include_numbers", "exclude_numbers")
+    @classmethod
+    def validate_number_range(cls, v: list[int]) -> list[int]:
+        for n in v:
+            if not (1 <= n <= 45):  # noqa: PLR2004
+                raise ValueError(f"번호 {n}은 1~45 범위를 벗어납니다.")
+        return v
+
+    @field_validator("count")
+    @classmethod
+    def validate_count(cls, v: int) -> int:
+        if not (1 <= v <= 20):  # noqa: PLR2004
+            raise ValueError("count는 1~20 범위여야 합니다.")
+        return v
+
+    @model_validator(mode="after")
+    def validate_constraints(self) -> FilteredRecommendRequest:
+        if self.sum_min > self.sum_max:
+            raise ValueError("sum_min은 sum_max보다 클 수 없습니다.")
+        if self.odd_min > self.odd_max:
+            raise ValueError("odd_min은 odd_max보다 클 수 없습니다.")
+        if len(self.include_numbers) > _FILTER_MAX_INCLUDE:
+            raise ValueError("include_numbers는 최대 6개입니다.")
+        if set(self.include_numbers) & set(self.exclude_numbers):
+            raise ValueError("include_numbers와 exclude_numbers에 중복 번호가 있습니다.")
+        return self
+
+
+def _generate_filtered_combinations(req: FilteredRecommendRequest) -> list[list[int]]:
+    """조건에 맞는 번호 조합을 최대 count개 생성합니다 (SPEC-LOTTO-037).
+
+    알고리즘:
+    1. include_numbers를 고정으로 두고, 나머지 슬롯(6 - len(include))을
+       (1~45) - (include ∪ exclude) 풀에서 무작위로 채운다.
+    2. 정렬 후 합계/홀수 개수 제약을 검사하고, 통과하면 채택한다.
+    3. 최대 1000회 시도해도 채우지 못하면 현재까지의 결과만 반환한다(빈 리스트 가능).
+
+    동일 조합 중복은 허용하지 않는다(set로 추적).
+    """
+    import random
+
+    include = sorted(set(req.include_numbers))
+    exclude = set(req.exclude_numbers)
+    remaining_slots = 6 - len(include)
+    # 채울 후보 풀 — include/exclude 제외
+    pool = [n for n in range(1, 46) if n not in exclude and n not in include]
+
+    combinations: list[list[int]] = []
+    seen: set[tuple[int, ...]] = set()
+
+    # 슬롯을 채울 수 없으면(풀 부족) 즉시 빈 결과
+    if remaining_slots < 0 or len(pool) < remaining_slots:
+        return []
+
+    attempts = 0
+    while len(combinations) < req.count and attempts < _FILTER_MAX_ATTEMPTS:
+        attempts += 1
+        picked = random.sample(pool, remaining_slots) if remaining_slots > 0 else []
+        combo = sorted(include + picked)
+        key = tuple(combo)
+        if key in seen:
+            continue
+        total = sum(combo)
+        odd = sum(1 for n in combo if n % 2 == 1)
+        if not (req.sum_min <= total <= req.sum_max):
+            continue
+        if not (req.odd_min <= odd <= req.odd_max):
+            continue
+        seen.add(key)
+        combinations.append(combo)
+
+    return combinations
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-037 — 조건 기반 번호 추천 공개 API
+# @MX:SPEC: SPEC-LOTTO-037
+@router.post("/recommend/filtered")
+async def recommend_filtered(req: FilteredRecommendRequest) -> dict[str, Any]:
+    """사용자 지정 조건에 맞는 번호 조합을 추천합니다 (SPEC-LOTTO-037).
+
+    검증 실패(합/홀수 범위 역전, include·exclude 중복, include 6개 초과, count 범위)는
+    Pydantic 검증에서 422로 반환된다. 조건을 만족하는 조합을 못 찾으면 빈 리스트를 반환한다.
+
+    Response: {"count": N, "combinations": [[3,7,14,22,35,42], ...]}
+    """
+    combinations = _generate_filtered_combinations(req)
+    return {"count": len(combinations), "combinations": combinations}
+
+
 # ─── SPEC-LOTTO-035: 번호 예약 (reservations) ────────────────────────────────
 
 # SPEC-LOTTO-035: 최대 예약 개수 (data._RESERVATIONS_MAX와 동일 정책)
