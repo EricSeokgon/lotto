@@ -281,7 +281,45 @@ async def get_recommendation_list(
     # REQ-FILTER-001/003: 전략 필터링 — 일치하는 항목만 반환 (불일치는 빈 리스트)
     if strategy is not None:
         recs = [r for r in recs if r.strategy_label == strategy]
+
+    # SPEC-LOTTO-033: 추천 결과를 생성 이력에 자동 저장 (실패해도 응답은 정상 반환)
+    # lotto.web.data 의 append_gen_history 를 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    for r in recs:
+        try:
+            wd.append_gen_history(strategy=r.strategy_label, numbers=r.numbers)
+        except Exception as exc:  # noqa: BLE001 — 이력 저장 실패는 응답을 막지 않는다
+            logger.warning("Failed to append gen_history: %s", exc, exc_info=True)
+
     return [r.model_dump() for r in recs]
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-033 — 번호 생성 이력 조회 공개 API
+# @MX:SPEC: SPEC-LOTTO-033
+@router.get("/gen-history")
+async def list_gen_history() -> dict[str, Any]:
+    """번호 생성 이력을 최신순 최대 50건 반환합니다 (SPEC-LOTTO-033).
+
+    Response: {total, items: [{id, generated_at, strategy, numbers}, ...]}
+    """
+    from lotto.web import data as wd
+
+    history = wd.get_gen_history()
+    # 최신순 (append 순서 역순) 후 최대 50건
+    items = list(reversed(history))[:50]
+    return {"total": len(history), "items": items}
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-033 — 번호 생성 이력 전체 삭제 공개 API
+# @MX:SPEC: SPEC-LOTTO-033
+@router.delete("/gen-history", status_code=200)
+async def delete_gen_history() -> dict[str, Any]:
+    """번호 생성 이력을 전체 삭제하고 삭제 건수를 반환합니다 (SPEC-LOTTO-033)."""
+    from lotto.web import data as wd
+
+    deleted = wd.clear_gen_history()
+    return {"deleted": deleted}
 
 
 # @MX:ANCHOR: [AUTO] SPEC-LOTTO-019 REQ-PAT-001 — 번호 패턴 분석 API 경계
@@ -393,6 +431,23 @@ async def run_simulation_results(
             detail={"error": "data_unavailable", "message": "데이터가 없습니다."},
         )
     return result.model_dump()
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-032 REQ-CMP-001 — 전략별 백테스트 비교 공개 API
+# @MX:SPEC: SPEC-LOTTO-032
+@router.get("/simulation/compare")
+async def compare_strategies(
+    rounds: int = Query(default=100, ge=10, le=500, description="비교 대상 최근 회차 수 (10~500)"),
+) -> dict[str, Any]:
+    """8가지 추천 전략을 동일 기간에 백테스트하여 성과를 비교합니다 (REQ-CMP-001).
+
+    - rounds: 10~500. 범위 초과 시 422.
+    - 데이터/통계 부재 시에도 200 으로 정상 응답 (빈 strategies 리스트).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.strategy_compare(rounds, wd.get_draws(), wd.get_stats())
 
 
 # SPEC-LOTTO-005 REQ-PDF-001: PDF 리포트 다운로드 엔드포인트

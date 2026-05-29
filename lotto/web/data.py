@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import contextlib
+import datetime
 import json
 import logging
 import os
@@ -33,6 +34,12 @@ _HISTORY_PATH = settings.data_dir / "history.json"
 LAST_SYNC_PATH = settings.data_dir / "last_sync.json"
 # SPEC-LOTTO-016: 번호 즐겨찾기 저장 경로
 _FAVORITES_PATH = settings.data_dir / "favorites.json"
+
+# SPEC-LOTTO-033: 번호 생성 이력 저장 경로
+_GEN_HISTORY_PATH = settings.data_dir / "gen_history.json"
+# SPEC-LOTTO-033: 이력 최대 보관 건수 / 조회 시 반환 최대 건수
+_GEN_HISTORY_MAX = 200
+_GEN_HISTORY_VIEW_LIMIT = 50
 
 # SPEC-LOTTO-002: 모듈 로거 — 무음 예외를 구조화 로깅으로 전환
 logger = logging.getLogger(__name__)
@@ -237,6 +244,71 @@ def save_favorites(favorites: list[dict[str, Any]]) -> None:
         with contextlib.suppress(OSError):
             os.unlink(tmp_path)
         raise
+
+
+# ─── SPEC-LOTTO-033: 번호 생성 이력 (gen_history) ──────────────────────────
+
+
+def get_gen_history() -> list[dict[str, Any]]:
+    """저장된 번호 생성 이력을 저장 순서대로 반환합니다 (SPEC-LOTTO-033).
+
+    파일이 없거나 손상되어 있으면 빈 리스트를 반환한다.
+    """
+    if not _GEN_HISTORY_PATH.exists():
+        return []
+    try:
+        data = json.loads(_GEN_HISTORY_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Failed to read gen_history.json: %s", exc, exc_info=True)
+        return []
+    if not isinstance(data, list):
+        logger.warning("gen_history.json 최상위가 list 아님 — 빈 목록 반환")
+        return []
+    return data
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-033 — 추천 결과를 이력에 append (저장 실패는 조용히 무시)
+def append_gen_history(strategy: str, numbers: list[int]) -> None:
+    """번호 생성 이력에 항목 1건을 추가합니다 (SPEC-LOTTO-033).
+
+    최근 _GEN_HISTORY_MAX 건만 유지하며, 저장 실패 시 예외를 전파하지 않는다
+    (호출자인 추천 API 응답은 정상 반환되어야 한다).
+    """
+    import uuid
+
+    entry = {
+        "id": uuid.uuid4().hex[:8],
+        # SPEC-LOTTO-033: UTC ISO-8601 (Python 3.9 호환)
+        "generated_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),  # noqa: UP017
+        "strategy": strategy,
+        "numbers": list(numbers),
+        "source": "api",
+    }
+    try:
+        history = get_gen_history()
+        history.append(entry)
+        # 최근 N건만 유지 (초과 시 오래된 것부터 제거)
+        if len(history) > _GEN_HISTORY_MAX:
+            history = history[-_GEN_HISTORY_MAX:]
+        _GEN_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _GEN_HISTORY_PATH.write_text(
+            json.dumps(history, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:  # noqa: BLE001 — 이력 저장 실패는 추천 응답을 막지 않는다
+        logger.warning("Failed to append gen_history: %s", exc, exc_info=True)
+
+
+def clear_gen_history() -> int:
+    """번호 생성 이력을 전체 삭제하고 삭제된 건수를 반환합니다 (SPEC-LOTTO-033)."""
+    history = get_gen_history()
+    count = len(history)
+    try:
+        _GEN_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _GEN_HISTORY_PATH.write_text("[]", encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Failed to clear gen_history.json: %s", exc, exc_info=True)
+    return count
 
 
 # SPEC-LOTTO-015 REQ-PRIZE-006: 영문 코드 → 한국어 라벨 매핑 (단일 소스)
@@ -630,6 +702,107 @@ def get_strategy_comparison(rounds: int = 100) -> list[dict[str, Any]] | None:
             "total_rounds": len(test_draws),
         })
     return comparison
+
+
+# SPEC-LOTTO-032: 전략 비교에서 사용하는 등수별 당첨금 (시뮬레이션 페이지와 동일 정책)
+_COMPARE_PRIZE_VALUES: dict[str, int] = {
+    "1등": 2_000_000_000,
+    "2등": 60_000_000,
+    "3등": 1_500_000,
+    "4등": 50_000,
+    "5등": 5_000,
+    "낙첨": 0,
+}
+# SPEC-LOTTO-032: 회차당 구매 비용 (원) — total_spent 산출 기준
+_COMPARE_TICKET_COST = 1000
+# SPEC-LOTTO-032: 등수 우선순위 (작을수록 높은 등수) — best_rank 판정용
+_COMPARE_RANK_ORDER: dict[str, int] = {
+    "1등": 1, "2등": 2, "3등": 3, "4등": 4, "5등": 5, "낙첨": 6,
+}
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-032 REQ-CMP-001 — 전략별 백테스트 비교 단일 진입점
+# @MX:SPEC: SPEC-LOTTO-032
+def strategy_compare(
+    rounds: int = 100,
+    draws: list[DrawResult] | None = _UNSET,
+    stats: Statistics | None = _UNSET,
+) -> dict[str, Any]:
+    """8가지 추천 전략을 동일 기간에 백테스트하여 성과를 비교합니다 (SPEC-LOTTO-032).
+
+    각 전략에 대해 최근 N회차를 대상으로 recommend_by_strategy 추천 후
+    등수를 집계하고 ROI/등수별 당첨 횟수/최고 등수를 산출한다.
+
+    Args:
+        rounds: 최근 N회차 (API 레이어에서 10~500 검증). 가용 회차보다 크면 가용 전체 사용.
+        draws:  분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+        stats:  추천에 사용할 통계. 생략 시 get_stats()로 자동 로드한다.
+
+    반환 구조:
+        - rounds: 실제 백테스트에 사용한 회차 수 (요청값을 가용 회차로 자른 결과)
+        - strategies: [{strategy, label, total_spent, total_prize, roi,
+                        match3_count, match4_count, match5_count,
+                        match5b_count, match6_count, best_rank}, ...]
+
+    draws/stats 부재 또는 빈 데이터인 경우 strategies=[] 를 반환한다 (rounds는 요청값 유지).
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+    if stats is _UNSET:
+        stats = get_stats()
+
+    # 데이터 부재 → 빈 비교 (요청 rounds는 그대로 노출)
+    if not draws or stats is None:
+        return {"rounds": rounds, "strategies": []}
+
+    from lotto.recommender import STRATEGY_LABELS, LottoRecommender
+    from lotto.simulator import LottoSimulator
+
+    # 최근 N회차 (가용 회차보다 크면 가용 전체)
+    used_rounds = min(rounds, len(draws))
+    test_draws = draws[-used_rounds:]
+
+    sim = LottoSimulator(draws)
+    recommender = LottoRecommender(stats)
+    total_spent = used_rounds * _COMPARE_TICKET_COST
+
+    strategies: list[dict[str, Any]] = []
+    for label in STRATEGY_LABELS:
+        # 등수별 당첨 횟수 집계
+        prize_counts: dict[str, int] = dict.fromkeys(_COMPARE_PRIZE_VALUES, 0)
+        for target in test_draws:
+            rec = recommender.recommend_by_strategy(label)
+            prize = sim._evaluate_round(rec.numbers, target)
+            prize_counts[prize] = prize_counts.get(prize, 0) + 1
+
+        total_prize = sum(
+            prize_counts.get(p, 0) * amount
+            for p, amount in _COMPARE_PRIZE_VALUES.items()
+        )
+        roi = round((total_prize - total_spent) / total_spent * 100, 1) if total_spent else 0.0
+
+        # 최고 등수 — 1회라도 당첨된 가장 높은 등수
+        best_rank = "낙첨"
+        for rank in ("1등", "2등", "3등", "4등", "5등"):
+            if prize_counts.get(rank, 0) > 0:
+                best_rank = rank
+                break
+
+        strategies.append({
+            "strategy": label,
+            "label": f"{label} 전략",
+            "total_spent": total_spent,
+            "total_prize": total_prize,
+            "roi": roi,
+            "match3_count": prize_counts.get("5등", 0),
+            "match4_count": prize_counts.get("4등", 0),
+            "match5_count": prize_counts.get("3등", 0),
+            "match5b_count": prize_counts.get("2등", 0),
+            "match6_count": prize_counts.get("1등", 0),
+            "best_rank": best_rank,
+        })
+
+    return {"rounds": used_rounds, "strategies": strategies}
 
 
 # @MX:ANCHOR: [AUTO] SPEC-LOTTO-017 REQ-PRIZE-D-002 — 1등 당첨금 통계 단일 진입점
