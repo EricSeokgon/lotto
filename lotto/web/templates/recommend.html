@@ -298,6 +298,96 @@
         })();
     </script>
 
+    <!-- SPEC-LOTTO-033: 번호 생성 이력 섹션 -->
+    <section id="gen-history-section" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-ink dark:text-gray-100">생성 이력</h3>
+            <button type="button" id="gen-history-clear"
+                    class="text-xs px-3 py-1.5 rounded border border-border text-muted hover:bg-surface hover:text-red-600 transition-colors">
+                전체 삭제
+            </button>
+        </div>
+        <p class="text-xs text-muted mb-3">API로 추천된 최근 10건의 번호 조합입니다.</p>
+
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-border">
+                    <th class="text-left py-2 text-muted font-medium">전략</th>
+                    <th class="text-left py-2 text-muted font-medium">번호</th>
+                    <th class="text-right py-2 text-muted font-medium">생성 시각</th>
+                </tr>
+            </thead>
+            <tbody id="gen-history-tbody"></tbody>
+        </table>
+        <p id="gen-history-empty" class="text-sm text-muted hidden">생성 이력이 없습니다.</p>
+    </section>
+
+    <script>
+        (function () {
+            const tbody = document.getElementById('gen-history-tbody');
+            const emptyEl = document.getElementById('gen-history-empty');
+            const clearBtn = document.getElementById('gen-history-clear');
+
+            function ballHTML(num) {
+                let bg = '#FBC400', fg = '#1f2937';
+                if (num > 40) { bg = '#B0D840'; fg = '#fff'; }
+                else if (num > 30) { bg = '#AAAAAA'; fg = '#fff'; }
+                else if (num > 20) { bg = '#FF7272'; fg = '#fff'; }
+                else if (num > 10) { bg = '#69C8F2'; fg = '#fff'; }
+                return '<span class="inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold" style="background-color:' + bg + ';color:' + fg + '">' + num + '</span>';
+            }
+
+            function formatTime(iso) {
+                if (!iso) return '';
+                try {
+                    const d = new Date(iso);
+                    return d.toLocaleString('ko-KR', { hour12: false });
+                } catch (e) {
+                    return iso;
+                }
+            }
+
+            async function loadHistory() {
+                try {
+                    const res = await fetch('/api/gen-history');
+                    const data = await res.json();
+                    const items = (data.items || []).slice(0, 10);
+                    tbody.innerHTML = '';
+                    if (!items.length) {
+                        emptyEl.classList.remove('hidden');
+                        return;
+                    }
+                    emptyEl.classList.add('hidden');
+                    items.forEach(function (item) {
+                        const tr = document.createElement('tr');
+                        tr.className = 'border-b border-border last:border-0';
+                        const balls = (item.numbers || []).map(ballHTML).join(' ');
+                        tr.innerHTML =
+                            '<td class="py-2 text-ink whitespace-nowrap">' + (item.strategy || '') + '</td>' +
+                            '<td class="py-2"><div class="flex gap-1 flex-wrap">' + balls + '</div></td>' +
+                            '<td class="py-2 text-right text-muted whitespace-nowrap">' + formatTime(item.generated_at) + '</td>';
+                        tbody.appendChild(tr);
+                    });
+                } catch (e) {
+                    emptyEl.textContent = '생성 이력을 불러오지 못했습니다.';
+                    emptyEl.classList.remove('hidden');
+                }
+            }
+
+            clearBtn.addEventListener('click', async function () {
+                if (!confirm('생성 이력을 전체 삭제하시겠어요?')) return;
+                try {
+                    await fetch('/api/gen-history', { method: 'DELETE' });
+                    await loadHistory();
+                } catch (e) {
+                    /* 삭제 실패 시 조용히 무시 */
+                }
+            });
+
+            loadHistory();
+        })();
+    </script>
+
     <!-- SPEC-LOTTO-028 REQ-COMB-005: 번호 조합 분석 섹션 -->
     <section id="combination-analyzer" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
         <div class="flex items-center justify-between mb-4">
