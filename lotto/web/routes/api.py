@@ -204,6 +204,44 @@ async def list_draws(
     }
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-029 REQ-DETAIL-001 — 회차별 상세 보기 공개 API
+# @MX:SPEC: SPEC-LOTTO-029 REQ-DETAIL-001
+@router.get("/draws/{drw_no}")
+async def get_draw_detail(drw_no: int) -> dict[str, Any]:
+    """특정 회차의 상세 정보를 반환합니다 (REQ-DETAIL-001).
+
+    - 응답: {drwNo, drwNoDate, numbers, bonus, prize1Amount, prize1Winners}
+    - prize1Amount / prize1Winners: 데이터 없으면 null
+    - 회차 미존재 또는 drw_no <= 0 → 404
+    """
+    # drw_no <= 0 은 미존재와 동일하게 404 처리 (인수 조건)
+    if drw_no <= 0:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "draw_not_found", "message": f"{drw_no}회차를 찾을 수 없습니다."},
+        )
+
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    draws = wd.get_draws() or []
+    draw = next((d for d in draws if d.drwNo == drw_no), None)
+    if draw is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "draw_not_found", "message": f"{drw_no}회차를 찾을 수 없습니다."},
+        )
+
+    return {
+        "drwNo": draw.drwNo,
+        "drwNoDate": str(draw.date),
+        "numbers": draw.numbers(),
+        "bonus": draw.bonus,
+        "prize1Amount": draw.prize1Amount,
+        "prize1Winners": draw.prize1Winners,
+    }
+
+
 @router.get("/stats")
 async def get_statistics() -> dict[str, Any]:
     """통계 분석 결과를 반환합니다. 보너스 번호 빈도 포함. 파일 없으면 503."""
@@ -1298,6 +1336,160 @@ async def check_numbers(
         "prize_amount": _CHECK_PRIZE_AMOUNTS[rank],
         "draw_date": str(draw.date),
     }
+
+
+# ─── SPEC-LOTTO-028: 번호 조합 분석기 ─────────────────────────────────────
+
+# 조합 분석에서 사용하는 상수
+_COMBINATION_SIZE = 6  # 입력 번호 개수
+_HISTORICAL_MATCH_MIN = 5  # historical_match로 인정하는 최소 일치 개수
+_HISTORICAL_MATCH_LIMIT = 5  # 반환하는 최대 historical_match 개수
+_RECENT_WINDOW = 20  # recent_score 계산에 사용하는 최근 회차 수
+_VERDICT_HOT_RATIO = 1.15  # 전체 평균 대비 hot 판정 배율
+_VERDICT_COLD_RATIO = 0.85  # 전체 평균 대비 cold 판정 배율
+# range_distribution 5개 구간 경계 (상한, 라벨)
+_RANGE_BUCKETS: tuple[tuple[int, str], ...] = (
+    (10, "1-10"),
+    (20, "11-20"),
+    (30, "21-30"),
+    (40, "31-40"),
+    (45, "41-45"),
+)
+
+
+class CombinationRequest(BaseModel):
+    """조합 분석 요청 모델 — 6개 번호 (1~45, 중복 없음)."""
+
+    numbers: list[int]
+
+    @field_validator("numbers")
+    @classmethod
+    def validate_numbers(cls, v: list[int]) -> list[int]:
+        """정확히 6개, 1~45 범위, 중복 없는 정수인지 검증합니다."""
+        if len(v) != _COMBINATION_SIZE:
+            raise ValueError("번호는 정확히 6개여야 합니다.")
+        if len(set(v)) != _COMBINATION_SIZE:
+            raise ValueError("번호에 중복이 있습니다.")
+        for n in v:
+            if not (1 <= n <= 45):  # noqa: PLR2004
+                raise ValueError(f"번호 {n}은 1~45 범위를 벗어납니다.")
+        return sorted(v)
+
+
+def _range_distribution(numbers: list[int]) -> dict[str, int]:
+    """번호를 5개 구간(1-10/11-20/21-30/31-40/41-45)으로 분류합니다."""
+    dist: dict[str, int] = {label: 0 for _, label in _RANGE_BUCKETS}
+    for n in numbers:
+        for upper, label in _RANGE_BUCKETS:
+            if n <= upper:
+                dist[label] += 1
+                break
+    return dist
+
+
+def _consecutive_count(numbers: list[int]) -> int:
+    """정렬된 번호에서 인접 차이가 1인 연속쌍의 개수를 셉니다."""
+    return sum(1 for i in range(len(numbers) - 1) if numbers[i + 1] - numbers[i] == 1)
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-028 REQ-COMB-001 — 번호 조합 분석 단일 진입점
+# @MX:REASON: /api/analyze-combination 및 /recommend 페이지 조합 분석 섹션에서 호출됨
+# @MX:SPEC: SPEC-LOTTO-028 REQ-COMB-001
+@router.post("/analyze-combination")
+async def analyze_combination(req: CombinationRequest) -> dict[str, Any]:
+    """입력 6개 번호의 조합 특성을 분석합니다 (REQ-COMB-001~004).
+
+    - 순수 통계(sum/홀짝/구간분포/연속): 항상 계산
+    - 점수(빈도/최근/동반) 및 historical_match/verdict: draws 데이터 필요
+    - draws 없음/빈 데이터: 점수=0.0, historical_match=[], verdict='balanced'
+    """
+    numbers = req.numbers  # validator가 정렬·검증을 마침
+    num_set = set(numbers)
+
+    # 순수 통계 — 데이터 유무와 무관하게 계산 가능
+    result: dict[str, Any] = {
+        "numbers": numbers,
+        "sum": sum(numbers),
+        "odd_count": sum(1 for n in numbers if n % 2 == 1),
+        "even_count": sum(1 for n in numbers if n % 2 == 0),
+        "range_distribution": _range_distribution(numbers),
+        "consecutive_count": _consecutive_count(numbers),
+    }
+
+    # 회차 데이터 — lotto.web.data를 직접 patch하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    draws = wd.get_draws() or []
+
+    if not draws:
+        # REQ-COMB-002: 빈 데이터 → 점수 0, 매칭 없음, balanced
+        result["frequency_score"] = 0.0
+        result["recent_score"] = 0.0
+        result["companion_score"] = 0.0
+        result["historical_match"] = []
+        result["verdict"] = "balanced"
+        return result
+
+    total_draws = len(draws)
+
+    # 전체 빈도 (본번호 1~45 절대 출현 횟수)
+    abs_freq: dict[int, int] = dict.fromkeys(range(1, 46), 0)
+    for d in draws:
+        for n in d.numbers():
+            abs_freq[n] += 1
+
+    # frequency_score: 입력 번호들의 평균 절대 빈도
+    frequency_score = sum(abs_freq[n] for n in numbers) / _COMBINATION_SIZE
+
+    # recent_score: 최근 N회 내 입력 번호 평균 출현 횟수
+    window = min(_RECENT_WINDOW, total_draws)
+    recent_draws = draws[-window:]
+    recent_counts: dict[int, int] = dict.fromkeys(range(1, 46), 0)
+    for d in recent_draws:
+        for n in d.numbers():
+            recent_counts[n] += 1
+    recent_score = sum(recent_counts[n] for n in numbers) / _COMBINATION_SIZE
+
+    # companion_score: 입력 15개 쌍(C(6,2))의 평균 동반 출현 횟수
+    pair_cooccur = 0
+    pair_total = 0
+    for i in range(len(numbers)):
+        for j in range(i + 1, len(numbers)):
+            a, b = numbers[i], numbers[j]
+            count = sum(1 for d in draws if a in set(d.numbers()) and b in set(d.numbers()))
+            pair_cooccur += count
+            pair_total += 1
+    companion_score = pair_cooccur / pair_total if pair_total else 0.0
+
+    # REQ-COMB-004: 5개 이상 일치 회차 — 최신순 최대 5개
+    matches: list[dict[str, Any]] = []
+    for d in draws:
+        matched = len(num_set & set(d.numbers()))
+        if matched >= _HISTORICAL_MATCH_MIN:
+            matches.append({
+                "drwNo": d.drwNo,
+                "matched": matched,
+                "numbers": d.numbers(),
+                "bonus": d.bonus,
+            })
+    matches.sort(key=lambda m: m["drwNo"], reverse=True)
+    historical_match = matches[:_HISTORICAL_MATCH_LIMIT]
+
+    # REQ-COMB-003: 전체 평균(45개 번호 절대 빈도 평균) 대비 hot/cold/balanced
+    overall_avg = sum(abs_freq.values()) / 45
+    if frequency_score > overall_avg * _VERDICT_HOT_RATIO:
+        verdict = "hot"
+    elif frequency_score < overall_avg * _VERDICT_COLD_RATIO:
+        verdict = "cold"
+    else:
+        verdict = "balanced"
+
+    result["frequency_score"] = round(frequency_score, 2)
+    result["recent_score"] = round(recent_score, 2)
+    result["companion_score"] = round(companion_score, 2)
+    result["historical_match"] = historical_match
+    result["verdict"] = verdict
+    return result
 
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-023 REQ-SCHED-003 — 스케줄러 상태 / 수동 트리거 API
