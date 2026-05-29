@@ -64,7 +64,7 @@ def test_settings_default_values_for_schedule() -> None:
     """기본값: enabled=True, cron='10 21 * * 6', tz='Asia/Seoul'."""
     # 환경 변수 미설정 상태로 settings 재로드
     keys = ("LOTTO_SCHEDULE_ENABLED", "LOTTO_SCHEDULE_CRON", "LOTTO_SCHEDULE_TZ")
-    with patch.dict(os.environ, {k: "" for k in keys}, clear=False):
+    with patch.dict(os.environ, dict.fromkeys(keys, ""), clear=False):
         for k in keys:
             os.environ.pop(k, None)
         import lotto.config as cfg
@@ -251,8 +251,8 @@ def test_scheduled_collect_job_records_success_state() -> None:
     # 모든 부수효과 모킹: collector / api routes / cache
     with (
         patch("lotto.collector.LottoCollector") as mock_collector_cls,
-        patch("lotto.web.routes.api._collect_worker") as mock_collect,
-        patch("lotto.web.routes.api._update_prizes_worker") as mock_update,
+        patch("lotto.web.routes.api._collect_worker"),
+        patch("lotto.web.routes.api._update_prizes_worker"),
         patch("lotto.web.routes.api._estimate_latest_drw_no", return_value=1100),
         patch("lotto.web.data.invalidate_cache") as mock_invalidate,
     ):

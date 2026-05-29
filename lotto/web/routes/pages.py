@@ -310,6 +310,34 @@ async def check_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-027 REQ-SET-001 — 웹 설정 관리 페이지
+# @MX:SPEC: SPEC-LOTTO-027 REQ-SET-001
+@router.get("/settings")
+async def settings_page(request: Request) -> TemplateResponse:
+    """설정 현황 페이지 — 마스킹된 설정 상태 카드 + 테스트 발송 버튼 (REQ-SET-001).
+
+    실제 URL/이메일 값은 노출하지 않고 마스킹된 값만 표시한다.
+    """
+    # 함수 내부 임포트: notifier 의 settings 를 patch 하는 테스트와 호환
+    from lotto.web import notifier as _notifier
+
+    data_status = get_data_status()
+    settings_status = _notifier.get_full_settings_status()
+    # 빈 상태 판정: 모든 채널/스케줄러가 비활성일 때 안내 문구 노출
+    any_configured = (
+        settings_status["webhook_enabled"]
+        or settings_status["email_enabled"]
+        or settings_status["scheduler_enabled"]
+        or settings_status["notify_threshold"] > 0
+    )
+    return _render(request, "settings.html", {
+        "active_tab": "settings",
+        "data_status": data_status,
+        "settings_status": settings_status,
+        "any_configured": any_configured,
+    })
+
+
 @router.get("/history")
 async def history_page(request: Request) -> TemplateResponse:
     """구매 히스토리 페이지.

@@ -1,7 +1,8 @@
 """SPEC-LOTTO-023: APScheduler 기반 주간 자동 수집 스케줄러.
 
 # @MX:ANCHOR: [AUTO] 주간 자동 수집 스케줄러 진입점 — app/lifespan, API, 테스트에서 참조
-# @MX:REASON: app.py(시작/종료), api.py(상태/수동트리거), 테스트(검증) 3곳 이상에서 참조 (fan_in >= 3)
+# @MX:REASON: app.py(시작/종료), api.py(상태/수동트리거), 테스트(검증)
+#   3곳 이상에서 참조 (fan_in >= 3)
 # @MX:SPEC: SPEC-LOTTO-023 REQ-SCHED-001~004
 
 스케줄러는 BackgroundScheduler 로 동작하며, lotto.config.settings 에서 정의한
@@ -16,7 +17,7 @@ from __future__ import annotations
 import datetime
 import logging
 import threading
-from typing import Any, Optional
+from typing import Any
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -26,7 +27,7 @@ from lotto.config import settings
 logger = logging.getLogger(__name__)
 
 # 단일 BackgroundScheduler 인스턴스 (모듈 임포트 시 생성, start_scheduler 에서 시작)
-_scheduler: Optional[BackgroundScheduler] = None
+_scheduler: BackgroundScheduler | None = None
 _scheduler_lock = threading.Lock()
 
 # 마지막 실행 상태 — 외부에 노출 (REQ-SCHED-003)
@@ -60,7 +61,7 @@ def _scheduled_collect_job() -> None:
     from lotto.web import data as wd
     from lotto.web.routes import api as api_routes
 
-    started_at = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()
+    started_at = datetime.datetime.now(tz=datetime.UTC).isoformat()
 
     try:
         # 1. 증분 수집 (start_from = 마지막+1, 추정 최신 회차까지)
@@ -177,7 +178,7 @@ def shutdown_scheduler(wait: bool = False) -> None:
         _scheduler = None
 
 
-def _next_run_iso() -> Optional[str]:
+def _next_run_iso() -> str | None:
     """등록된 job 의 다음 실행 시각을 ISO-8601 문자열로 반환한다 (없으면 None)."""
     if _scheduler is None or not _scheduler.running:
         return None

@@ -296,3 +296,74 @@ def get_settings_status() -> dict[str, Any]:
             else "미설정"
         ),
     }
+
+
+# SPEC-LOTTO-027 REQ-SET-002: 마스킹 길이 상수 (앞 노출 글자 수)
+_WEBHOOK_MASK_PREFIX = 10
+_EMAIL_LOCAL_MASK_PREFIX = 2
+
+
+def mask_webhook_url(url: str) -> str:
+    """SPEC-LOTTO-027: Webhook URL 을 마스킹한다.
+
+    - 미설정(빈 문자열) → 빈 문자열 그대로
+    - 길이 10 이상 → 앞 10자 + "****"
+    - 길이 10 미만 → 전체 + "****"
+    """
+    if not url:
+        return ""
+    return url[:_WEBHOOK_MASK_PREFIX] + "****"
+
+
+def mask_email(email: str) -> str:
+    """SPEC-LOTTO-027: 이메일 주소를 마스킹한다.
+
+    - 미설정(빈 문자열) → 빈 문자열 그대로
+    - "ab****@domain" 형식: @ 앞 로컬파트 2자 노출 + "****" + "@domain"
+    - 로컬파트가 2자 미만이면 가용한 만큼만 노출
+    - "@" 가 없으면 앞 2자 + "****" (도메인 없음)
+    """
+    if not email:
+        return ""
+    if "@" not in email:
+        return email[:_EMAIL_LOCAL_MASK_PREFIX] + "****"
+    local, _, domain = email.partition("@")
+    return f"{local[:_EMAIL_LOCAL_MASK_PREFIX]}****@{domain}"
+
+
+def is_webhook_configured() -> bool:
+    """SPEC-LOTTO-027: Webhook 채널이 설정되어 있는지 여부."""
+    return bool(settings.notify_webhook_url.strip())
+
+
+def is_email_configured() -> bool:
+    """SPEC-LOTTO-027: 이메일 채널(host+to+from)이 모두 설정되어 있는지 여부."""
+    return bool(
+        settings.notify_smtp_host.strip()
+        and settings.notify_email_to.strip()
+        and settings.notify_email_from.strip()
+    )
+
+
+def get_full_settings_status() -> dict[str, Any]:
+    """SPEC-LOTTO-027 REQ-SET-002: 전체 설정 현황 (마스킹 처리) — 설정 페이지/API 용.
+
+    Webhook/Email/스케줄러/임계값 상태를 한 번에 반환한다.
+    실제 URL/이메일 값은 마스킹되어 노출되지 않는다.
+    """
+    webhook_url = settings.notify_webhook_url.strip()
+    email_to = settings.notify_email_to.strip()
+    email_enabled = bool(
+        settings.notify_smtp_host.strip()
+        and email_to
+        and settings.notify_email_from.strip()
+    )
+    return {
+        "webhook_enabled": bool(webhook_url),
+        "webhook_url_masked": mask_webhook_url(webhook_url),
+        "email_enabled": email_enabled,
+        "email_to_masked": mask_email(email_to),
+        "scheduler_enabled": settings.schedule_enabled,
+        "collect_cron": settings.schedule_cron or "",
+        "notify_threshold": settings.notify_prize_threshold or 0,
+    }
