@@ -374,7 +374,8 @@ def test_collect_tbody_has_initial_rows_desc_order():
     assert match is not None, "draws-tbody 가 발견되지 않음"
     tbody_content = match.group(1).strip()
     assert tbody_content != "", "draws-tbody 가 비어있음 (서버사이드 초기 렌더링 필요)"
-    rounds_in_order = re.findall(r'(\d+)회</td>', tbody_content)
+    # SPEC-LOTTO-029 REQ-DETAIL-003: 회차 번호가 /draw/{n} 상세 링크로 감싸짐
+    rounds_in_order = re.findall(r'(\d+)회</a>', tbody_content)
     assert rounds_in_order[0] == "5", (
         f"첫 번째 행이 최신 회차가 아님: {rounds_in_order}"
     )

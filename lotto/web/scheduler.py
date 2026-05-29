@@ -61,7 +61,7 @@ def _scheduled_collect_job() -> None:
     from lotto.web import data as wd
     from lotto.web.routes import api as api_routes
 
-    started_at = datetime.datetime.now(tz=datetime.UTC).isoformat()
+    started_at = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()  # noqa: UP017
 
     try:
         # 1. 증분 수집 (start_from = 마지막+1, 추정 최신 회차까지)

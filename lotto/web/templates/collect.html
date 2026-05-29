@@ -183,7 +183,10 @@
                 <tbody id="draws-tbody">
                 {% for draw in initial_draws %}
                 <tr class="border-b border-border last:border-0">
-                    <td class="py-2 font-medium text-ink">{{ draw.drwNo }}회</td>
+                    {# SPEC-LOTTO-029 REQ-DETAIL-003: 회차 번호 → 상세 보기 링크 #}
+                    <td class="py-2 font-medium">
+                        <a href="/draw/{{ draw.drwNo }}" class="text-data-blue dark:text-data-muted hover:underline">{{ draw.drwNo }}회</a>
+                    </td>
                     <td class="py-2 text-muted">{{ draw.date }}</td>
                     <td class="py-2">
                         <div class="flex flex-wrap gap-1">
@@ -427,8 +430,10 @@ function renderDrawsTable(items) {
             ? draw.prize1Amount.toLocaleString('ko-KR') + '원'
             : '-';
         const delBtn = '<button onclick="deleteDraw(' + draw.drwNo + ')" class="text-xs px-2 py-1 rounded bg-red-100 text-red-600 hover:bg-red-200 transition-colors">삭제</button>';
+        // SPEC-LOTTO-029 REQ-DETAIL-003: 회차 번호 → 상세 보기 링크
+        const drwLink = '<a href="/draw/' + draw.drwNo + '" class="text-data-blue dark:text-data-muted hover:underline">' + draw.drwNo + '회</a>';
         return '<tr class="border-b border-border last:border-0">' +
-               '<td class="py-2 font-medium text-ink">' + draw.drwNo + '회</td>' +
+               '<td class="py-2 font-medium">' + drwLink + '</td>' +
                '<td class="py-2 text-muted">' + draw.date + '</td>' +
                '<td class="py-2"><div class="flex flex-wrap gap-1">' + badges + ' ' + bonus + '</div></td>' +
                '<td class="py-2 text-right text-ink">' + prize + '</td>' +

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{# SPEC-LOTTO-029 REQ-DETAIL-002: 회차별 상세 보기 페이지 #}
+{% block content %}
+<div class="space-y-6">
+    <!-- 헤더 + 이전/다음 네비게이션 -->
+    <div class="flex items-center justify-between flex-wrap gap-3">
+        <div>
+            <h2 class="text-2xl font-bold text-ink dark:text-gray-100 mb-1">{{ draw.drwNo }}회 당첨 결과</h2>
+            <p class="text-muted dark:text-gray-400 text-sm">추첨일: {{ draw.date }}</p>
+        </div>
+        <div class="flex items-center gap-2">
+            {# 이전 회차: 존재할 때만 활성 링크 #}
+            {% if has_prev %}
+            <a href="/draw/{{ prev_no }}"
+               class="px-3 py-1.5 text-sm font-medium rounded border border-border text-muted hover:border-data-blue hover:text-data-blue dark:border-gray-600 dark:text-gray-300 dark:hover:text-data-muted transition-colors">
+                ← 이전 회차
+            </a>
+            {% else %}
+            <span class="px-3 py-1.5 text-sm font-medium rounded border border-border text-gray-300 dark:border-gray-700 dark:text-gray-600 cursor-not-allowed select-none">
+                ← 이전 회차
+            </span>
+            {% endif %}
+            {# 다음 회차: 존재할 때만 활성 링크 #}
+            {% if has_next %}
+            <a href="/draw/{{ next_no }}"
+               class="px-3 py-1.5 text-sm font-medium rounded border border-border text-muted hover:border-data-blue hover:text-data-blue dark:border-gray-600 dark:text-gray-300 dark:hover:text-data-muted transition-colors">
+                다음 회차 →
+            </a>
+            {% else %}
+            <span class="px-3 py-1.5 text-sm font-medium rounded border border-border text-gray-300 dark:border-gray-700 dark:text-gray-600 cursor-not-allowed select-none">
+                다음 회차 →
+            </span>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- 당첨 번호 + 보너스 시각화 -->
+    <section class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <h3 class="font-semibold text-ink dark:text-gray-100 mb-4">당첨 번호</h3>
+        <div class="flex flex-wrap items-center gap-3">
+            {% for n in numbers %}
+            {# 즐겨찾기 일치 번호는 초록 링으로 하이라이트 #}
+            {% set is_match = n in matched_favorites %}
+            <span class="inline-flex w-12 h-12 rounded-full items-center justify-center text-base font-bold"
+                  style="background-color: {{ n | ball_color }}; color: {% if (n > 10 and n <= 30) or n > 40 %}#fff{% else %}#1f2937{% endif %};{% if is_match %} box-shadow: 0 0 0 3px #10b981;{% endif %}">
+                {{ n }}
+            </span>
+            {% endfor %}
+            <span class="text-2xl text-muted dark:text-gray-500 font-light px-1">+</span>
+            <span class="inline-flex w-12 h-12 rounded-full items-center justify-center text-base font-bold border-2 border-dashed border-amber"
+                  style="background-color: {{ draw.bonus | ball_color }}; color: {% if (draw.bonus > 10 and draw.bonus <= 30) or draw.bonus > 40 %}#fff{% else %}#1f2937{% endif %};">
+                {{ draw.bonus }}
+            </span>
+            <span class="text-xs text-muted dark:text-gray-400 ml-1">보너스</span>
+        </div>
+    </section>
+
+    <!-- 1등 당첨금 정보 -->
+    <section class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <h3 class="font-semibold text-ink dark:text-gray-100 mb-4">1등 당첨 정보</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <p class="text-xs text-muted dark:text-gray-400 mb-1">1등 당첨금</p>
+                {% if draw.prize1Amount is not none %}
+                <p class="text-xl font-bold text-ink dark:text-gray-100">{{ "{:,}".format(draw.prize1Amount) }}원</p>
+                {% else %}
+                <p class="text-xl font-bold text-gray-400 dark:text-gray-500">정보 없음</p>
+                {% endif %}
+            </div>
+            <div>
+                <p class="text-xs text-muted dark:text-gray-400 mb-1">1등 당첨자 수</p>
+                {% if draw.prize1Winners is not none %}
+                <p class="text-xl font-bold text-ink dark:text-gray-100">{{ draw.prize1Winners }}명</p>
+                {% else %}
+                <p class="text-xl font-bold text-gray-400 dark:text-gray-500">정보 없음</p>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    {# 즐겨찾기 대조: favorites가 있을 때만 노출 #}
+    {% if favorites %}
+    <section class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <h3 class="font-semibold text-ink dark:text-gray-100 mb-3">즐겨찾기 대조</h3>
+        {% if matched_favorites %}
+        <p class="text-sm text-ink dark:text-gray-100 mb-2">
+            즐겨찾기 번호 중 <strong class="text-data-blue dark:text-data-muted">{{ matched_favorites | length }}개</strong>가 이 회차 당첨 번호와 일치합니다.
+        </p>
+        <div class="flex flex-wrap gap-2">
+            {% for n in matched_favorites %}
+            <span class="inline-flex w-9 h-9 rounded-full items-center justify-center text-sm font-bold"
+                  style="background-color: {{ n | ball_color }}; color: {% if (n > 10 and n <= 30) or n > 40 %}#fff{% else %}#1f2937{% endif %}; box-shadow: 0 0 0 3px #10b981;">
+                {{ n }}
+            </span>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-sm text-muted dark:text-gray-400">즐겨찾기 번호 중 이 회차 당첨 번호와 일치하는 번호가 없습니다.</p>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    <!-- 목록으로 돌아가기 -->
+    <div>
+        <a href="/collect" class="text-sm text-data-blue dark:text-data-muted hover:underline">← 수집 현황 목록으로</a>
+    </div>
+</div>
+{% endblock %}

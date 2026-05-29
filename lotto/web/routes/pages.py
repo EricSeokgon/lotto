@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.templating import Jinja2Templates
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -98,6 +98,58 @@ async def index(request: Request) -> TemplateResponse:
         "scheduler_next_run": sched_status["next_run"],
         # REQ-NOTIF-005: 알림 설정 상태 (마스킹 처리됨 — URL/이메일 미노출)
         "notify_status": notify_status,
+    })
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-029 REQ-DETAIL-002 — 회차별 상세 보기 페이지
+# @MX:SPEC: SPEC-LOTTO-029 REQ-DETAIL-002
+@router.get("/draw/{drw_no}")
+async def draw_detail_page(request: Request, drw_no: int) -> TemplateResponse:
+    """회차 상세 페이지 — 번호 시각화, 당첨금, 이전/다음 링크, 즐겨찾기 대조 (REQ-DETAIL-002).
+
+    - 번호 + 보너스 색상 볼 시각화
+    - 1등 당첨금/당첨자 수 표시 (없으면 '정보 없음')
+    - 이전/다음 회차 링크 (존재할 때만 활성)
+    - 즐겨찾기 번호 대조 (favorites가 있을 때만, 일치 번호 하이라이트)
+    - 없는 회차 또는 drw_no <= 0 → 404 HTML
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    # drw_no <= 0 은 미존재와 동일하게 404 처리
+    if drw_no <= 0:
+        raise HTTPException(status_code=404, detail=f"{drw_no}회차를 찾을 수 없습니다.")
+
+    draws = wd.get_draws() or []
+    draw = next((d for d in draws if d.drwNo == drw_no), None)
+    if draw is None:
+        raise HTTPException(status_code=404, detail=f"{drw_no}회차를 찾을 수 없습니다.")
+
+    # 이전/다음 회차 존재 여부 — 활성 링크 판정용
+    existing_nos = {d.drwNo for d in draws}
+    has_prev = (drw_no - 1) in existing_nos
+    has_next = (drw_no + 1) in existing_nos
+
+    # 즐겨찾기 대조 — 즐겨찾기에 포함된 모든 번호 집합과 당첨 번호의 교집합 하이라이트
+    favorites = wd.get_favorites()
+    favorite_numbers: set[int] = set()
+    for fav in favorites:
+        nums = fav.get("numbers", [])
+        if isinstance(nums, list):
+            favorite_numbers.update(int(n) for n in nums if isinstance(n, int))
+    draw_numbers = draw.numbers()
+    matched_favorites = sorted(favorite_numbers & set(draw_numbers))
+
+    return _render(request, "draw_detail.html", {
+        "active_tab": "collect",
+        "draw": draw,
+        "numbers": draw_numbers,
+        "has_prev": has_prev,
+        "has_next": has_next,
+        "prev_no": drw_no - 1,
+        "next_no": drw_no + 1,
+        "favorites": favorites,
+        "matched_favorites": matched_favorites,
     })
 
 
