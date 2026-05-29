@@ -153,6 +153,44 @@
         </div>
     </div>
 
+    <!-- SPEC-LOTTO-034: 주간 리포트 탭 -->
+    <div id="weeklyReport" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+            <h3 class="font-semibold text-ink">주간 리포트</h3>
+            <div class="flex items-center gap-2">
+                <label class="text-sm text-muted" for="weeklyWeeksSelect">기간:</label>
+                <select id="weeklyWeeksSelect"
+                        class="text-sm border border-border rounded px-2 py-1 bg-card text-ink">
+                    <option value="1">최근 1주</option>
+                    <option value="4" selected>최근 4주</option>
+                    <option value="12">최근 12주</option>
+                    <option value="26">최근 26주</option>
+                </select>
+            </div>
+        </div>
+        <div id="weeklyStatus" class="text-xs text-muted mb-3">주간 리포트 불러오는 중...</div>
+
+        <!-- 요약 지표 -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <div class="rounded border border-border p-3 text-center">
+                <div class="text-xs text-muted">합계 평균</div>
+                <div id="weeklyAvgSum" class="text-lg font-bold text-ink">-</div>
+            </div>
+            <div class="rounded border border-border p-3 text-center">
+                <div class="text-xs text-muted">홀:짝 비율</div>
+                <div id="weeklyOddEven" class="text-lg font-bold text-ink">-</div>
+            </div>
+            <div class="rounded border border-border p-3 text-center">
+                <div class="text-xs text-muted">최다 번호대</div>
+                <div id="weeklyRange" class="text-lg font-bold text-ink">-</div>
+            </div>
+        </div>
+
+        <!-- top10 번호 카드 -->
+        <div class="text-sm font-medium text-ink mb-2">출현 상위 번호</div>
+        <div id="weeklyTopCards" class="flex flex-wrap gap-2"></div>
+    </div>
+
     {% else %}
     <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-8 text-center shadow-sm">
         <p class="text-muted">통계 데이터가 없습니다.</p>
@@ -444,12 +482,59 @@
             });
     }
 
+    // SPEC-LOTTO-034: 주간 리포트 로딩
+    function renderWeeklyCard(item) {
+        var bg = ballColor(item.number);
+        var fg = item.number > 10 ? '#ffffff' : '#1f2937';
+        return '<div class="rounded-lg border border-border p-2 text-center min-w-[60px]">'
+            + '<span class="inline-flex w-8 h-8 rounded-full items-center justify-center text-sm font-bold" style="background-color:' + bg + ';color:' + fg + ';">' + item.number + '</span>'
+            + '<div class="text-xs text-ink mt-1 font-medium">' + item.count + '회</div>'
+            + '</div>';
+    }
+
+    function loadWeeklyReport(weeks) {
+        var statusEl = document.getElementById('weeklyStatus');
+        fetch('/api/weekly-report?weeks=' + weeks)
+            .then(function(res) {
+                if (!res.ok) { throw new Error('HTTP ' + res.status); }
+                return res.json();
+            })
+            .then(function(data) {
+                if (statusEl) {
+                    statusEl.textContent = '최근 ' + data.weeks + '주 (' + data.draws_included + '회차) 집계';
+                }
+                var avgEl = document.getElementById('weeklyAvgSum');
+                var oeEl = document.getElementById('weeklyOddEven');
+                var rangeEl = document.getElementById('weeklyRange');
+                var topEl = document.getElementById('weeklyTopCards');
+                if (avgEl) { avgEl.textContent = data.avg_sum; }
+                if (oeEl) { oeEl.textContent = data.odd_even_ratio.odd + ' : ' + data.odd_even_ratio.even; }
+                if (rangeEl) { rangeEl.textContent = data.most_common_range || '-'; }
+                if (topEl) {
+                    if (data.top10_numbers.length) {
+                        topEl.innerHTML = data.top10_numbers.map(renderWeeklyCard).join('');
+                    } else {
+                        topEl.innerHTML = '<span class="text-xs text-muted">표시할 데이터가 없습니다.</span>';
+                    }
+                }
+            })
+            .catch(function() {
+                if (statusEl) { statusEl.textContent = '주간 리포트를 불러올 수 없습니다.'; }
+            });
+    }
+
     var select = document.getElementById('trendPeriodSelect');
     if (select) {
         select.addEventListener('change', function() { loadHeatmap(select.value); });
         loadHeatmap(select.value);
     }
     loadHotCold();
+
+    var weeklySelect = document.getElementById('weeklyWeeksSelect');
+    if (weeklySelect) {
+        weeklySelect.addEventListener('change', function() { loadWeeklyReport(weeklySelect.value); });
+        loadWeeklyReport(weeklySelect.value);
+    }
 })();
 </script>
 {% endif %}

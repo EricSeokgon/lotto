@@ -32,13 +32,16 @@ from lotto.web.data import (
     get_favorites,
     get_history,
     get_recommendations,
+    get_reservations,
     get_simulation,
     get_stats,
     hot_cold_analysis,
     invalidate_cache,
     pattern_analysis,
     save_favorites,
+    save_reservations,
     trend_heatmap,
+    weekly_report,
 )
 
 # SPEC-LOTTO-002: 모듈 로거 — 무음 예외를 구조화 로깅으로 전환
@@ -385,6 +388,25 @@ async def get_hot_cold(
     - 데이터 부재 시에도 200으로 정상 응답 (빈 hot/cold).
     """
     return hot_cold_analysis(recent_n, get_draws())
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-034 — 주간 통계 리포트 공개 API
+# @MX:SPEC: SPEC-LOTTO-034
+@router.get("/weekly-report")
+async def get_weekly_report(
+    weeks: int = Query(
+        default=4,
+        ge=1,
+        le=52,
+        description="최근 N주(회차) — 최소 1, 최대 52, 기본 4",
+    ),
+) -> dict[str, Any]:
+    """최근 N주 번호 출현 경향 요약 리포트를 반환합니다 (SPEC-LOTTO-034).
+
+    - weeks: 1~52 범위. 범위 초과 시 FastAPI가 자동으로 422를 반환한다.
+    - 데이터 부재 시에도 200으로 정상 응답 (0/빈 리스트/빈 문자열).
+    """
+    return weekly_report(weeks, get_draws())
 
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-017 REQ-PRIZE-D-002 — 1등 당첨금 통계 공개 API
@@ -1124,6 +1146,97 @@ async def delete_favorite(fav_id: str) -> dict[str, Any]:
         )
     save_favorites(new_favorites)
     invalidate_cache()
+    return {"status": "ok"}
+
+
+# ─── SPEC-LOTTO-035: 번호 예약 (reservations) ────────────────────────────────
+
+# SPEC-LOTTO-035: 최대 예약 개수 (data._RESERVATIONS_MAX와 동일 정책)
+_RESERVATIONS_MAX_API = 10
+
+
+class ReservationRequest(BaseModel):
+    """번호 예약 추가 요청 모델 (SPEC-LOTTO-035).
+
+    - numbers: 1~45 범위의 중복 없는 6개 정수 (정렬 후 저장)
+    - note: 선택 메모. 생략 시 빈 문자열로 저장된다.
+    """
+
+    numbers: list[int]
+    note: str = ""
+
+    @field_validator("numbers")
+    @classmethod
+    def validate_numbers(cls, v: list[int]) -> list[int]:
+        if len(v) != 6:  # noqa: PLR2004
+            raise ValueError("번호는 정확히 6개여야 합니다.")
+        if len(set(v)) != 6:  # noqa: PLR2004
+            raise ValueError("번호에 중복이 있습니다.")
+        for n in v:
+            if not (1 <= n <= 45):  # noqa: PLR2004
+                raise ValueError(f"번호 {n}은 1~45 범위를 벗어납니다.")
+        return sorted(v)
+
+
+@router.post("/reservations", status_code=201)
+async def add_reservation(req: ReservationRequest) -> dict[str, Any]:
+    """다음 추첨에 구매할 번호 조합을 예약합니다 (SPEC-LOTTO-035).
+
+    - 최대 10개까지 예약 가능하며, 초과 시 HTTP 400을 반환한다.
+    - id는 8자리 hex, created_at은 UTC ISO-8601 문자열이다.
+    """
+    import uuid
+
+    reservations = get_reservations()
+    if len(reservations) >= _RESERVATIONS_MAX_API:
+        raise HTTPException(
+            status_code=400,
+            detail="최대 10개까지 예약 가능합니다",
+        )
+
+    reservation = {
+        "id": uuid.uuid4().hex[:8],
+        "numbers": req.numbers,  # validator에서 정렬 보장
+        "note": req.note,
+        # SPEC-LOTTO-035: UTC ISO-8601 (Python 3.9 호환)
+        "created_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),  # noqa: UP017
+    }
+    reservations.append(reservation)
+    save_reservations(reservations)
+    return reservation
+
+
+@router.get("/reservations")
+async def list_reservations() -> dict[str, Any]:
+    """예약 목록을 생성 역순(최신 먼저)으로 반환합니다 (SPEC-LOTTO-035)."""
+    reservations = get_reservations()
+    items = list(reversed(reservations))
+    return {"total": len(items), "items": items}
+
+
+@router.delete("/reservations", status_code=200)
+async def delete_all_reservations() -> dict[str, int]:
+    """모든 예약을 삭제하고 삭제 건수를 반환합니다 (SPEC-LOTTO-035)."""
+    reservations = get_reservations()
+    count = len(reservations)
+    save_reservations([])
+    return {"deleted": count}
+
+
+@router.delete("/reservations/{reservation_id}", status_code=200)
+async def delete_reservation(reservation_id: str) -> dict[str, Any]:
+    """지정한 ID의 예약을 삭제합니다 (SPEC-LOTTO-035).
+
+    존재하지 않는 ID면 404를 반환한다.
+    """
+    reservations = get_reservations()
+    remaining = [r for r in reservations if r.get("id") != reservation_id]
+    if len(remaining) == len(reservations):
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": "예약을 찾을 수 없습니다."},
+        )
+    save_reservations(remaining)
     return {"status": "ok"}
 
 

@@ -1079,6 +1079,166 @@ def collect_summary(
     }
 
 
+# ─── SPEC-LOTTO-034: 주간 통계 리포트 (weekly_report) ───────────────────────
+
+# SPEC-LOTTO-034: 리포트에서 사용하는 5개 번호대 구간 (라벨 → (하한, 상한))
+# most_common_range 동률 시 이 순서(앞쪽 우선)로 타이 브레이크한다.
+_WEEKLY_RANGES: tuple[tuple[str, int, int], ...] = (
+    ("1-10", 1, 10),
+    ("11-20", 11, 20),
+    ("21-30", 21, 30),
+    ("31-40", 31, 40),
+    ("41-45", 41, 45),
+)
+# SPEC-LOTTO-034: top/bottom 리스트 최대 반환 개수
+_WEEKLY_TOP_N = 10
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-034 REQ-WREP-001 — 주간 통계 리포트 단일 진입점
+# @MX:SPEC: SPEC-LOTTO-034
+def weekly_report(
+    weeks: int = 4,
+    draws: list[DrawResult] | None = _UNSET,
+) -> dict[str, Any]:
+    """최근 N주(= 최신 N회차) 번호 출현 경향을 요약합니다 (SPEC-LOTTO-034).
+
+    주 1회 추첨 가정으로 "최근 N주" = 최신 회차 기준 N개 회차를 의미한다.
+    weeks가 가용 회차보다 크면 가용 전체를 사용한다 (draws_included로 노출).
+
+    Args:
+        weeks: 최근 주(회차) 수. 범위 검증(1~52)은 API 레이어가 수행한다.
+        draws: 분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+
+    반환 구조:
+        - weeks:             요청한 주 수 (가용 회차로 잘려도 요청값 그대로)
+        - draws_included:    실제 집계에 사용한 회차 수
+        - top10_numbers:     [{number, count}] 출현 상위 10개 (count 내림차순)
+        - bottom10_numbers:  [{number, count}] 출현 하위 10개 (0회 포함, count 오름차순)
+        - avg_sum:           회차 합계 평균 (소수 1자리)
+        - odd_even_ratio:    {"odd": 회차당 평균 홀수 개수, "even": 평균 짝수 개수}
+        - most_common_range: 5개 구간 중 가장 많이 나온 구간 라벨 (빈 데이터면 "")
+
+    빈 데이터인 경우 0/빈 리스트/빈 문자열을 반환한다.
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+
+    if not draws:
+        return {
+            "weeks": weeks,
+            "draws_included": 0,
+            "top10_numbers": [],
+            "bottom10_numbers": [],
+            "avg_sum": 0.0,
+            "odd_even_ratio": {"odd": 0.0, "even": 0.0},
+            "most_common_range": "",
+        }
+
+    # 최신 N회차 (drwNo 기준 정렬 후 뒤에서 weeks개)
+    sorted_draws = sorted(draws, key=lambda d: d.drwNo)
+    window = min(weeks, len(sorted_draws))
+    recent = sorted_draws[-window:]
+
+    # 번호별 출현 횟수 (1~45 전부 0으로 초기화 → bottom에 미출현 번호 포함)
+    counts: dict[int, int] = dict.fromkeys(range(1, 46), 0)
+    sum_total = 0
+    odd_total = 0
+    even_total = 0
+    range_counts: dict[str, int] = {label: 0 for label, _, _ in _WEEKLY_RANGES}
+
+    for d in recent:
+        nums = d.numbers()
+        sum_total += sum(nums)
+        for n in nums:
+            counts[n] += 1
+            if n % 2 == 1:
+                odd_total += 1
+            else:
+                even_total += 1
+            for label, lo, hi in _WEEKLY_RANGES:
+                if lo <= n <= hi:
+                    range_counts[label] += 1
+                    break
+
+    # top: count 내림차순(동률은 번호 오름차순) / bottom: count 오름차순(동률은 번호 오름차순)
+    top10 = [
+        {"number": n, "count": c}
+        for n, c in sorted(counts.items(), key=lambda x: (-x[1], x[0]))[:_WEEKLY_TOP_N]
+    ]
+    bottom10 = [
+        {"number": n, "count": c}
+        for n, c in sorted(counts.items(), key=lambda x: (x[1], x[0]))[:_WEEKLY_TOP_N]
+    ]
+
+    avg_sum = round(sum_total / window, 1)
+    odd_even_ratio = {
+        "odd": round(odd_total / window, 1),
+        "even": round(even_total / window, 1),
+    }
+
+    # 최다 구간 — 동률은 _WEEKLY_RANGES 순서(앞쪽 우선)로 결정
+    most_common_range = max(
+        _WEEKLY_RANGES,
+        key=lambda r: range_counts[r[0]],
+    )[0]
+
+    return {
+        "weeks": weeks,
+        "draws_included": window,
+        "top10_numbers": top10,
+        "bottom10_numbers": bottom10,
+        "avg_sum": avg_sum,
+        "odd_even_ratio": odd_even_ratio,
+        "most_common_range": most_common_range,
+    }
+
+
+# ─── SPEC-LOTTO-035: 번호 예약 (reservations) ───────────────────────────────
+
+# SPEC-LOTTO-035: 번호 예약 저장 경로 (favorites.json과 동일 패턴)
+_RESERVATIONS_PATH = settings.data_dir / "reservations.json"
+# SPEC-LOTTO-035: 최대 예약 개수
+_RESERVATIONS_MAX = 10
+
+
+def get_reservations() -> list[dict[str, Any]]:
+    """저장된 번호 예약 목록을 저장 순서대로 반환합니다 (SPEC-LOTTO-035).
+
+    파일이 없거나 손상되어 있으면 빈 리스트를 반환한다.
+    """
+    if not _RESERVATIONS_PATH.exists():
+        return []
+    try:
+        data = json.loads(_RESERVATIONS_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Failed to read reservations.json: %s", exc, exc_info=True)
+        return []
+    if not isinstance(data, list):
+        logger.warning("reservations.json 최상위가 list 아님 — 빈 목록 반환")
+        return []
+    return data
+
+
+def save_reservations(reservations: list[dict[str, Any]]) -> None:
+    """예약 목록을 원자적으로 저장합니다 (SPEC-LOTTO-035).
+
+    임시 파일에 먼저 기록한 뒤 os.replace로 교체하여 쓰기 중단 시에도
+    기존 파일이 손상되지 않도록 한다 (favorites와 동일 패턴).
+    """
+    _RESERVATIONS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".reservations_", suffix=".json.tmp", dir=str(_RESERVATIONS_PATH.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(reservations, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, _RESERVATIONS_PATH)
+    except Exception:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-009 REQ-LAST-002 — last_sync.json 우선, draws 최신 회차 폴백
 def get_last_sync_date() -> str | None:
     """마지막 수집 날짜를 YYYY-MM-DD 형식 문자열로 반환합니다.
