@@ -1642,6 +1642,120 @@ def _build_prediction_combos(cand_numbers: list[int]) -> list[dict[str, Any]]:
     ]
 
 
+# ─── SPEC-LOTTO-040: 번호 비교 분석기 (compare_numbers) ─────────────────────
+
+# SPEC-LOTTO-040: match_summary로 집계하는 일치 수준 (높은 수준부터)
+_COMPARE_MATCH_LEVELS = (6, 5, 4, 3)
+# SPEC-LOTTO-040: 3+ 일치 1회당 무작위 기대 확률
+# = C(6,3)*C(39,3)/C(45,6) ≈ 0.018637 (3개 이상 일치를 근사한 3개 일치 확률)
+_COMPARE_EXPECTED_3PLUS_RATE = 0.0186
+
+
+def _compare_grade(match3plus: int, total_draws: int) -> str:
+    """3개 이상 일치 비율을 무작위 기대치와 비교해 등급 문자열을 만듭니다 (SPEC-LOTTO-040).
+
+    actual 비율이 기대치 이상이면 "상위 N%", 미만이면 "하위 N%"로 분류한다.
+    N은 actual을 기대치로 정규화한 상대 백분율(0~100 클램프)이다.
+    데이터가 없으면 비교 불가이므로 중립 라벨을 반환한다.
+    """
+    if total_draws <= 0:
+        return "데이터 없음"
+    actual = match3plus / total_draws
+    expected = _COMPARE_EXPECTED_3PLUS_RATE
+    if actual >= expected:
+        # 기대치 대비 초과분을 0~100%로 환산 (기대치의 2배면 100%)
+        pct = min(100, round((actual - expected) / expected * 100))
+        return f"상위 {pct}%"
+    pct = min(100, round((expected - actual) / expected * 100))
+    return f"하위 {pct}%"
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-040 — 입력 6개 번호를 전체 회차와 비교 (단일 O(N) 패스)
+# @MX:SPEC: SPEC-LOTTO-040
+def compare_numbers(
+    numbers: list[int],
+    draws: list[DrawResult] | None = _UNSET,
+) -> dict[str, Any]:
+    """입력 6개 번호를 전체 추첨 회차와 비교하여 분석 결과를 반환합니다 (SPEC-LOTTO-040).
+
+    Args:
+        numbers: 비교할 번호 6개. 정렬 후 응답에 노출한다 (검증은 API 레이어가 수행).
+        draws:   분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+                 명시적 None 전달 시 데이터 없음으로 처리한다.
+
+    반환 구조:
+        - numbers:             정렬된 입력 번호
+        - total_draws_checked: 비교에 사용한 전체 회차 수
+        - match_summary:       {"6"/"5"/"4"/"3": {count, draws:[{drwNo, date}]}}
+                               (일치는 본번호 6개 기준, 보너스 제외)
+        - number_frequency:    [{number, count, rank}] 입력 번호 오름차순,
+                               rank는 count 내림차순(동률은 같은 rank) 1-based
+        - grade:               3개 이상 일치 비율 기반 "상위/하위 N%" 등급
+
+    데이터 부재(None) 또는 빈 리스트인 경우 일관된 0 구조를 반환한다.
+    """
+    sorted_input = sorted(numbers)
+    input_set = set(sorted_input)
+
+    if draws is _UNSET:
+        draws = get_draws()
+
+    # 일치 수준별 집계 컨테이너 (빈/None 데이터에서도 키 일관)
+    match_summary: dict[str, dict[str, Any]] = {
+        str(level): {"count": 0, "draws": []} for level in _COMPARE_MATCH_LEVELS
+    }
+    # 입력 번호별 전체 출현 횟수 (본번호 기준)
+    freq: dict[int, int] = dict.fromkeys(sorted_input, 0)
+
+    if not draws:
+        number_frequency = [
+            {"number": n, "count": 0, "rank": 1} for n in sorted_input
+        ]
+        return {
+            "numbers": sorted_input,
+            "total_draws_checked": 0,
+            "match_summary": match_summary,
+            "number_frequency": number_frequency,
+            "grade": _compare_grade(0, 0),
+        }
+
+    match3plus = 0
+    for draw in draws:
+        draw_nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+        draw_set = set(draw_nums)
+        matched = len(input_set & draw_set)
+        # 입력 번호 빈도 누적
+        for n in sorted_input:
+            if n in draw_set:
+                freq[n] += 1
+        # 일치 수준 집계 (3~6만)
+        if matched >= 3:  # noqa: PLR2004
+            match3plus += 1
+            bucket = match_summary[str(matched)]
+            bucket["count"] += 1
+            bucket["draws"].append({"drwNo": draw.drwNo, "date": str(draw.date)})
+
+    # 각 수준 회차 목록은 최신 회차 우선 정렬
+    for level in match_summary.values():
+        level["draws"].sort(key=lambda d: d["drwNo"], reverse=True)
+
+    # 번호 빈도 랭크 — count 내림차순(동률은 동일 rank), 응답은 번호 오름차순
+    distinct_counts = sorted({freq[n] for n in sorted_input}, reverse=True)
+    rank_by_count = {c: i + 1 for i, c in enumerate(distinct_counts)}
+    number_frequency = [
+        {"number": n, "count": freq[n], "rank": rank_by_count[freq[n]]}
+        for n in sorted_input
+    ]
+
+    return {
+        "numbers": sorted_input,
+        "total_draws_checked": len(draws),
+        "match_summary": match_summary,
+        "number_frequency": number_frequency,
+        "grade": _compare_grade(match3plus, len(draws)),
+    }
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-009 REQ-LAST-002 — last_sync.json 우선, draws 최신 회차 폴백
 def get_last_sync_date() -> str | None:
     """마지막 수집 날짜를 YYYY-MM-DD 형식 문자열로 반환합니다.

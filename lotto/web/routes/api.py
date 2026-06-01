@@ -1937,6 +1937,43 @@ async def analyze_combination(req: CombinationRequest) -> dict[str, Any]:
     return result
 
 
+# ─── SPEC-LOTTO-040: 번호 비교 분석기 (compare) ──────────────────────────────
+
+
+class CompareRequest(BaseModel):
+    """번호 비교 요청 모델 — 6개 번호 (1~45, 중복 없음) (SPEC-LOTTO-040)."""
+
+    numbers: list[int]
+
+    @field_validator("numbers")
+    @classmethod
+    def validate_numbers(cls, v: list[int]) -> list[int]:
+        """정확히 6개, 1~45 범위, 중복 없는 정수인지 검증합니다."""
+        if len(v) != 6:  # noqa: PLR2004
+            raise ValueError("번호는 정확히 6개여야 합니다.")
+        if len(set(v)) != 6:  # noqa: PLR2004
+            raise ValueError("번호에 중복이 있습니다.")
+        for n in v:
+            if not (1 <= n <= 45):  # noqa: PLR2004
+                raise ValueError(f"번호 {n}은 1~45 범위를 벗어납니다.")
+        return sorted(v)
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-040 — 번호 비교 분석 공개 API
+# @MX:SPEC: SPEC-LOTTO-040
+@router.post("/compare")
+async def compare_numbers_endpoint(req: CompareRequest) -> dict[str, Any]:
+    """입력 6개 번호를 전체 추첨 회차와 비교한 분석 결과를 반환합니다 (SPEC-LOTTO-040).
+
+    검증 실패(6개 아님/범위 외/중복)는 Pydantic 검증에서 422로 반환된다.
+    데이터 부재 시에도 200으로 정상 응답 (빈 구조).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.compare_numbers(req.numbers, wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-023 REQ-SCHED-003 — 스케줄러 상태 / 수동 트리거 API
 # @MX:SPEC: SPEC-LOTTO-023 REQ-SCHED-003
 @router.get("/scheduler/status")

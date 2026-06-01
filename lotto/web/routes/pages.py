@@ -465,6 +465,23 @@ async def prediction_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-040 — 번호 비교 분석기 페이지
+# @MX:SPEC: SPEC-LOTTO-040
+@router.get("/compare")
+async def compare_page(request: Request) -> TemplateResponse:
+    """번호 비교 분석기 페이지 — 6개 번호 입력 후 역대 회차와 비교 (SPEC-LOTTO-040).
+
+    - 6개 번호 입력 폼
+    - 결과 영역: 일치 수준별 회차 통계, 번호 빈도 바, 종합 등급 카드
+    - 데이터 부재 시에도 200 (클라이언트가 빈 결과를 자연스럽게 렌더링)
+    """
+    data_status = get_data_status()
+    return _render(request, "compare.html", {
+        "active_tab": "compare",
+        "data_status": data_status,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-027 REQ-SET-001 — 웹 설정 관리 페이지
 # @MX:SPEC: SPEC-LOTTO-027 REQ-SET-001
 @router.get("/settings")
