@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{# @MX:NOTE: SPEC-LOTTO-041 — 회차 구간 통계 페이지 #}
+{% block content %}
+<section class="space-y-6">
+  <div>
+    <h2 class="text-2xl font-bold text-ink dark:text-gray-100">구간 통계</h2>
+    <p class="text-sm text-muted dark:text-gray-400 mt-1">
+      회차 구간을 지정하면 해당 구간의 번호 빈도, 홀짝/번호대 분포, 1등 당첨금 통계를 보여줍니다.
+    </p>
+  </div>
+
+  <!-- 입력 폼 -->
+  <form method="get" action="/stats/range"
+        class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4 flex flex-wrap items-end gap-3">
+    <div>
+      <label for="start_drw" class="block text-xs text-muted dark:text-gray-400 mb-1">시작 회차</label>
+      <input type="number" id="start_drw" name="start_drw" min="1"
+             value="{% if start_drw %}{{ start_drw }}{% endif %}" required
+             class="w-32 px-3 py-2 rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100">
+    </div>
+    <div>
+      <label for="end_drw" class="block text-xs text-muted dark:text-gray-400 mb-1">끝 회차</label>
+      <input type="number" id="end_drw" name="end_drw" min="1"
+             value="{% if end_drw %}{{ end_drw }}{% endif %}" required
+             class="w-32 px-3 py-2 rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100">
+    </div>
+    <button type="submit"
+            class="px-4 py-2 rounded bg-data-blue text-white text-sm font-medium hover:bg-blue-600 transition-colors">
+      통계 조회
+    </button>
+  </form>
+
+  {% if error_message %}
+  <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4 text-sm text-red-700 dark:text-red-300">
+    {{ error_message }}
+  </div>
+  {% elif stats is not none %}
+  <!-- 결과 영역 -->
+  <div class="space-y-6">
+    <!-- 요약 카드 -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4">
+        <p class="text-xs text-muted dark:text-gray-400">구간</p>
+        <p class="text-lg font-bold text-ink dark:text-gray-100">{{ stats.start_drw }} ~ {{ stats.end_drw }}회차</p>
+      </div>
+      <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4">
+        <p class="text-xs text-muted dark:text-gray-400">총 회차 수</p>
+        <p class="text-lg font-bold text-ink dark:text-gray-100">{{ stats.total_draws }}회</p>
+      </div>
+      <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4">
+        <p class="text-xs text-muted dark:text-gray-400">평균 1등 당첨금</p>
+        <p class="text-lg font-bold text-ink dark:text-gray-100">
+          {% if stats.avg_prize1 is not none %}{{ "{:,}".format(stats.avg_prize1) }}원{% else %}정보 없음{% endif %}
+        </p>
+      </div>
+    </div>
+
+    {% if stats.total_draws == 0 %}
+    <p class="text-sm text-muted dark:text-gray-400">해당 구간에 회차 데이터가 없습니다.</p>
+    {% else %}
+    <!-- 최고/최저 1등 당첨금 회차 -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4">
+        <p class="text-xs text-muted dark:text-gray-400">최고 1등 당첨금 회차</p>
+        {% if stats.highest_prize1_draw %}
+        <p class="text-base font-semibold text-ink dark:text-gray-100">
+          {{ stats.highest_prize1_draw.drwNo }}회 ({{ stats.highest_prize1_draw.date }})
+        </p>
+        <p class="text-sm text-amber">{{ "{:,}".format(stats.highest_prize1_draw.prize1Amount) }}원</p>
+        {% else %}
+        <p class="text-sm text-muted dark:text-gray-400">정보 없음</p>
+        {% endif %}
+      </div>
+      <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4">
+        <p class="text-xs text-muted dark:text-gray-400">최저 1등 당첨금 회차</p>
+        {% if stats.lowest_prize1_draw %}
+        <p class="text-base font-semibold text-ink dark:text-gray-100">
+          {{ stats.lowest_prize1_draw.drwNo }}회 ({{ stats.lowest_prize1_draw.date }})
+        </p>
+        <p class="text-sm text-amber">{{ "{:,}".format(stats.lowest_prize1_draw.prize1Amount) }}원</p>
+        {% else %}
+        <p class="text-sm text-muted dark:text-gray-400">정보 없음</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- 홀짝 / 번호대 분포 -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4">
+        <h3 class="text-sm font-semibold text-ink dark:text-gray-100 mb-2">홀짝 분포</h3>
+        <ul class="text-sm text-muted dark:text-gray-300 space-y-1">
+          <li>홀수: {{ stats.odd_even.odd }}개</li>
+          <li>짝수: {{ stats.odd_even.even }}개</li>
+        </ul>
+      </div>
+      <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4">
+        <h3 class="text-sm font-semibold text-ink dark:text-gray-100 mb-2">번호대 분포</h3>
+        <ul class="text-sm text-muted dark:text-gray-300 space-y-1">
+          {% for label, count in stats.range_distribution.items() %}
+          <li>{{ label }}: {{ count }}개</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    <!-- 번호 빈도 -->
+    <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4">
+      <h3 class="text-sm font-semibold text-ink dark:text-gray-100 mb-3">번호 빈도 (1~45)</h3>
+      <div class="grid grid-cols-5 sm:grid-cols-9 gap-2">
+        {% for item in stats.number_frequency %}
+        <div class="text-center">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold text-white"
+                style="background-color: {{ item.number | ball_color }}">{{ item.number }}</span>
+          <p class="text-xs text-muted dark:text-gray-400 mt-1">{{ item.count }}</p>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

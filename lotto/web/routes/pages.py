@@ -7,9 +7,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Optional,  # noqa: UP045 — FastAPI는 Python 3.9에서 런타임 평가를 위해 Optional 필요
+)
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi import Path as FastAPIPath  # noqa: N814 — pathlib.Path와 충돌 방지 별칭
 from fastapi.templating import Jinja2Templates
 
@@ -441,6 +445,43 @@ async def stats_page(request: Request) -> TemplateResponse:
     return _render(request, "stats.html", {
         "active_tab": "stats",
         "overview": overview,
+    })
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-041 — 회차 구간 통계 페이지
+# @MX:SPEC: SPEC-LOTTO-041 REQ-RANGE-007,008
+@router.get("/stats/range")
+async def stats_range_page(
+    request: Request,
+    start_drw: Optional[int] = Query(default=None, ge=1),  # noqa: UP045
+    end_drw: Optional[int] = Query(default=None, ge=1),  # noqa: UP045
+) -> TemplateResponse:
+    """회차 구간 통계 페이지 — 폼 입력 후 지정 구간의 통계 시각화 (SPEC-LOTTO-041).
+
+    - 파라미터 없음: 입력 폼만 표시 (REQ-RANGE-007)
+    - 유효 구간(start_drw <= end_drw): 폼 + 통계 결과 표시 (REQ-RANGE-008)
+    - start_drw > end_drw: 폼 + 오류 메시지 (range_stats는 호출하지 않음)
+    - 데이터 부재 시에도 200 (빈 구조를 자연스럽게 렌더링)
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats: dict[str, Any] | None = None
+    error_message: str | None = None
+
+    # 두 파라미터가 모두 주어졌을 때만 통계 계산
+    if start_drw is not None and end_drw is not None:
+        if start_drw > end_drw:
+            error_message = "시작 회차는 끝 회차보다 클 수 없습니다."
+        else:
+            stats = wd.range_stats(start_drw, end_drw, wd.get_draws())
+
+    return _render(request, "stats_range.html", {
+        "active_tab": "stats_range",
+        "start_drw": start_drw,
+        "end_drw": end_drw,
+        "stats": stats,
+        "error_message": error_message,
     })
 
 

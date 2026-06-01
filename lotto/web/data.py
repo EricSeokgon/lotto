@@ -1425,6 +1425,116 @@ def _draw_prize_payload(draw: DrawResult | None) -> dict[str, Any] | None:
     }
 
 
+# ─── SPEC-LOTTO-041: 회차 구간 통계 (range_stats) ───────────────────────────
+
+
+def _empty_range_stats(start_drw: int, end_drw: int) -> dict[str, Any]:
+    """구간 통계의 일관된 빈 구조를 생성합니다 (SPEC-LOTTO-041 REQ-RANGE-011).
+
+    start>end / 빈 데이터 / None / 매칭 회차 없음 모든 경우에서 동일 구조를 보장한다.
+    """
+    return {
+        "start_drw": start_drw,
+        "end_drw": end_drw,
+        "total_draws": 0,
+        "number_frequency": [{"number": n, "count": 0} for n in range(1, 46)],
+        "odd_even": {"odd": 0, "even": 0},
+        "range_distribution": {label: 0 for label, _, _ in _DASHBOARD_RANGES},
+        "avg_prize1": None,
+        "highest_prize1_draw": None,
+        "lowest_prize1_draw": None,
+    }
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-041 — 지정 구간(start~end) 통계 단일 진입점 (단일 O(N) 패스)
+# @MX:SPEC: SPEC-LOTTO-041 REQ-RANGE-001
+def range_stats(
+    start_drw: int,
+    end_drw: int,
+    draws: list[DrawResult] | None = _UNSET,
+) -> dict[str, Any]:
+    """지정한 회차 구간(start_drw ~ end_drw)의 통계를 집계합니다 (SPEC-LOTTO-041).
+
+    drwNo >= start_drw AND drwNo <= end_drw 를 만족하는 회차만 대상으로
+    번호 빈도/홀짝/번호대/1등 당첨금 통계를 단일 O(N) 패스로 산출한다.
+
+    Args:
+        start_drw: 구간 시작 회차 (포함)
+        end_drw:   구간 끝 회차 (포함)
+        draws:     분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+                   명시적 None 전달 시 데이터 없음으로 처리한다.
+
+    반환 구조:
+        - start_drw / end_drw:    요청 구간 (요청값 그대로 노출)
+        - total_draws:            구간 내 회차 수
+        - number_frequency:       [{number, count}] 본번호 1~45 (번호 오름차순, 보너스 제외)
+        - odd_even:               {"odd", "even"} 구간 내 전체 홀/짝 개수
+        - range_distribution:     {"1-9","10-19","20-29","30-39","40-45": 누적 번호 개수}
+        - avg_prize1:             구간 내 1등 당첨금 정수 평균 (None 제외, 없으면 None)
+        - highest_prize1_draw:    최고 1등 회차 {drwNo, date, prize1Amount} (동률=낮은 drwNo)
+        - lowest_prize1_draw:     최저 1등 회차 (없으면 None)
+
+    start>end / 빈 데이터(None) / 매칭 회차 없음인 경우 예외 없이
+    일관된 빈 구조(total_draws=0, 모든 빈도 0, None 당첨금)를 반환한다.
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+
+    # 역전 구간 또는 데이터 부재 → 빈 구조 (요청 구간은 그대로 노출)
+    if not draws or start_drw > end_drw:
+        return _empty_range_stats(start_drw, end_drw)
+
+    in_range = [d for d in draws if start_drw <= d.drwNo <= end_drw]
+    if not in_range:
+        return _empty_range_stats(start_drw, end_drw)
+
+    freq: dict[int, int] = dict.fromkeys(range(1, 46), 0)
+    range_dist: dict[str, int] = {label: 0 for label, _, _ in _DASHBOARD_RANGES}
+    odd_total = 0
+    even_total = 0
+    prize_sum = 0
+    prize_count = 0
+    highest: DrawResult | None = None
+    lowest: DrawResult | None = None
+
+    for draw in in_range:
+        nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+        for n in nums:
+            freq[n] += 1
+            if n % 2 == 1:
+                odd_total += 1
+            else:
+                even_total += 1
+            for label, lo, hi in _DASHBOARD_RANGES:
+                if lo <= n <= hi:
+                    range_dist[label] += 1
+                    break
+
+        amount = draw.prize1Amount
+        if amount is not None:
+            prize_sum += amount
+            prize_count += 1
+            # 최고/최저 — 동률 시 낮은 drwNo 우선 (SPEC-LOTTO-038 _prize_beats 재사용)
+            if highest is None or _prize_beats(draw, highest, want_max=True):
+                highest = draw
+            if lowest is None or _prize_beats(draw, lowest, want_max=False):
+                lowest = draw
+
+    avg_prize1 = int(prize_sum // prize_count) if prize_count else None
+
+    return {
+        "start_drw": start_drw,
+        "end_drw": end_drw,
+        "total_draws": len(in_range),
+        "number_frequency": [{"number": n, "count": freq[n]} for n in range(1, 46)],
+        "odd_even": {"odd": odd_total, "even": even_total},
+        "range_distribution": range_dist,
+        "avg_prize1": avg_prize1,
+        "highest_prize1_draw": _draw_prize_payload(highest),
+        "lowest_prize1_draw": _draw_prize_payload(lowest),
+    }
+
+
 # ─── SPEC-LOTTO-039: 당첨번호 예측 리포트 (prediction_report) ────────────────
 
 # SPEC-LOTTO-039: 복합 스코어 가중치 (합 1.0)
