@@ -1298,7 +1298,7 @@ _DASHBOARD_RANGES: tuple[tuple[str, int, int], ...] = (
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-038 — 전체 이력 통계 대시보드 단일 진입점 (단일 O(N) 패스)
 # @MX:SPEC: SPEC-LOTTO-038
-def dashboard_overview(draws: list[DrawResult] | None = _UNSET) -> dict[str, Any]:  # type: ignore[assignment]
+def dashboard_overview(draws: list[DrawResult] | None = _UNSET) -> dict[str, Any]:  # noqa: E501
     """전체 추첨 이력에서 7개 통계 요소를 단일 O(N) 패스로 집계합니다 (SPEC-LOTTO-038).
 
     Args:
@@ -1562,7 +1562,7 @@ def _clamp01(x: float) -> float:
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-039 — 최근 recent_n 회차 복합 스코어링 예측 리포트
 # @MX:SPEC: SPEC-LOTTO-039
-def prediction_report(draws: list[DrawResult] | None = _UNSET, recent_n: int = 50) -> dict[str, Any]:  # type: ignore[assignment]  # noqa: ANN001, E501
+def prediction_report(draws: list[DrawResult] | None = _UNSET, recent_n: int = 50) -> dict[str, Any]:  # noqa: ANN001, E501
     """최근 recent_n 회차를 4차원 복합 스코어로 분석해 예측 리포트를 생성합니다.
 
     각 번호(1~45)에 대해 빈도/간격/홀짝/범위 점수를 계산하고
@@ -1863,6 +1863,109 @@ def compare_numbers(
         "match_summary": match_summary,
         "number_frequency": number_frequency,
         "grade": _compare_grade(match3plus, len(draws)),
+    }
+
+
+# ─── SPEC-LOTTO-042: 번호 추이 트래커 (number_trend) ─────────────────────────
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-042 — 선택 번호(1~3개)의 최근 N회 출현 타임라인 + 간격 분석
+# @MX:SPEC: SPEC-LOTTO-042 REQ-TREND-T-001
+def number_trend(
+    numbers: list[int],
+    recent_n: int = 100,
+    draws: list[DrawResult] | None = _UNSET,
+) -> dict[str, Any]:
+    """선택 번호의 최근 recent_n 회차 출현 타임라인과 간격 통계를 산출합니다 (SPEC-LOTTO-042).
+
+    최신 recent_n 회차를 윈도로 잡고, 각 번호에 대해 회차별 출현 여부(timeline)와
+    출현 간격(avg_gap/current_gap)을 시간 오름차순으로 계산한다.
+    출현 판정은 본번호 6개 기준이며 보너스 번호는 포함하지 않는다.
+
+    Args:
+        numbers:  추적할 번호 1~3개 (범위/개수 검증은 API 레이어가 수행).
+        recent_n: 분석 대상 최신 회차 수. 가용 회차보다 크면 가용 전체를 사용한다.
+        draws:    분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+                  명시적 None 전달 시 데이터 없음으로 처리한다.
+
+    반환 구조:
+        - recent_n:       요청한 recent_n (윈도가 잘려도 요청값 그대로 노출)
+        - draws_analyzed: 실제 분석에 사용한 회차 수 = min(recent_n, len(draws))
+        - numbers:        [{number, total_appearances, avg_gap, last_appeared_drwNo,
+                            current_gap, timeline}] 입력 순서 유지
+            - timeline:   [{drwNo, date, appeared}] 시간 오름차순 (윈도 길이만큼)
+            - avg_gap:    연속 출현 위치 간격 평균 (소수 1자리, 2회 미만이면 None)
+            - current_gap: 윈도 마지막 회차 기준 마지막 출현 이후 경과 회차 수
+                           (최신 회차 출현 시 0, 미출현 시 draws_analyzed)
+
+    데이터 부재(None/빈 리스트) 또는 잘못된 번호 입력(빈 리스트)인 경우 예외 없이
+    {"recent_n": recent_n, "draws_analyzed": 0, "numbers": []} 를 반환한다.
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+
+    # 데이터 부재 또는 추적 번호 없음 → 빈 구조 (요청 recent_n은 그대로 노출)
+    if not draws or not numbers:
+        return {"recent_n": recent_n, "draws_analyzed": 0, "numbers": []}
+
+    # 최신 recent_n 회차 (drwNo 기준 정렬 후 뒤에서 recent_n개 — 시간 오름차순 유지)
+    sorted_draws = sorted(draws, key=lambda d: d.drwNo)
+    window = min(recent_n, len(sorted_draws))
+    sample = sorted_draws[-window:]
+
+    # 각 회차의 본번호 집합을 미리 계산 (번호별 루프에서 재사용)
+    draw_number_sets = [set(d.numbers()) for d in sample]
+    last_idx = window - 1
+
+    entries: list[dict[str, Any]] = []
+    for num in numbers:
+        timeline: list[dict[str, Any]] = []
+        appeared_positions: list[int] = []
+        for idx, draw in enumerate(sample):
+            appeared = num in draw_number_sets[idx]
+            if appeared:
+                appeared_positions.append(idx)
+            timeline.append({
+                "drwNo": draw.drwNo,
+                "date": str(draw.date),
+                "appeared": appeared,
+            })
+
+        total_appearances = len(appeared_positions)
+
+        # 평균 간격 — 연속 출현 위치 차이의 평균 (2회 미만이면 None)
+        if total_appearances >= 2:  # noqa: PLR2004
+            gaps = [
+                appeared_positions[i + 1] - appeared_positions[i]
+                for i in range(total_appearances - 1)
+            ]
+            avg_gap: float | None = round(sum(gaps) / len(gaps), 1)
+        else:
+            avg_gap = None
+
+        # 마지막 출현 회차 / 현재 간격
+        if appeared_positions:
+            last_pos = appeared_positions[-1]
+            last_appeared = sample[last_pos].drwNo
+            current_gap = last_idx - last_pos
+        else:
+            last_appeared = None
+            # 미출현 → 윈도 전체를 미출현한 것으로 본다
+            current_gap = window
+
+        entries.append({
+            "number": num,
+            "total_appearances": total_appearances,
+            "avg_gap": avg_gap,
+            "last_appeared_drwNo": last_appeared,
+            "current_gap": current_gap,
+            "timeline": timeline,
+        })
+
+    return {
+        "recent_n": recent_n,
+        "draws_analyzed": window,
+        "numbers": entries,
     }
 
 

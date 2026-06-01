@@ -7,9 +7,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import (
+from typing import (  # noqa: UP035 — FastAPI는 Python 3.9에서 List 런타임 평가 필요
     TYPE_CHECKING,
     Any,
+    List,
     Optional,  # noqa: UP045 — FastAPI는 Python 3.9에서 런타임 평가를 위해 Optional 필요
 )
 
@@ -395,6 +396,48 @@ async def numbers_page(request: Request) -> TemplateResponse:
         "active_tab": "numbers",
         "data_status": data_status,
         "rows": rows,
+    })
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-042 — 번호 추이 트래커 페이지
+# @MX:SPEC: SPEC-LOTTO-042 REQ-TREND-T-040
+# 주의: /numbers/{number} 동적 라우트보다 먼저 등록해야 "trend"가 number로 캡처되지 않는다.
+@router.get("/numbers/trend")
+async def numbers_trend_page(
+    request: Request,
+    n: Optional[List[int]] = Query(default=None),  # noqa: UP045, UP006, B008 — Python 3.9 호환 / FastAPI 반복 Query
+    recent_n: int = Query(default=100, ge=10, le=500),
+) -> TemplateResponse:
+    """번호 추이 트래커 페이지 — 1~3개 번호의 최근 N회 출현 타임라인/간격 (SPEC-LOTTO-042).
+
+    - 파라미터 없음(n 없음): 입력 폼만 표시 (REQ-TREND-T-040)
+    - 유효 파라미터(n 1~3개): 폼 + 추이 결과 표시
+    - 잘못된 개수/범위/중복은 폼 + 오류 메시지 (number_trend는 호출하지 않음)
+    - 데이터 부재 시에도 200 (빈 구조를 자연스럽게 렌더링)
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    trend: dict[str, Any] | None = None
+    error_message: str | None = None
+    selected = n or []
+
+    if selected:
+        if not (1 <= len(selected) <= 3):  # noqa: PLR2004
+            error_message = "번호는 1~3개여야 합니다."
+        elif any(not (1 <= num <= 45) for num in selected):  # noqa: PLR2004
+            error_message = "번호는 1~45 범위여야 합니다."
+        elif len(set(selected)) != len(selected):
+            error_message = "번호에 중복이 있습니다."
+        else:
+            trend = wd.number_trend(selected, recent_n=recent_n, draws=wd.get_draws())
+
+    return _render(request, "numbers_trend.html", {
+        "active_tab": "numbers_trend",
+        "selected": selected,
+        "recent_n": recent_n,
+        "trend": trend,
+        "error_message": error_message,
     })
 
 

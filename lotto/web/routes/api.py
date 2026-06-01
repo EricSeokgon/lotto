@@ -11,11 +11,12 @@ import io
 import logging
 import threading
 from pathlib import Path
-from typing import (
+from typing import (  # noqa: UP035 — FastAPI는 Python 3.9에서 List/Union 런타임 평가 필요
     TYPE_CHECKING,
     Any,
+    List,
     Optional,  # noqa: UP045 — FastAPI requires Optional for Query params on Python 3.9
-    Union,  # noqa: UP035 — FastAPI는 Python 3.9에서 런타임 평가를 위해 Union 필요
+    Union,
 )
 
 if TYPE_CHECKING:
@@ -485,6 +486,64 @@ async def api_prediction_report(
     from lotto.web import data as wd
 
     return wd.prediction_report(wd.get_draws(), recent_n=recent_n)
+
+
+# SPEC-LOTTO-042: 번호 추이 트래커 — 추적 번호 개수 한계
+_TREND_MAX_NUMBERS = 3
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-042 — 번호 추이 트래커 공개 API
+# @MX:SPEC: SPEC-LOTTO-042 REQ-TREND-T-013
+@router.get("/numbers/trend")
+async def get_number_trend(
+    n: List[int] = Query(  # noqa: UP006, B008 — FastAPI는 Python 3.9에서 반복 Query에 List 필요
+        ..., description="추적할 번호 1~3개 (예: ?n=7&n=14&n=21), 각 1~45, 중복 없음"
+    ),
+    recent_n: int = Query(
+        default=100,
+        ge=10,
+        le=500,
+        description="분석 대상 최신 회차 수 (10~500, 기본 100)",
+    ),
+) -> dict[str, Any]:
+    """선택 번호(1~3개)의 최근 N회차 출현 추이를 반환합니다 (SPEC-LOTTO-042).
+
+    - n: 1~3개, 각 1~45, 모두 서로 달라야 한다. 위반 시 422.
+    - recent_n: 10~500. 범위 초과 시 FastAPI가 자동으로 422를 반환한다.
+    - 데이터 부재 시에도 200으로 정상 응답 (draws_analyzed=0, numbers=[]).
+    """
+    # 개수 검증 (1~3개) — FastAPI는 빈 리스트를 허용하지 않으므로 상한만 확인
+    if not (1 <= len(n) <= _TREND_MAX_NUMBERS):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_count",
+                "message": "번호는 1~3개여야 합니다.",
+            },
+        )
+    # 범위 검증 (각 1~45)
+    if any(not (1 <= num <= 45) for num in n):  # noqa: PLR2004
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "out_of_range",
+                "message": "번호는 1~45 범위여야 합니다.",
+            },
+        )
+    # 중복 검증
+    if len(set(n)) != len(n):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "duplicate",
+                "message": "번호에 중복이 있습니다.",
+            },
+        )
+
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.number_trend(n, recent_n=recent_n, draws=wd.get_draws())
 
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-030 — 번호별 상세 통계 공개 API
