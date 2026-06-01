@@ -424,6 +424,20 @@ async def get_prize_statistics() -> dict[str, Any]:
     return wd.get_prize_stats()
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-038 — 전체 이력 통계 대시보드 공개 API
+# @MX:SPEC: SPEC-LOTTO-038
+@router.get("/stats/overview")
+async def api_stats_overview() -> dict[str, Any]:
+    """전체 추첨 이력 통계 요약을 반환합니다 (SPEC-LOTTO-038).
+
+    데이터 부재 시에도 200 으로 정상 응답 (zeros + None + 빈 리스트).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.dashboard_overview(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-030 — 번호별 상세 통계 공개 API
 # @MX:SPEC: SPEC-LOTTO-030
 @router.get("/numbers/{number}/stats")

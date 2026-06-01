@@ -170,7 +170,9 @@ class TestDeleteAllReservations:
 
 
 class TestReservationDataLayer:
-    def test_get_reservations_empty_when_no_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def test_get_reservations_empty_when_no_file(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
         from lotto.web import data as wd
 
         monkeypatch.setattr(wd, "_RESERVATIONS_PATH", tmp_path / "none.json")

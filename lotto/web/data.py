@@ -1284,6 +1284,147 @@ def save_reservations(reservations: list[dict[str, Any]]) -> None:
         raise
 
 
+# ─── SPEC-LOTTO-038: 통계 대규모 대시보드 (dashboard_overview) ───────────────
+
+# SPEC-LOTTO-038: 범위 분포 5개 구간 (라벨 → (하한, 상한))
+_DASHBOARD_RANGES: tuple[tuple[str, int, int], ...] = (
+    ("1-9", 1, 9),
+    ("10-19", 10, 19),
+    ("20-29", 20, 29),
+    ("30-39", 30, 39),
+    ("40-45", 40, 45),
+)
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-038 — 전체 이력 통계 대시보드 단일 진입점 (단일 O(N) 패스)
+# @MX:SPEC: SPEC-LOTTO-038
+def dashboard_overview(draws: list[DrawResult] | None = _UNSET) -> dict[str, Any]:  # type: ignore[assignment]
+    """전체 추첨 이력에서 7개 통계 요소를 단일 O(N) 패스로 집계합니다 (SPEC-LOTTO-038).
+
+    Args:
+        draws: 분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+               명시적 None 전달 시 데이터 없음으로 처리한다.
+
+    반환 구조:
+        - total_draws:        전체 회차 수
+        - total_prize1_sum:   1등 당첨금 총합 (prize1Amount=None 제외)
+        - number_frequency:   [{number, count}] 본번호 1~45 출현 빈도 (번호 오름차순, 보너스 제외)
+        - highest_prize1_draw: {drwNo, date, prize1Amount} 최고 1등 회차 (동률=낮은 drwNo)
+        - lowest_prize1_draw:  최저 1등 회차 (동률=낮은 drwNo, 없으면 None)
+        - odd_even:           {"odd": 전체 홀수 개수, "even": 전체 짝수 개수}
+        - range_distribution: {"1-9","10-19","20-29","30-39","40-45": 누적 번호 개수}
+        - yearly_avg_prize:   [{year, avg_prize1, draws}] 연도 오름차순 (avg는 prize 있는 회차 평균)
+
+    데이터 부재(None) 또는 빈 리스트인 경우 일관된 0/None/빈 리스트 구조를 반환한다.
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+
+    # 빈/None 데이터에서도 키 셋이 일관되도록 0으로 초기화
+    freq: dict[int, int] = dict.fromkeys(range(1, 46), 0)
+    range_dist: dict[str, int] = {label: 0 for label, _, _ in _DASHBOARD_RANGES}
+    odd_total = 0
+    even_total = 0
+
+    if not draws:
+        return {
+            "total_draws": 0,
+            "total_prize1_sum": 0,
+            "number_frequency": [{"number": n, "count": 0} for n in range(1, 46)],
+            "highest_prize1_draw": None,
+            "lowest_prize1_draw": None,
+            "odd_even": {"odd": 0, "even": 0},
+            "range_distribution": range_dist,
+            "yearly_avg_prize": [],
+        }
+
+    total_prize1_sum = 0
+    highest: DrawResult | None = None
+    lowest: DrawResult | None = None
+    # 연도별 누적: year(str) → [prize 합계, prize 있는 회차 수, 전체 회차 수]
+    yearly: dict[str, list[int]] = {}
+
+    for draw in draws:
+        nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+
+        # 번호 빈도 / 홀짝 / 범위 분포 (단일 루프)
+        for n in nums:
+            freq[n] += 1
+            if n % 2 == 1:
+                odd_total += 1
+            else:
+                even_total += 1
+            for label, lo, hi in _DASHBOARD_RANGES:
+                if lo <= n <= hi:
+                    range_dist[label] += 1
+                    break
+
+        # 연도별 회차 수 누적 (prize 유무 무관)
+        year_key = str(draw.date.year)
+        bucket = yearly.setdefault(year_key, [0, 0, 0])
+        bucket[2] += 1
+
+        # 1등 당첨금 집계 (None 제외)
+        amount = draw.prize1Amount
+        if amount is not None:
+            total_prize1_sum += amount
+            bucket[0] += amount
+            bucket[1] += 1
+            # 최고/최저 — 동률 시 낮은 drwNo 우선
+            if highest is None or _prize_beats(draw, highest, want_max=True):
+                highest = draw
+            if lowest is None or _prize_beats(draw, lowest, want_max=False):
+                lowest = draw
+
+    number_frequency = [{"number": n, "count": freq[n]} for n in range(1, 46)]
+
+    yearly_avg_prize = [
+        {
+            "year": year,
+            "avg_prize1": int(bucket[0] // bucket[1]) if bucket[1] else 0,
+            "draws": bucket[2],
+        }
+        for year, bucket in sorted(yearly.items())
+    ]
+
+    return {
+        "total_draws": len(draws),
+        "total_prize1_sum": total_prize1_sum,
+        "number_frequency": number_frequency,
+        "highest_prize1_draw": _draw_prize_payload(highest),
+        "lowest_prize1_draw": _draw_prize_payload(lowest),
+        "odd_even": {"odd": odd_total, "even": even_total},
+        "range_distribution": range_dist,
+        "yearly_avg_prize": yearly_avg_prize,
+    }
+
+
+def _prize_beats(candidate: DrawResult, current: DrawResult, want_max: bool) -> bool:
+    """candidate가 current보다 최고/최저 자리에 적합한지 판정합니다 (SPEC-LOTTO-038).
+
+    동률(prize 동일) 시에는 낮은 drwNo가 우선하므로, candidate.drwNo가
+    더 작을 때만 교체한다. 호출자는 candidate.prize1Amount가 None이 아님을 보장한다.
+    """
+    c_amount = candidate.prize1Amount
+    cur_amount = current.prize1Amount
+    if c_amount == cur_amount:
+        return candidate.drwNo < current.drwNo
+    if want_max:
+        return c_amount > cur_amount  # type: ignore[operator]
+    return c_amount < cur_amount  # type: ignore[operator]
+
+
+def _draw_prize_payload(draw: DrawResult | None) -> dict[str, Any] | None:
+    """회차를 {drwNo, date, prize1Amount} 페이로드로 변환합니다 (None은 그대로 None)."""
+    if draw is None:
+        return None
+    return {
+        "drwNo": draw.drwNo,
+        "date": str(draw.date),
+        "prize1Amount": draw.prize1Amount,
+    }
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-009 REQ-LAST-002 — last_sync.json 우선, draws 최신 회차 폴백
 def get_last_sync_date() -> str | None:
     """마지막 수집 날짜를 YYYY-MM-DD 형식 문자열로 반환합니다.

@@ -421,6 +421,29 @@ async def number_detail_page(
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-038 — 통계 대규모 대시보드 페이지
+# @MX:SPEC: SPEC-LOTTO-038
+@router.get("/stats")
+async def stats_page(request: Request) -> TemplateResponse:
+    """통계 대규모 대시보드 페이지 — 전체 이력 7개 통계 요소 시각화 (SPEC-LOTTO-038).
+
+    - 요약 카드: 총 회차 수, 1등 당첨금 합계
+    - 최고/최저 1등 당첨금 회차 카드
+    - 번호 빈도 막대 차트 (1~45)
+    - 홀짝 분포 / 범위 분포
+    - 연도별 평균 당첨금 라인 차트
+    - 데이터 부재 시 빈 상태 메시지
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    overview = wd.dashboard_overview(wd.get_draws())
+    return _render(request, "stats.html", {
+        "active_tab": "stats",
+        "overview": overview,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-027 REQ-SET-001 — 웹 설정 관리 페이지
 # @MX:SPEC: SPEC-LOTTO-027 REQ-SET-001
 @router.get("/settings")
