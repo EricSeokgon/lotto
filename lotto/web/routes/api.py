@@ -438,6 +438,28 @@ async def api_stats_overview() -> dict[str, Any]:
     return wd.dashboard_overview(wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-039 — 당첨번호 예측 리포트 공개 API
+# @MX:SPEC: SPEC-LOTTO-039
+@router.get("/prediction/report")
+async def api_prediction_report(
+    recent_n: int = Query(
+        default=50,
+        ge=1,
+        le=200,
+        description="분석 대상 최근 회차 수 (1~200, 기본 50)",
+    ),
+) -> dict[str, Any]:
+    """최근 N회차 복합 스코어링 예측 리포트를 반환합니다 (SPEC-LOTTO-039).
+
+    - recent_n: 1~200 범위. 범위 초과 시 FastAPI가 자동으로 422를 반환한다.
+    - 데이터 부재 시에도 200으로 정상 응답 (빈 후보/조합 구조).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.prediction_report(wd.get_draws(), recent_n=recent_n)
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-030 — 번호별 상세 통계 공개 API
 # @MX:SPEC: SPEC-LOTTO-030
 @router.get("/numbers/{number}/stats")

@@ -444,6 +444,27 @@ async def stats_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-039 — 당첨번호 예측 리포트 페이지
+# @MX:SPEC: SPEC-LOTTO-039
+@router.get("/prediction")
+async def prediction_page(request: Request) -> TemplateResponse:
+    """예측 리포트 페이지 — 최근 50회차 복합 스코어링 결과 시각화 (SPEC-LOTTO-039).
+
+    - 요약: 분석 회차 수, 분석 기준(recent_n)
+    - 상위 후보 테이블: 번호 / composite_score / 4차원 breakdown 막대
+    - 추천 조합 카드 3종 (각 6개 번호 공)
+    - 데이터 부재 시 빈 상태 메시지
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    report = wd.prediction_report(wd.get_draws(), recent_n=50)
+    return _render(request, "prediction.html", {
+        "active_tab": "prediction",
+        "report": report,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-027 REQ-SET-001 — 웹 설정 관리 페이지
 # @MX:SPEC: SPEC-LOTTO-027 REQ-SET-001
 @router.get("/settings")

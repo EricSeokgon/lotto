@@ -1425,6 +1425,223 @@ def _draw_prize_payload(draw: DrawResult | None) -> dict[str, Any] | None:
     }
 
 
+# ─── SPEC-LOTTO-039: 당첨번호 예측 리포트 (prediction_report) ────────────────
+
+# SPEC-LOTTO-039: 복합 스코어 가중치 (합 1.0)
+_W_FREQUENCY = 0.40
+_W_INTERVAL = 0.30
+_W_ODD_EVEN = 0.15
+_W_RANGE = 0.15
+
+# SPEC-LOTTO-039: 범위 점수용 5개 번호대 구간 (라벨 → (하한, 상한))
+_PREDICT_RANGES: tuple[tuple[str, int, int], ...] = (
+    ("1-9", 1, 9),
+    ("10-19", 10, 19),
+    ("20-29", 20, 29),
+    ("30-39", 30, 39),
+    ("40-45", 40, 45),
+)
+# SPEC-LOTTO-039: 상위 후보 반환 개수
+_PREDICT_TOP_N = 10
+
+
+def _clamp01(x: float) -> float:
+    """값을 [0.0, 1.0] 범위로 제한합니다 (SPEC-LOTTO-039)."""
+    return max(0.0, min(1.0, x))
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-039 — 최근 recent_n 회차 복합 스코어링 예측 리포트
+# @MX:SPEC: SPEC-LOTTO-039
+def prediction_report(draws: list[DrawResult] | None = _UNSET, recent_n: int = 50) -> dict[str, Any]:  # type: ignore[assignment]  # noqa: ANN001, E501
+    """최근 recent_n 회차를 4차원 복합 스코어로 분석해 예측 리포트를 생성합니다.
+
+    각 번호(1~45)에 대해 빈도/간격/홀짝/범위 점수를 계산하고
+    가중 합산한 composite_score로 상위 후보와 3개 추천 조합을 산출한다.
+
+    Args:
+        draws:    분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+                  명시적 None 전달 시 데이터 없음으로 처리한다.
+        recent_n: 분석 대상 최근 회차 수. 가용 회차보다 크면 가용 전체를 사용한다.
+
+    반환 구조:
+        - recent_n:                  요청한 recent_n (가용 회차로 잘려도 요청값 그대로)
+        - draws_analyzed:            실제 분석에 사용한 회차 수 = min(recent_n, len(draws))
+        - weights:                   {frequency, interval, odd_even, range} 가중치
+        - top_candidates:            [{number, composite_score, breakdown}] 상위 10개
+                                     (composite_score 내림차순, 동률은 낮은 번호 우선)
+        - recommended_combinations:  3개 조합 [{numbers, label}] (각 6개 오름차순)
+
+    데이터 부재(None) 또는 빈 리스트인 경우 빈 후보/조합 구조를 반환한다.
+    """
+    weights = {
+        "frequency": _W_FREQUENCY,
+        "interval": _W_INTERVAL,
+        "odd_even": _W_ODD_EVEN,
+        "range": _W_RANGE,
+    }
+
+    if draws is _UNSET:
+        draws = get_draws()
+
+    if not draws:
+        return {
+            "recent_n": recent_n,
+            "draws_analyzed": 0,
+            "weights": weights,
+            "top_candidates": [],
+            "recommended_combinations": [],
+        }
+
+    # 최근 N회차 (drwNo 기준 정렬 후 뒤에서 recent_n개)
+    sorted_draws = sorted(draws, key=lambda d: d.drwNo)
+    window = min(recent_n, len(sorted_draws))
+    sample = sorted_draws[-window:]
+
+    # 번호별 출현 횟수 / 마지막 출현 위치(샘플 내 인덱스)
+    occurrences: dict[int, int] = dict.fromkeys(range(1, 46), 0)
+    last_seen_idx: dict[int, int] = {}
+    odd_total = 0
+    even_total = 0
+    range_counts: dict[str, int] = {label: 0 for label, _, _ in _PREDICT_RANGES}
+
+    for idx, d in enumerate(sample):
+        for n in d.numbers():
+            occurrences[n] += 1
+            last_seen_idx[n] = idx
+            if n % 2 == 1:
+                odd_total += 1
+            else:
+                even_total += 1
+            for label, lo, hi in _PREDICT_RANGES:
+                if lo <= n <= hi:
+                    range_counts[label] += 1
+                    break
+
+    sample_len = len(sample)
+    max_occ = max(occurrences.values())
+
+    # 간격(gap): 표본 마지막 인덱스 기준 마지막 출현 이후 경과 회차.
+    # 미출현 번호는 gap = sample_len (최대 overdue).
+    gaps: dict[int, int] = {}
+    for n in range(1, 46):
+        if n in last_seen_idx:
+            gaps[n] = (sample_len - 1) - last_seen_idx[n]
+        else:
+            gaps[n] = sample_len
+    max_gap = max(gaps.values())
+
+    # 홀짝 점수: 소수 집단(less-frequent parity)이 1.0, 다수 집단 0.0, 동률 0.5
+    if odd_total < even_total:
+        odd_score_val, even_score_val = 1.0, 0.0
+    elif even_total < odd_total:
+        odd_score_val, even_score_val = 0.0, 1.0
+    else:
+        odd_score_val = even_score_val = 0.5
+
+    # 범위 점수: 최소 표현 구간이 1.0, 나머지는 빈도 역수 정규화 [0,1]
+    range_score_by_label = _compute_range_scores(range_counts)
+
+    # 각 번호의 4차원 점수 + composite
+    items: list[dict[str, Any]] = []
+    for n in range(1, 46):
+        freq_score = _clamp01(occurrences[n] / max_occ) if max_occ else 0.0
+        interval_score = _clamp01(gaps[n] / max_gap) if max_gap else 0.0
+        odd_even_score = odd_score_val if n % 2 == 1 else even_score_val
+        range_score = _clamp01(range_score_by_label[_range_label(n)])
+
+        composite = (
+            _W_FREQUENCY * freq_score
+            + _W_INTERVAL * interval_score
+            + _W_ODD_EVEN * odd_even_score
+            + _W_RANGE * range_score
+        )
+        items.append({
+            "number": n,
+            "composite_score": round(_clamp01(composite), 4),
+            "breakdown": {
+                "frequency": round(freq_score, 4),
+                "interval": round(interval_score, 4),
+                "odd_even": round(odd_even_score, 4),
+                "range": round(range_score, 4),
+            },
+        })
+
+    # 상위 후보 — composite 내림차순, 동률은 낮은 번호 우선
+    ranked = sorted(items, key=lambda x: (-x["composite_score"], x["number"]))
+    top_candidates = ranked[:_PREDICT_TOP_N]
+
+    cand_numbers = [c["number"] for c in top_candidates]
+    recommended_combinations = _build_prediction_combos(cand_numbers)
+
+    return {
+        "recent_n": recent_n,
+        "draws_analyzed": window,
+        "weights": weights,
+        "top_candidates": top_candidates,
+        "recommended_combinations": recommended_combinations,
+    }
+
+
+def _range_label(n: int) -> str:
+    """번호를 _PREDICT_RANGES 구간 라벨로 변환합니다 (SPEC-LOTTO-039)."""
+    for label, lo, hi in _PREDICT_RANGES:
+        if lo <= n <= hi:
+            return label
+    return _PREDICT_RANGES[-1][0]
+
+
+def _compute_range_scores(range_counts: dict[str, int]) -> dict[str, float]:
+    """구간별 점수를 빈도 역수 정규화로 계산합니다 (SPEC-LOTTO-039).
+
+    최소 표현 구간이 1.0, 최대 표현 구간이 0.0이 되도록 선형 반전한다.
+    모든 구간 빈도가 동일하면 전 구간 1.0(가장 적게 나온 셈)으로 처리한다.
+    """
+    counts = list(range_counts.values())
+    lo = min(counts)
+    hi = max(counts)
+    if hi == lo:
+        return dict.fromkeys(range_counts, 1.0)
+    span = hi - lo
+    return {
+        label: (hi - c) / span
+        for label, c in range_counts.items()
+    }
+
+
+def _build_prediction_combos(cand_numbers: list[int]) -> list[dict[str, Any]]:
+    """상위 후보 번호로 3개 추천 조합을 결정론적으로 생성합니다 (SPEC-LOTTO-039).
+
+    - 조합1: 상위 0~5 (6개)
+    - 조합2: 상위 0~4 + 7번째(인덱스 6) (후보 7개 이상일 때), 부족하면 가용 후보
+    - 조합3: 상위 0~2 + 7~9번째(인덱스 6~8) (후보 9개 이상일 때)
+    각 조합은 6개 고유 번호 오름차순(6-number lotto 불변식 우선).
+    후보가 6개 미만이면 가능한 만큼 반환한다.
+    """
+    n = len(cand_numbers)
+
+    combo1 = sorted(cand_numbers[0:6])
+
+    # 후보 7개 이상이면 상위 5개 + 7번째(인덱스 6), 부족하면 상위 6개
+    combo2 = (
+        sorted(cand_numbers[0:5] + [cand_numbers[6]])
+        if n >= 7  # noqa: PLR2004
+        else sorted(cand_numbers[0:6])
+    )
+
+    # 후보 9개 이상이면 상위 3개 + 중위 3개(인덱스 6~8) = 6개 (6-number 불변식 유지)
+    combo3 = (
+        sorted(cand_numbers[0:3] + cand_numbers[6:9])
+        if n >= 9  # noqa: PLR2004
+        else sorted(cand_numbers[0:6])
+    )
+
+    return [
+        {"numbers": combo1, "label": "조합 1"},
+        {"numbers": combo2, "label": "조합 2"},
+        {"numbers": combo3, "label": "조합 3"},
+    ]
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-009 REQ-LAST-002 — last_sync.json 우선, draws 최신 회차 폴백
 def get_last_sync_date() -> str | None:
     """마지막 수집 날짜를 YYYY-MM-DD 형식 문자열로 반환합니다.
