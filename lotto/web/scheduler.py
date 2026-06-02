@@ -22,7 +22,9 @@ from typing import Any
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from lotto.config import settings
+# SPEC-LOTTO-045: 명시적 재노출(PEP 484 redundant-alias). 테스트가 모듈 네임스페이스
+# (lotto.web.scheduler.settings)로 패치/참조하므로 명시적 재노출로 처리한다 (런타임 동작 무관).
+from lotto.config import settings as settings
 
 logger = logging.getLogger(__name__)
 
@@ -185,7 +187,10 @@ def _next_run_iso() -> str | None:
     job = _scheduler.get_job(_JOB_ID)
     if job is None or job.next_run_time is None:
         return None
-    return job.next_run_time.isoformat()
+    # SPEC-LOTTO-045: apscheduler에 py.typed 마커가 없어 next_run_time이 Any로 추론된다.
+    # isoformat()은 datetime 메서드이므로 str 반환을 명시한다 (동작 변경 없음).
+    next_run: str = job.next_run_time.isoformat()
+    return next_run
 
 
 def get_status() -> dict[str, Any]:

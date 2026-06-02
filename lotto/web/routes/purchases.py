@@ -27,7 +27,9 @@ async def list_purchases() -> list[_pm.PurchaseResponse]:
     """구매 이력 전체를 등수 정보와 함께 반환합니다."""
     records = _pm.load_purchases(_pm._PURCHASES_PATH)
     draws = get_draws()
-    draws_by_drw_no: dict[int, DrawResult] = {d.drwNo: d for d in draws}
+    # SPEC-LOTTO-045: get_draws()는 데이터 부재 시 None 반환. pages.py:listings 와 동일하게
+    # None이면 빈 매핑으로 처리하여 등수 정보 없이 구매 이력을 반환한다 (동작 보존).
+    draws_by_drw_no: dict[int, DrawResult] = {d.drwNo: d for d in draws} if draws else {}
     return _pm.build_responses(records, draws_by_drw_no)
 
 

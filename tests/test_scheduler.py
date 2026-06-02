@@ -129,6 +129,7 @@ def test_start_scheduler_idempotent() -> None:
         assert sched_mod.start_scheduler() is True
         assert sched_mod.start_scheduler() is True
         # job 은 정확히 1개여야 함
+        assert sched_mod._scheduler is not None
         jobs = sched_mod._scheduler.get_jobs()
         assert len(jobs) == 1
 

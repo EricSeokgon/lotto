@@ -23,7 +23,9 @@ from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
 
-from lotto.config import settings
+# SPEC-LOTTO-045: 명시적 재노출(PEP 484 redundant-alias). 테스트가 모듈 네임스페이스
+# (lotto.web.notifier.settings)로 패치/참조하므로 명시적 재노출로 처리한다 (런타임 동작 무관).
+from lotto.config import settings as settings
 
 logger = logging.getLogger(__name__)
 

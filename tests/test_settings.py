@@ -30,15 +30,15 @@ def _override_settings(**overrides: Any) -> Any:
     from lotto import config as cfg_mod
     from lotto.web import notifier as notif_mod
 
-    original_notif = notif_mod.settings  # type: ignore[attr-defined]
+    original_notif = notif_mod.settings
     original_cfg = cfg_mod.settings
     replaced = dataclasses.replace(original_notif, **overrides)
-    notif_mod.settings = replaced  # type: ignore[attr-defined]
+    notif_mod.settings = replaced
     cfg_mod.settings = replaced
     try:
         yield replaced
     finally:
-        notif_mod.settings = original_notif  # type: ignore[attr-defined]
+        notif_mod.settings = original_notif
         cfg_mod.settings = original_cfg
 
 

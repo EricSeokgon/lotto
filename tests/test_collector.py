@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -218,7 +219,7 @@ class TestCollectNew:
         max_drw_no = max(d.drwNo for d in mini_draws)
 
         # 다음 회차 하나만 성공, 이후 연속 5회 실패
-        responses = [
+        responses: list[dict[str, Any]] = [
             {"json": _make_success_response(max_drw_no + 1)},
             {"status_code": 500},
             {"status_code": 500},

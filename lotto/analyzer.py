@@ -10,11 +10,14 @@ import numpy as np
 from lotto.models import (
     ConsecutivePattern,
     DrawResult,
-    FrequencyStats,
     PairAnalysis,
     RecentPattern,
-    Statistics,
 )
+
+# SPEC-LOTTO-045: 명시적 재노출(PEP 484 redundant-alias). analyzer의 공개 출력 타입을
+# 소비 모듈/테스트가 lotto.analyzer 경로로 임포트할 수 있도록 한다 (런타임 동작 무관).
+from lotto.models import FrequencyStats as FrequencyStats
+from lotto.models import Statistics as Statistics
 
 if TYPE_CHECKING:  # pragma: no cover
     from pathlib import Path

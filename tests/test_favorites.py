@@ -5,6 +5,8 @@ REQ-FAV-001~003 + REQ-FAV-004(웹 UI 섹션 존재) 검증.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 from starlette.testclient import TestClient
 
@@ -12,7 +14,7 @@ from lotto.web.app import app
 
 
 @pytest.fixture(scope="module")
-def client() -> TestClient:
+def client() -> Iterator[TestClient]:
     """앱 클라이언트 — 모듈 단위로 재사용."""
     with TestClient(app) as c:
         yield c

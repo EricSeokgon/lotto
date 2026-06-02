@@ -22,7 +22,9 @@ try:
 except ImportError:  # pragma: no cover
     _DOTENV_AVAILABLE = False
 
-    def _load_dotenv(*_args: object, **_kwargs: object) -> bool:
+    # SPEC-LOTTO-045: 미설치 시 no-op 폴백. 실제 load_dotenv와 시그니처가 다르므로
+    # 조건부 함수 변형 misc 경고를 억제한다 (런타임 no-op 동작 보존).
+    def _load_dotenv(*_args: object, **_kwargs: object) -> bool:  # type: ignore[misc]
         """python-dotenv 미설치 시 no-op."""
         return False
 

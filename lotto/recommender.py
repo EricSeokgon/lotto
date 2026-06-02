@@ -7,7 +7,11 @@ import warnings
 from dataclasses import dataclass
 
 from lotto.config import settings
-from lotto.models import Recommendation, Statistics
+
+# SPEC-LOTTO-045: 명시적 재노출(PEP 484 redundant-alias). recommender의 공개 도메인 타입을
+# 소비 모듈/테스트가 lotto.recommender 경로로 임포트할 수 있도록 한다 (런타임 동작 무관).
+from lotto.models import Recommendation as Recommendation
+from lotto.models import Statistics
 
 # SPEC-LOTTO-002: 추천 가중치 외부화 — LOTTO_RECOMMENDER_WEIGHTS 환경 변수로 오버라이드 가능
 DEFAULT_WEIGHTS = settings.recommender_weights

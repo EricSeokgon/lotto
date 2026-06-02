@@ -12,7 +12,10 @@ import json
 import logging
 import os
 import tempfile
-import time
+
+# SPEC-LOTTO-045: 명시적 재노출(redundant-alias). 테스트가 모듈 네임스페이스
+# (lotto.web.data.time)로 time.time을 패치하므로 명시적 재노출로 처리한다 (런타임 동작 무관).
+import time as time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 

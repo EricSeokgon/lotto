@@ -6,6 +6,7 @@ REQ-CHECK-003 (네비 링크) 검증.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import date
 
 import pytest
@@ -16,7 +17,7 @@ from lotto.web.app import app
 
 
 @pytest.fixture(scope="module")
-def client() -> TestClient:
+def client() -> Iterator[TestClient]:
     """앱 클라이언트 — 모듈 단위 공유."""
     with TestClient(app) as c:
         yield c

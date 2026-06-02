@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from lotto.scraper import _parse_draw_row, scrape_all
 
 
@@ -29,7 +31,7 @@ def test_parse_draw_row_short_row_returns_none_no_exception() -> None:
 
 
 def test_parse_draw_row_short_row_logs_warning(
-    caplog: logging.LogRecord,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """짧은 행에 대해 경고 로그가 기록된다."""
     row = ["1130회", "2024.07.27"]
@@ -51,7 +53,7 @@ def test_parse_draw_row_non_integer_number_returns_none() -> None:
 
 
 def test_parse_draw_row_non_integer_number_logs_warning(
-    caplog: logging.LogRecord,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """비정수 번호 셀에 대해 경고 로그가 기록된다."""
     row = ["1130회", "2024.07.27", "7", "21억", "abc", "19", "21", "25", "27", "28", "40"]
@@ -72,7 +74,7 @@ def test_parse_draw_row_malformed_date_dash_returns_none() -> None:
 
 
 def test_parse_draw_row_malformed_date_logs_warning(
-    caplog: logging.LogRecord,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     """잘못된 날짜 형식에 대해 경고 로그가 기록된다."""
     row = ["1130회", "2024-07-27", "7", "2100000000", "15", "19", "21", "25", "27", "28", "40"]
