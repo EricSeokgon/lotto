@@ -2106,6 +2106,106 @@ def _find_consecutive_runs(nums: list[int]) -> list[list[int]]:
     return runs
 
 
+# ─── SPEC-LOTTO-044: 번호 궁합 추천기 (number_affinity) ──────────────────────
+
+# SPEC-LOTTO-044: 추천 조합에 포함할 상위 파트너 수 (대상 + 최대 5 = 6개)
+_AFFINITY_COMBO_PARTNERS = 5
+
+
+def _empty_affinity(target: int, total_draws: int) -> dict[str, Any]:
+    """번호 궁합 분석의 일관된 빈 구조를 생성합니다 (SPEC-LOTTO-044 REQ-AFFINITY-006).
+
+    데이터 부재 / None / 대상 미출현 모든 경우에서 동일 구조를 보장한다.
+    추천 조합은 대상 번호만 담는다(유효 대상일 때).
+    """
+    return {
+        "target": target,
+        "total_draws": total_draws,
+        "target_appearances": 0,
+        "partners": [],
+        "recommended_combination": [target],
+    }
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-044 — 대상 번호와 동반 출현(co-occurrence)한 파트너 집계 + 추천 조합
+# @MX:SPEC: SPEC-LOTTO-044 REQ-AFFINITY-001
+def number_affinity(
+    target: int,
+    draws: list[DrawResult] | None = _UNSET,
+    top_k: int = 10,
+) -> dict[str, Any]:
+    """대상 번호와 함께 출현한 다른 번호의 궁합(co-occurrence)을 집계합니다 (SPEC-LOTTO-044).
+
+    대상이 본번호 6개(보너스 제외)에 포함된 회차만 순회하며, 같은 회차에 함께
+    나온 다른 번호들의 동반 횟수를 집계한다. 가장 궁합이 좋은 파트너로 추천 조합을
+    생성한다.
+
+    Args:
+        target: 궁합을 분석할 번호 (1~45, 검증은 API 레이어가 수행).
+        draws:  분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+                명시적 None 전달 시 데이터 없음으로 처리한다.
+        top_k:  반환할 상위 파트너 수 (기본 10).
+
+    반환 구조:
+        - target:                  분석 대상 번호
+        - total_draws:             전체 분석 회차 수
+        - target_appearances:      대상이 등장한 회차 수
+        - partners:                [{number, count, rate}] 동반 횟수 내림차순,
+                                   동률은 번호 오름차순, 최대 top_k개
+                                   (rate = count / target_appearances, 소수 4자리)
+        - recommended_combination: sorted([target] + 상위 5 파트너 번호)
+                                   (파트너가 5개 미만이면 가용분만 포함)
+
+    데이터 부재(None) / 빈 리스트 / 대상 미출현 시 예외 없이 일관된 빈 구조를
+    반환한다 (target_appearances=0, partners=[], recommended_combination=[target]).
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+
+    if not draws:
+        return _empty_affinity(target, 0)
+
+    total_draws = len(draws)
+    target_appearances = 0
+    co_counts: dict[int, int] = {}
+
+    for draw in draws:
+        draw_set = set(draw.numbers())  # 정렬된 본번호 6개 (보너스 제외)
+        if target not in draw_set:
+            continue
+        target_appearances += 1
+        for num in draw_set:
+            if num == target:
+                continue
+            co_counts[num] = co_counts.get(num, 0) + 1
+
+    if target_appearances == 0:
+        return _empty_affinity(target, total_draws)
+
+    # 파트너 정렬 — count 내림차순, 동률은 번호 오름차순
+    ranked = sorted(co_counts.items(), key=lambda x: (-x[1], x[0]))
+    partners = [
+        {
+            "number": num,
+            "count": count,
+            "rate": round(count / target_appearances, 4),
+        }
+        for num, count in ranked[:top_k]
+    ]
+
+    # 추천 조합 — 대상 + 상위 5 파트너 번호 (정렬 오름차순)
+    top_partner_numbers = [num for num, _ in ranked[:_AFFINITY_COMBO_PARTNERS]]
+    recommended_combination = sorted([target, *top_partner_numbers])
+
+    return {
+        "target": target,
+        "total_draws": total_draws,
+        "target_appearances": target_appearances,
+        "partners": partners,
+        "recommended_combination": recommended_combination,
+    }
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-009 REQ-LAST-002 — last_sync.json 우선, draws 최신 회차 폴백
 def get_last_sync_date() -> str | None:
     """마지막 수집 날짜를 YYYY-MM-DD 형식 문자열로 반환합니다.

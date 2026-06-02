@@ -441,6 +441,35 @@ async def numbers_trend_page(
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-044 — 번호 궁합 추천기 페이지
+# @MX:SPEC: SPEC-LOTTO-044 REQ-AFFINITY-020
+# 주의: /numbers/{number} 동적 라우트보다 먼저 등록해야 "affinity"가 number로 캡처되지 않는다.
+@router.get("/numbers/affinity")
+async def numbers_affinity_page(
+    request: Request,
+    target: Optional[int] = Query(default=None, ge=1, le=45),  # noqa: UP045
+) -> TemplateResponse:
+    """번호 궁합 추천기 페이지 — 대상 번호의 동반 파트너/추천 조합 (SPEC-LOTTO-044).
+
+    - 파라미터 없음(target 없음): 입력 폼만 표시 (REQ-AFFINITY-020)
+    - 유효 target(1~45): 폼 + 궁합 결과 표시 (REQ-AFFINITY-021)
+    - 데이터 부재 시에도 200 (빈 구조를 자연스럽게 렌더링)
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    affinity: dict[str, Any] | None = None
+    if target is not None:
+        affinity = wd.number_affinity(target, wd.get_draws())
+
+    return _render(request, "numbers_affinity.html", {
+        "active_tab": "numbers_affinity",
+        "target": target,
+        "affinity": affinity,
+        "error_message": None,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-030 — 번호 상세 통계 페이지
 # @MX:SPEC: SPEC-LOTTO-030
 @router.get("/numbers/{number}")
