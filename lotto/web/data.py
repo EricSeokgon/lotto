@@ -2312,6 +2312,147 @@ def yearly_prize_comparison(draws: list[DrawResult] | None = _UNSET) -> dict[str
     }
 
 
+# ─── SPEC-LOTTO-047: 번호별 당첨 주기 분석 (cycle_analysis) ──────────────────
+
+# SPEC-LOTTO-047: most_overdue 반환 최대 개수
+_CYCLE_OVERDUE_TOP_N = 5
+# SPEC-LOTTO-047: normal 판정 허용 오차 (|current_gap - avg_cycle| <= 0.5)
+_CYCLE_NORMAL_TOLERANCE = 0.5
+
+
+def _cycle_status(appearances: int, current_gap: int, avg_cycle: float) -> str:
+    """번호의 주기 상태를 분류합니다 (SPEC-LOTTO-047).
+
+    - never:    출현 이력 없음 (appearances == 0)
+    - normal:   |current_gap - avg_cycle| <= 0.5 (근사 일치, 최우선 판정)
+    - overdue:  current_gap > avg_cycle (평균 주기보다 오래 미출현)
+    - frequent: current_gap < avg_cycle (평균보다 자주 출현)
+    """
+    if appearances == 0:
+        return "never"
+    if abs(current_gap - avg_cycle) <= _CYCLE_NORMAL_TOLERANCE:
+        return "normal"
+    if current_gap > avg_cycle:
+        return "overdue"
+    return "frequent"
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-047 — 번호별 평균 출현 주기 + 현재 간격 분석 (단일 O(N) 패스)
+# @MX:SPEC: SPEC-LOTTO-047
+def cycle_analysis(draws: list[DrawResult] | None = _UNSET) -> dict[str, Any]:
+    """번호 1~45의 평균 출현 주기와 현재 간격을 분석합니다 (SPEC-LOTTO-047).
+
+    전체 회차를 시간 오름차순으로 정렬한 뒤, 각 번호(본번호 6개 기준, 보너스 제외)에
+    대해 출현 횟수·평균 주기·마지막 출현 회차·현재 간격을 산출하고 상태로 분류한다.
+
+    정의:
+        - avg_cycle:   total_draws / appearances (소수 2자리). appearances==0이면 0.0.
+                       "평균적으로 몇 회차마다 한 번 출현하는가"의 단순 추정치이다.
+        - current_gap: 마지막 출현 이후 최신 회차까지 경과한 회차 수.
+                       최신 회차에 출현하면 0, 한 번도 출현하지 않으면 total_draws.
+        - status:      _cycle_status 규칙 (never/normal/overdue/frequent).
+
+    Args:
+        draws: 분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+               명시적 None 전달 시 데이터 없음으로 처리한다.
+
+    반환 구조:
+        - total_draws:  전체 회차 수
+        - numbers:      [{number, appearances, avg_cycle, last_appeared_drwNo,
+                          current_gap, status}] 번호 1~45 오름차순 (항상 45개)
+        - most_overdue: [{number, current_gap, avg_cycle}] overdue 번호 중
+                        (current_gap - avg_cycle) 내림차순 상위 5개
+        - summary:      {overdue, frequent, normal, never} 상태별 카운트 (합계 45)
+
+    데이터 부재(None) 또는 빈 리스트인 경우 total_draws=0, 45개 번호 모두 never,
+    most_overdue=[], summary는 never=45의 일관된 빈 구조를 반환한다.
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+
+    if not draws:
+        return {
+            "total_draws": 0,
+            "numbers": [
+                {
+                    "number": n,
+                    "appearances": 0,
+                    "avg_cycle": 0.0,
+                    "last_appeared_drwNo": None,
+                    "current_gap": 0,
+                    "status": "never",
+                }
+                for n in range(1, 46)
+            ],
+            "most_overdue": [],
+            "summary": {"overdue": 0, "frequent": 0, "normal": 0, "never": 45},
+        }
+
+    # 회차 오름차순 정렬 — 간격 계산은 시간순 전제
+    sorted_draws = sorted(draws, key=lambda d: d.drwNo)
+    total_draws = len(sorted_draws)
+    last_idx = total_draws - 1
+
+    # 번호별 출현 횟수 / 마지막 출현 인덱스 + 회차 번호 (단일 패스)
+    appearances: dict[int, int] = dict.fromkeys(range(1, 46), 0)
+    last_idx_by_num: dict[int, int] = {}
+    last_drw_by_num: dict[int, int] = {}
+    for idx, draw in enumerate(sorted_draws):
+        for n in draw.numbers():  # 정렬된 본번호 6개 (보너스 제외)
+            appearances[n] += 1
+            last_idx_by_num[n] = idx
+            last_drw_by_num[n] = draw.drwNo
+
+    numbers: list[dict[str, Any]] = []
+    summary: dict[str, int] = {"overdue": 0, "frequent": 0, "normal": 0, "never": 0}
+
+    for n in range(1, 46):
+        count = appearances[n]
+        if count == 0:
+            avg_cycle = 0.0
+            last_appeared: int | None = None
+            current_gap = total_draws
+        else:
+            avg_cycle = round(total_draws / count, 2)
+            last_appeared = last_drw_by_num[n]
+            current_gap = last_idx - last_idx_by_num[n]
+
+        status = _cycle_status(count, current_gap, avg_cycle)
+        summary[status] += 1
+
+        numbers.append({
+            "number": n,
+            "appearances": count,
+            "avg_cycle": avg_cycle,
+            "last_appeared_drwNo": last_appeared,
+            "current_gap": current_gap,
+            "status": status,
+        })
+
+    # most_overdue — overdue 번호만, (current_gap - avg_cycle) 내림차순 상위 5
+    overdue_items = [
+        {
+            "number": item["number"],
+            "current_gap": item["current_gap"],
+            "avg_cycle": item["avg_cycle"],
+        }
+        for item in numbers
+        if item["status"] == "overdue"
+    ]
+    overdue_items.sort(
+        key=lambda x: (x["current_gap"] - x["avg_cycle"], x["number"]),
+        reverse=True,
+    )
+    most_overdue = overdue_items[:_CYCLE_OVERDUE_TOP_N]
+
+    return {
+        "total_draws": total_draws,
+        "numbers": numbers,
+        "most_overdue": most_overdue,
+        "summary": summary,
+    }
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-009 REQ-LAST-002 — last_sync.json 우선, draws 최신 회차 폴백
 def get_last_sync_date() -> str | None:
     """마지막 수집 날짜를 YYYY-MM-DD 형식 문자열로 반환합니다.

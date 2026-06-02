@@ -470,6 +470,28 @@ async def numbers_affinity_page(
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-047 — 번호별 당첨 주기 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-047
+# 주의: /numbers/{number} 동적 라우트보다 먼저 등록해야 "cycle"이 number로 캡처되지 않는다.
+@router.get("/numbers/cycle")
+async def numbers_cycle_page(request: Request) -> TemplateResponse:
+    """번호별 당첨 주기 분석 페이지 — 1~45 평균 주기/현재 간격/상태 + most_overdue (SPEC-LOTTO-047).
+
+    - 요약 카운트 카드 4종 (overdue/frequent/normal/never)
+    - 가장 지연된 번호 하이라이트 섹션 (상위 5)
+    - 번호별 주기 상세 테이블 (색상 코딩 상태 배지)
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 메시지)
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    analysis = wd.cycle_analysis(wd.get_draws())
+    return _render(request, "cycle_analysis.html", {
+        "active_tab": "cycle",
+        "analysis": analysis,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-030 — 번호 상세 통계 페이지
 # @MX:SPEC: SPEC-LOTTO-030
 @router.get("/numbers/{number}")

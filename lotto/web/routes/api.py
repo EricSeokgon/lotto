@@ -561,6 +561,22 @@ async def get_number_trend(
     return wd.number_trend(n, recent_n=recent_n, draws=wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-047 — 번호별 당첨 주기 분석 공개 API
+# @MX:SPEC: SPEC-LOTTO-047
+# 주의: 정적 경로이므로 /numbers/{number}/stats 등 동적 라우트와 충돌하지 않는다.
+@router.get("/numbers/cycle")
+async def get_number_cycle() -> dict[str, Any]:
+    """번호 1~45의 평균 출현 주기/현재 간격/상태 분석을 반환합니다 (SPEC-LOTTO-047).
+
+    쿼리 파라미터 없이 전체 회차를 분석한다.
+    데이터 부재 시에도 200 으로 정상 응답 (total_draws=0 + 전부 never 구조).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.cycle_analysis(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-030 — 번호별 상세 통계 공개 API
 # @MX:SPEC: SPEC-LOTTO-030
 @router.get("/numbers/{number}/stats")

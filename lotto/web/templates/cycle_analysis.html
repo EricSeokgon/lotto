@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-047: 번호별 당첨 주기 분석 페이지 — 요약 카운트 + most_overdue 카드 + 번호 테이블 #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">번호별 당첨 주기 분석</h2>
+    </div>
+
+    {% if analysis.total_draws == 0 %}
+    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+    </div>
+    {% else %}
+    <!-- 요약 카운트 카드 4종 -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-sm text-muted dark:text-gray-400">지연 (overdue)</p>
+            <p class="text-3xl font-bold text-amber mt-1">{{ analysis.summary.overdue }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-sm text-muted dark:text-gray-400">활발 (frequent)</p>
+            <p class="text-3xl font-bold text-data-blue dark:text-data-muted mt-1">{{ analysis.summary.frequent }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-sm text-muted dark:text-gray-400">정상 (normal)</p>
+            <p class="text-3xl font-bold text-slate-blue dark:text-gray-300 mt-1">{{ analysis.summary.normal }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-sm text-muted dark:text-gray-400">미출현 (never)</p>
+            <p class="text-3xl font-bold text-muted dark:text-gray-400 mt-1">{{ analysis.summary.never }}</p>
+        </div>
+    </div>
+
+    <!-- most_overdue 하이라이트 섹션 -->
+    {% if analysis.most_overdue %}
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-base font-medium text-ink dark:text-gray-100 mb-3">가장 지연된 번호 (Top {{ analysis.most_overdue|length }})</h3>
+        <div class="flex flex-wrap gap-3">
+            {% for item in analysis.most_overdue %}
+            <div class="flex items-center gap-2 bg-amber/10 border border-amber/30 rounded-lg px-3 py-2">
+                <span class="inline-flex items-center justify-center w-9 h-9 rounded-full text-white font-bold text-sm"
+                      style="background-color: {{ item.number | ball_color }};">{{ item.number }}</span>
+                <span class="text-sm text-muted dark:text-gray-400">간격 {{ item.current_gap }} / 평균 {{ item.avg_cycle }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 번호별 주기 테이블 (1~45) -->
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700 overflow-x-auto">
+        <h3 class="text-base font-medium text-ink dark:text-gray-100 mb-3">번호별 주기 상세</h3>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="py-2 pr-4">번호</th>
+                    <th class="py-2 pr-4 text-right">출현 횟수</th>
+                    <th class="py-2 pr-4 text-right">평균 주기</th>
+                    <th class="py-2 pr-4 text-right">현재 간격</th>
+                    <th class="py-2 pr-4">상태</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in analysis.numbers %}
+                <tr class="border-b border-border dark:border-gray-700">
+                    <td class="py-2 pr-4">
+                        <span class="inline-flex items-center justify-center w-8 h-8 rounded-full text-white font-bold text-xs"
+                              style="background-color: {{ row.number | ball_color }};">{{ row.number }}</span>
+                    </td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ row.appearances }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ row.avg_cycle }}</td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ row.current_gap }}</td>
+                    <td class="py-2 pr-4">
+                        {% if row.status == 'overdue' %}
+                        <span class="px-2 py-1 rounded text-xs font-medium bg-yellow-200 text-yellow-900 dark:bg-yellow-900/40 dark:text-yellow-200">지연</span>
+                        {% elif row.status == 'frequent' %}
+                        <span class="px-2 py-1 rounded text-xs font-medium bg-blue-200 text-blue-900 dark:bg-blue-900/40 dark:text-blue-200">활발</span>
+                        {% elif row.status == 'normal' %}
+                        <span class="px-2 py-1 rounded text-xs font-medium bg-green-200 text-green-900 dark:bg-green-900/40 dark:text-green-200">정상</span>
+                        {% else %}
+                        <span class="px-2 py-1 rounded text-xs font-medium bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">미출현</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
