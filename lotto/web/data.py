@@ -1969,6 +1969,143 @@ def number_trend(
     }
 
 
+# ─── SPEC-LOTTO-043: 연속 번호 패턴 분석 (consecutive_pattern) ───────────────
+
+# SPEC-LOTTO-043: most_common_pairs 반환 최대 개수
+_CONSEC_TOP_PAIRS = 10
+# SPEC-LOTTO-043: run_length_distribution 키 (길이 2~6)
+_CONSEC_RUN_LENGTHS = (2, 3, 4, 5, 6)
+
+
+def _empty_consecutive_pattern() -> dict[str, Any]:
+    """연속 패턴 분석의 일관된 빈 구조를 생성합니다 (SPEC-LOTTO-043 REQ-CONSEC-030).
+
+    빈 데이터 / None / 빈 윈도 모든 경우에서 동일 구조를 보장한다.
+    """
+    return {
+        "total_draws": 0,
+        "draws_with_consecutive": 0,
+        "consecutive_ratio": 0.0,
+        "run_length_distribution": {str(length): 0 for length in _CONSEC_RUN_LENGTHS},
+        "max_run_length": 0,
+        "most_common_pairs": [],
+        "draws_without_consecutive": 0,
+    }
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-043 — 연속 번호 패턴 분석 단일 진입점 (단일 O(N) 패스)
+# @MX:SPEC: SPEC-LOTTO-043 REQ-CONSEC-001
+def consecutive_pattern(
+    draws: list[DrawResult] | None = _UNSET,
+    recent_n: int | None = None,
+) -> dict[str, Any]:
+    """역대 당첨번호의 연속 번호 패턴을 집계합니다 (SPEC-LOTTO-043).
+
+    각 회차의 정렬된 본번호 6개(보너스 제외)에서 인접 차이가 1인 연속 런을
+    탐지하여 런 길이 분포·연속 비율·최장 런·연속 쌍 빈도를 산출한다.
+
+    Args:
+        draws:    분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+                  명시적 None 전달 시 데이터 없음으로 처리한다.
+        recent_n: 분석 대상 최신 회차 수. None이면 전체, 지정 시 최신 N회차.
+                  가용 회차보다 크면 가용 전체를 사용한다.
+
+    반환 구조:
+        - total_draws:             분석 회차 수
+        - draws_with_consecutive:  길이 2 이상 런을 하나라도 포함한 회차 수
+        - consecutive_ratio:       draws_with_consecutive / total_draws (소수 4자리, 없으면 0.0)
+        - run_length_distribution: {"2".."6": 해당 길이 런의 개수 (전체 회차 누적)}
+        - max_run_length:          관측된 가장 긴 연속 런의 길이 (없으면 0)
+        - most_common_pairs:       [{pair, count}] 연속 인접 쌍 상위 10개
+                                   (count 내림차순, 동률은 라벨 오름차순)
+        - draws_without_consecutive: 연속 런을 전혀 포함하지 않은 회차 수
+
+    데이터 부재(None) 또는 빈 리스트인 경우 예외 없이 일관된 빈 구조를 반환한다.
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+
+    if not draws:
+        return _empty_consecutive_pattern()
+
+    # recent_n 지정 시 최신 N회차로 윈도 제한 (drwNo 기준 정렬 후 뒤에서 N개)
+    if recent_n is not None:
+        sorted_draws = sorted(draws, key=lambda d: d.drwNo)
+        window = min(recent_n, len(sorted_draws))
+        target = sorted_draws[-window:]
+    else:
+        target = list(draws)
+
+    run_length_distribution: dict[str, int] = {
+        str(length): 0 for length in _CONSEC_RUN_LENGTHS
+    }
+    pair_counts: dict[str, int] = {}
+    draws_with_consecutive = 0
+    draws_without_consecutive = 0
+    max_run_length = 0
+
+    for draw in target:
+        nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+        runs = _find_consecutive_runs(nums)
+
+        if runs:
+            draws_with_consecutive += 1
+        else:
+            draws_without_consecutive += 1
+
+        for run in runs:
+            length = len(run)
+            run_length_distribution[str(length)] += 1
+            max_run_length = max(max_run_length, length)
+            # 런 내부의 (length-1)개 인접 쌍을 모두 집계
+            for i in range(length - 1):
+                pair_label = f"{run[i]}-{run[i + 1]}"
+                pair_counts[pair_label] = pair_counts.get(pair_label, 0) + 1
+
+    total_draws = len(target)
+    consecutive_ratio = (
+        round(draws_with_consecutive / total_draws, 4) if total_draws else 0.0
+    )
+
+    # 연속 쌍 top10 — count 내림차순, 동률은 라벨 오름차순
+    most_common_pairs = [
+        {"pair": pair, "count": count}
+        for pair, count in sorted(
+            pair_counts.items(), key=lambda x: (-x[1], x[0])
+        )[:_CONSEC_TOP_PAIRS]
+    ]
+
+    return {
+        "total_draws": total_draws,
+        "draws_with_consecutive": draws_with_consecutive,
+        "consecutive_ratio": consecutive_ratio,
+        "run_length_distribution": run_length_distribution,
+        "max_run_length": max_run_length,
+        "most_common_pairs": most_common_pairs,
+        "draws_without_consecutive": draws_without_consecutive,
+    }
+
+
+def _find_consecutive_runs(nums: list[int]) -> list[list[int]]:
+    """정렬된 번호 리스트에서 길이 2 이상의 연속 런 목록을 반환합니다 (SPEC-LOTTO-043).
+
+    인접 차이가 1인 번호들을 묶어 런으로 만들고, 길이 1(단독)은 제외한다.
+    예) [3,4,5,18,33,40] → [[3,4,5]] / [7,8,19,20,41,45] → [[7,8],[19,20]]
+    """
+    runs: list[list[int]] = []
+    current: list[int] = [nums[0]] if nums else []
+    for i in range(1, len(nums)):
+        if nums[i] - nums[i - 1] == 1:
+            current.append(nums[i])
+        else:
+            if len(current) >= 2:  # noqa: PLR2004
+                runs.append(current)
+            current = [nums[i]]
+    if len(current) >= 2:  # noqa: PLR2004
+        runs.append(current)
+    return runs
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-009 REQ-LAST-002 — last_sync.json 우선, draws 최신 회차 폴백
 def get_last_sync_date() -> str | None:
     """마지막 수집 날짜를 YYYY-MM-DD 형식 문자열로 반환합니다.

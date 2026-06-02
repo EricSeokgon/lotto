@@ -528,6 +528,33 @@ async def stats_range_page(
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-043 — 연속 번호 패턴 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-043 REQ-CONSEC-040
+@router.get("/patterns/consecutive")
+async def consecutive_pattern_page(
+    request: Request,
+    recent_n: Optional[int] = Query(default=None, ge=1, le=2000),  # noqa: UP045
+) -> TemplateResponse:
+    """연속 번호 패턴 분석 페이지 — 연속 비율/런 길이 분포/연속 쌍/최장 런 (SPEC-LOTTO-043).
+
+    - recent_n 미지정: 전체 회차 분석. 지정 시 최신 N회차로 윈도 제한.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    pattern = wd.consecutive_pattern(wd.get_draws(), recent_n=recent_n)
+    # 런 길이 분포 바 차트용 최댓값 (0 나눗셈 방지)
+    run_dist = pattern["run_length_distribution"]
+    run_max = max(run_dist.values()) if run_dist else 0
+    return _render(request, "patterns_consecutive.html", {
+        "active_tab": "patterns_consecutive",
+        "recent_n": recent_n,
+        "pattern": pattern,
+        "run_max": run_max,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-039 — 당첨번호 예측 리포트 페이지
 # @MX:SPEC: SPEC-LOTTO-039
 @router.get("/prediction")

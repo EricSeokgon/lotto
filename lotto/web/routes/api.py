@@ -563,6 +563,28 @@ async def get_number_statistics(
     return wd.number_stats(number, wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-043 — 연속 번호 패턴 분석 공개 API
+# @MX:SPEC: SPEC-LOTTO-043 REQ-CONSEC-014
+@router.get("/patterns/consecutive")
+async def get_consecutive_pattern(
+    recent_n: Optional[int] = Query(  # noqa: UP045 — FastAPI는 Python 3.9에서 Optional 필요
+        default=None,
+        ge=1,
+        le=2000,
+        description="분석 대상 최신 회차 수 (미지정 시 전체, 1~2000)",
+    ),
+) -> dict[str, Any]:
+    """역대 당첨번호의 연속 번호 패턴 통계를 반환합니다 (SPEC-LOTTO-043).
+
+    - recent_n: 미지정 시 전체, 지정 시 최신 N회차(1~2000). 범위 초과 시 422.
+    - 데이터 부재 시에도 200 으로 정상 응답 (빈 구조).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.consecutive_pattern(wd.get_draws(), recent_n=recent_n)
+
+
 @router.get("/simulation")
 async def run_simulation_results(
     rounds: int = Query(default=1000, ge=1, le=100000, description="시뮬레이션 회차 수 (1~100000)"),
