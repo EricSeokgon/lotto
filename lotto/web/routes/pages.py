@@ -557,6 +557,27 @@ async def stats_range_page(
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
+# @MX:SPEC: SPEC-LOTTO-046
+@router.get("/stats/yearly-prize")
+async def yearly_prize_page(request: Request) -> TemplateResponse:
+    """당첨금 연도별 비교 페이지 — 연도별 평균 막대 차트 + 통계 테이블 (SPEC-LOTTO-046).
+
+    - 요약 카드: 전체 평균 / 최고·최저 평균 연도
+    - 연도별 평균 1등 당첨금 막대 차트 (Chart.js)
+    - 연도별 상세 테이블 (최고/최저 평균 연도 하이라이트)
+    - 데이터 부재 시 빈 상태 메시지
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    report = wd.yearly_prize_comparison(wd.get_draws())
+    return _render(request, "yearly_prize.html", {
+        "active_tab": "yearly_prize",
+        "report": report,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-043 — 연속 번호 패턴 분석 페이지
 # @MX:SPEC: SPEC-LOTTO-043 REQ-CONSEC-040
 @router.get("/patterns/consecutive")

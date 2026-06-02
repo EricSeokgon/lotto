@@ -466,6 +466,21 @@ async def api_stats_range(
     return wd.range_stats(start_drw, end_drw, wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 공개 API
+# @MX:SPEC: SPEC-LOTTO-046
+@router.get("/stats/yearly-prize")
+async def api_stats_yearly_prize() -> dict[str, Any]:
+    """연도별 1등 당첨금 통계 비교를 반환합니다 (SPEC-LOTTO-046).
+
+    쿼리 파라미터 없이 전체 회차를 분석한다.
+    데이터 부재 시에도 200 으로 정상 응답 (total_years=0 + 빈 years).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.yearly_prize_comparison(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-039 — 당첨번호 예측 리포트 공개 API
 # @MX:SPEC: SPEC-LOTTO-039
 @router.get("/prediction/report")

@@ -2209,6 +2209,109 @@ def number_affinity(
     }
 
 
+# ─── SPEC-LOTTO-046: 당첨금 연도별 비교 (yearly_prize_comparison) ────────────
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 연도별 1등 당첨금 통계 집계 (단일 O(N) 패스)
+# @MX:SPEC: SPEC-LOTTO-046
+def yearly_prize_comparison(draws: list[DrawResult] | None = _UNSET) -> dict[str, Any]:
+    """연도별 1등 당첨금 통계를 집계하여 비교용 구조로 반환합니다 (SPEC-LOTTO-046).
+
+    각 연도(DrawResult.date.year)에 대해 prize1Amount가 있는 회차만 대상으로
+    평균/최대/최소/당첨자 합계를 집계한다. total_draws는 prize 유무와 무관하게
+    연도 내 전체 회차 수를 센다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+               명시적 None 전달 시 데이터 없음으로 처리한다.
+
+    반환 구조:
+        - total_years:        prize/데이터가 있는 연도 수 (years 길이)
+        - overall_avg_prize1: prize 보유 전체 회차 평균(floor, 없으면 0)
+        - highest_avg_year:   avg_prize1 최대 연도 "YYYY" (prize 보유 연도 한정, 없으면 None)
+        - lowest_avg_year:    avg_prize1 최소 연도 "YYYY" (prize 보유 연도 한정, 없으면 None)
+        - years: [{year, total_draws, prize_draws, avg_prize1, max_prize1,
+                   min_prize1, total_winners}] 연도 오름차순
+
+    연도 내 prize 데이터가 없으면 avg/max/min=0, prize_draws=0으로 채운다.
+    데이터 부재(None) 또는 빈 리스트인 경우 total_years=0, overall_avg_prize1=0,
+    highest/lowest_avg_year=None, years=[] 의 빈 구조를 반환한다.
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+
+    if not draws:
+        return {
+            "total_years": 0,
+            "overall_avg_prize1": 0,
+            "highest_avg_year": None,
+            "lowest_avg_year": None,
+            "years": [],
+        }
+
+    # 연도별 누적: year(str) → {합계, prize 회차 수, 전체 회차 수, max, min, 당첨자 합}
+    yearly: dict[str, dict[str, int]] = {}
+    overall_prize_sum = 0
+    overall_prize_count = 0
+
+    for draw in draws:
+        year_key = str(draw.date.year)
+        bucket = yearly.setdefault(
+            year_key,
+            {"sum": 0, "prize_draws": 0, "total_draws": 0, "max": 0, "min": 0, "winners": 0},
+        )
+        bucket["total_draws"] += 1
+
+        amount = draw.prize1Amount
+        if amount is not None:
+            bucket["sum"] += amount
+            bucket["winners"] += draw.prize1Winners or 0
+            if bucket["prize_draws"] == 0:
+                bucket["max"] = amount
+                bucket["min"] = amount
+            else:
+                bucket["max"] = max(bucket["max"], amount)
+                bucket["min"] = min(bucket["min"], amount)
+            bucket["prize_draws"] += 1
+            overall_prize_sum += amount
+            overall_prize_count += 1
+
+    years: list[dict[str, Any]] = []
+    for year_key, bucket in sorted(yearly.items()):
+        prize_draws = bucket["prize_draws"]
+        avg = int(bucket["sum"] // prize_draws) if prize_draws else 0
+        years.append({
+            "year": year_key,
+            "total_draws": bucket["total_draws"],
+            "prize_draws": prize_draws,
+            "avg_prize1": avg,
+            "max_prize1": bucket["max"] if prize_draws else 0,
+            "min_prize1": bucket["min"] if prize_draws else 0,
+            "total_winners": bucket["winners"],
+        })
+
+    overall_avg = int(overall_prize_sum // overall_prize_count) if overall_prize_count else 0
+
+    # highest/lowest는 prize 보유 연도만 대상 — 동률 시 낮은 연도 우선
+    prize_years = [y for y in years if y["prize_draws"] > 0]
+    if prize_years:
+        highest = max(prize_years, key=lambda y: (y["avg_prize1"], -int(y["year"])))
+        lowest = min(prize_years, key=lambda y: (y["avg_prize1"], int(y["year"])))
+        highest_avg_year = highest["year"]
+        lowest_avg_year = lowest["year"]
+    else:
+        highest_avg_year = None
+        lowest_avg_year = None
+
+    return {
+        "total_years": len(years),
+        "overall_avg_prize1": overall_avg,
+        "highest_avg_year": highest_avg_year,
+        "lowest_avg_year": lowest_avg_year,
+        "years": years,
+    }
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-009 REQ-LAST-002 — last_sync.json 우선, draws 최신 회차 폴백
 def get_last_sync_date() -> str | None:
     """마지막 수집 날짜를 YYYY-MM-DD 형식 문자열로 반환합니다.
