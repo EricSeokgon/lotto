@@ -507,6 +507,8 @@ async def api_prediction_report(
 
 # SPEC-LOTTO-042: 번호 추이 트래커 — 추적 번호 개수 한계
 _TREND_MAX_NUMBERS = 3
+# SPEC-LOTTO-049: 합계 평가 엔드포인트가 요구하는 번호 개수 (로또 본번호 6개)
+_SUM_EVAL_REQUIRED_COUNT = 6
 
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-042 — 번호 추이 트래커 공개 API
@@ -577,6 +579,68 @@ async def get_number_cycle() -> dict[str, Any]:
     from lotto.web import data as wd
 
     return wd.cycle_analysis(wd.get_draws())
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 회차 합계 범위 분포 공개 API
+# @MX:SPEC: SPEC-LOTTO-049
+@router.get("/stats/sum-range")
+async def get_sum_range() -> dict[str, Any]:
+    """회차 본번호 6개 합계의 분포/공통 영역 분석을 반환합니다 (SPEC-LOTTO-049).
+
+    쿼리 파라미터 없이 전체 회차를 분석한다.
+    데이터 부재 시에도 200으로 정상 응답 (total_draws=0 + 빈 구조).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.sum_range_analysis(wd.get_draws())
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
+# @MX:SPEC: SPEC-LOTTO-049
+@router.get("/stats/sum-range/evaluate")
+async def evaluate_sum_combination(
+    n: List[int] = Query(  # noqa: UP006, B008 — FastAPI는 Python 3.9에서 반복 Query에 List 필요
+        ..., description="평가할 번호 6개 (예: ?n=1&n=7&...), 각 1~45, 중복 없음"
+    ),
+) -> dict[str, Any]:
+    """입력 조합(6개) 합계의 공통 영역 진입 여부와 백분위를 반환합니다 (SPEC-LOTTO-049).
+
+    - n: 정확히 6개, 각 1~45, 모두 서로 달라야 한다. 위반 시 422.
+    - 데이터 부재 시에도 200 (common_zone {0,0}, percentile 0.0).
+    """
+    # 개수 검증 (정확히 6개)
+    if len(n) != _SUM_EVAL_REQUIRED_COUNT:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "invalid_count",
+                "message": "번호는 정확히 6개여야 합니다.",
+            },
+        )
+    # 범위 검증 (각 1~45)
+    if any(not (1 <= num <= 45) for num in n):  # noqa: PLR2004
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "out_of_range",
+                "message": "번호는 1~45 범위여야 합니다.",
+            },
+        )
+    # 중복 검증
+    if len(set(n)) != len(n):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "duplicate",
+                "message": "번호에 중복이 있습니다.",
+            },
+        )
+
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.evaluate_sum(n, wd.get_draws())
 
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-030 — 번호별 상세 통계 공개 API

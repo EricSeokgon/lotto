@@ -10,6 +10,7 @@ import contextlib
 import datetime
 import json
 import logging
+import math
 import os
 import tempfile
 
@@ -2551,6 +2552,172 @@ def cycle_analysis(draws: list[DrawResult] | None = _UNSET) -> dict[str, Any]:
         "numbers": numbers,
         "most_overdue": most_overdue,
         "summary": summary,
+    }
+
+
+# ─── SPEC-LOTTO-049: 합계 범위 분석 (sum_range_analysis) ────────────────────
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 합계 버킷 경계 (폭 20, 마지막 241-255는 폭 15)
+# @MX:SPEC: SPEC-LOTTO-049
+# 본번호 6개 합계 가능 범위: 최소 1+2+3+4+5+6=21, 최대 40+41+42+43+44+45=255
+_SUM_BUCKET_EDGES: tuple[tuple[int, int], ...] = (
+    (21, 40), (41, 60), (61, 80), (81, 100), (101, 120), (121, 140),
+    (141, 160), (161, 180), (181, 200), (201, 220), (221, 240), (241, 255),
+)
+
+
+def _percentile_nearest_rank(sorted_sums: list[int], pct: int) -> int:
+    """정렬된 합계 리스트에서 nearest-rank 백분위 값을 반환합니다 (SPEC-LOTTO-049).
+
+    nearest-rank: rank = ceil(pct/100 * N), [1, N]로 클램프, sorted[rank-1].
+    빈 리스트는 0을 반환한다.
+    """
+    n = len(sorted_sums)
+    if n == 0:
+        return 0
+    rank = math.ceil(pct / 100 * n)
+    rank = max(1, min(rank, n))
+    return sorted_sums[rank - 1]
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 회차 합계 분포/공통 영역 분석 공개 함수
+# @MX:SPEC: SPEC-LOTTO-049
+def sum_range_analysis(draws: list[DrawResult] | None = _UNSET) -> dict[str, Any]:
+    """회차별 본번호 6개 합계의 분포와 공통 영역을 분석합니다 (SPEC-LOTTO-049).
+
+    각 회차 합계를 폭 20 버킷(마지막 241-255는 폭 15)으로 분류하고, 평균/최소/최대
+    합계, 최빈 구간, 공통 영역(관측 합계의 p10~p90)을 산출한다.
+
+    정의:
+        - avg_sum:           회차 합계 평균 (소수 2자리). 데이터 없으면 0.0.
+        - most_common_range: count 최대 버킷 라벨. 동률이면 더 낮은 구간. 없으면 None.
+        - common_zone:       관측 합계의 [p10, p90] nearest-rank 정수 경계.
+                             데이터 없으면 {low:0, high:0}.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 생략 시 get_draws()로 자동 로드한다.
+               명시적 None 전달 시 데이터 없음으로 처리한다.
+
+    반환 구조:
+        - total_draws:       전체 회차 수
+        - avg_sum/min_sum/max_sum: 합계 통계
+        - most_common_range: 최빈 구간 라벨 또는 None
+        - distribution:      [{range, low, high, count, ratio}] 12개 버킷 오름차순
+                             (count 0 버킷 포함, ratio 4자리)
+        - common_zone:       {low, high}
+
+    데이터 부재(None) 또는 빈 리스트인 경우 total_draws=0, 통계 0,
+    most_common_range=None, 12개 버킷 모두 count 0, common_zone {0,0}을 반환한다.
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+
+    def _empty_distribution() -> list[dict[str, Any]]:
+        return [
+            {"range": f"{lo}-{hi}", "low": lo, "high": hi, "count": 0, "ratio": 0.0}
+            for lo, hi in _SUM_BUCKET_EDGES
+        ]
+
+    if not draws:
+        return {
+            "total_draws": 0,
+            "avg_sum": 0.0,
+            "min_sum": 0,
+            "max_sum": 0,
+            "most_common_range": None,
+            "distribution": _empty_distribution(),
+            "common_zone": {"low": 0, "high": 0},
+        }
+
+    sums = sorted(sum(d.numbers()) for d in draws)
+    total_draws = len(sums)
+
+    # 버킷별 카운트 (경계 순회)
+    counts: dict[str, int] = {f"{lo}-{hi}": 0 for lo, hi in _SUM_BUCKET_EDGES}
+    for total in sums:
+        for lo, hi in _SUM_BUCKET_EDGES:
+            if lo <= total <= hi:
+                counts[f"{lo}-{hi}"] += 1
+                break
+
+    distribution = [
+        {
+            "range": f"{lo}-{hi}",
+            "low": lo,
+            "high": hi,
+            "count": counts[f"{lo}-{hi}"],
+            "ratio": round(counts[f"{lo}-{hi}"] / total_draws, 4),
+        }
+        for lo, hi in _SUM_BUCKET_EDGES
+    ]
+
+    # 최빈 구간 — count 최대, 동률이면 더 낮은 구간 (edges가 오름차순이므로 첫 최대)
+    most_common_range = ""
+    best_count = -1
+    for lo, hi in _SUM_BUCKET_EDGES:
+        c = counts[f"{lo}-{hi}"]
+        if c > best_count:
+            best_count = c
+            most_common_range = f"{lo}-{hi}"
+
+    return {
+        "total_draws": total_draws,
+        "avg_sum": round(sum(sums) / total_draws, 2),
+        "min_sum": sums[0],
+        "max_sum": sums[-1],
+        "most_common_range": most_common_range,
+        "distribution": distribution,
+        "common_zone": {
+            "low": _percentile_nearest_rank(sums, 10),
+            "high": _percentile_nearest_rank(sums, 90),
+        },
+    }
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 체커
+# @MX:SPEC: SPEC-LOTTO-049
+def evaluate_sum(
+    numbers: list[int], draws: list[DrawResult] | None = _UNSET
+) -> dict[str, Any]:
+    """입력 조합의 합계가 공통 영역에 드는지와 백분위를 반환합니다 (SPEC-LOTTO-049).
+
+    데이터 계층은 관대하게 동작한다 — numbers 유효성(개수/범위/중복)은 검증하지 않고
+    단순히 합산한다. 입력 검증은 API 계층의 책임이다.
+
+    정의:
+        - sum:            sum(numbers)
+        - in_common_zone: common_zone.low <= sum <= common_zone.high
+        - percentile:     입력 합계 이하인 과거 회차 비율 (0.0~1.0, 4자리)
+
+    Args:
+        numbers: 합산할 번호 리스트 (유효성 미검증).
+        draws:   기준 회차 리스트. 생략 시 get_draws()로 자동 로드.
+
+    데이터 부재 시 common_zone {0,0}, percentile 0.0, in_common_zone False.
+    """
+    if draws is _UNSET:
+        draws = get_draws()
+
+    total = sum(numbers)
+
+    if not draws:
+        return {
+            "sum": total,
+            "in_common_zone": False,
+            "common_zone": {"low": 0, "high": 0},
+            "percentile": 0.0,
+        }
+
+    sums = sorted(sum(d.numbers()) for d in draws)
+    low = _percentile_nearest_rank(sums, 10)
+    high = _percentile_nearest_rank(sums, 90)
+    le_count = sum(1 for s in sums if s <= total)
+
+    return {
+        "sum": total,
+        "in_common_zone": low <= total <= high,
+        "common_zone": {"low": low, "high": high},
+        "percentile": round(le_count / len(sums), 4),
     }
 
 

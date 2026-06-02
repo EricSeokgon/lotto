@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-049: 합계 범위 분석 — 요약 카드 + 분포 차트/테이블 + 조합 합계 체커 #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">합계 범위 분석</h2>
+    </div>
+
+    {% if analysis.total_draws == 0 %}
+    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+    </div>
+    {% else %}
+    <!-- 요약 카드 -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-sm text-muted dark:text-gray-400">평균 합계</p>
+            <p class="text-3xl font-bold text-data-blue dark:text-data-muted mt-1">{{ analysis.avg_sum }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-sm text-muted dark:text-gray-400">최소 / 최대</p>
+            <p class="text-3xl font-bold text-ink dark:text-gray-100 mt-1">{{ analysis.min_sum }} / {{ analysis.max_sum }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-sm text-muted dark:text-gray-400">최빈 구간</p>
+            <p class="text-3xl font-bold text-amber mt-1">{{ analysis.most_common_range or '-' }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-sm text-muted dark:text-gray-400">공통 영역 (p10~p90)</p>
+            <p class="text-3xl font-bold text-slate-blue dark:text-gray-300 mt-1">{{ analysis.common_zone.low }}~{{ analysis.common_zone.high }}</p>
+        </div>
+    </div>
+
+    <!-- 합계 분포 막대 차트 -->
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-base font-medium text-ink dark:text-gray-100 mb-3">합계 구간별 분포</h3>
+        <div class="relative" style="height: 320px;">
+            <canvas id="sumRangeChart"></canvas>
+        </div>
+    </div>
+
+    <!-- 조합 합계 체커 -->
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-base font-medium text-ink dark:text-gray-100 mb-3">조합 합계 체커</h3>
+        <p class="text-sm text-muted dark:text-gray-400 mb-3">번호 6개를 입력하면 합계가 공통 영역에 드는지 확인합니다.</p>
+        <form id="sumCheckForm" class="flex flex-wrap items-end gap-2">
+            {% for i in range(6) %}
+            <input type="number" min="1" max="45" required
+                   name="n{{ i }}" aria-label="번호 {{ i + 1 }}"
+                   class="w-16 px-2 py-2 border border-border rounded-md text-center dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" />
+            {% endfor %}
+            <button type="submit"
+                    class="px-4 py-2 bg-data-blue text-white rounded-md text-sm font-medium hover:opacity-90">확인</button>
+        </form>
+        <div id="sumCheckResult" class="mt-3 text-sm"></div>
+    </div>
+
+    <!-- 분포 상세 테이블 -->
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700 overflow-x-auto">
+        <h3 class="text-base font-medium text-ink dark:text-gray-100 mb-3">구간별 상세</h3>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="py-2 pr-4">구간</th>
+                    <th class="py-2 pr-4 text-right">회차 수</th>
+                    <th class="py-2 pr-4 text-right">비율</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for b in analysis.distribution %}
+                <tr class="border-b border-border dark:border-gray-700 {% if b.range == analysis.most_common_range %}bg-amber/10{% endif %}">
+                    <td class="py-2 pr-4 text-ink dark:text-gray-100">
+                        {{ b.range }}
+                        {% if b.range == analysis.most_common_range %}
+                        <span class="ml-1 px-2 py-0.5 rounded text-xs font-medium bg-yellow-200 text-yellow-900 dark:bg-yellow-900/40 dark:text-yellow-200">최빈</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ b.count }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ (b.ratio * 100) | round(2) }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if analysis.total_draws > 0 %}
+<script>
+(function() {
+    var analysis = {{ analysis | tojson }};
+    var dist = analysis.distribution;
+    var labels = dist.map(function(b) { return b.range; });
+    var values = dist.map(function(b) { return b.count; });
+    var colors = dist.map(function(b) {
+        return b.range === analysis.most_common_range ? '#F59E0B' : '#3B82F6';
+    });
+
+    var canvas = document.getElementById('sumRangeChart');
+    if (canvas) {
+        new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '회차 수',
+                    data: values,
+                    backgroundColor: colors,
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { title: { display: true, text: '합계 구간' } },
+                    y: { beginAtZero: true, title: { display: true, text: '회차 수' } }
+                }
+            }
+        });
+    }
+
+    var form = document.getElementById('sumCheckForm');
+    var resultEl = document.getElementById('sumCheckResult');
+    if (form && resultEl) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            var nums = [];
+            for (var i = 0; i < 6; i++) {
+                var v = parseInt(form.elements['n' + i].value, 10);
+                nums.push(v);
+            }
+            var query = nums.map(function(n) { return 'n=' + n; }).join('&');
+            fetch('/api/stats/sum-range/evaluate?' + query)
+                .then(function(r) {
+                    if (!r.ok) { throw new Error('번호는 1~45 범위의 서로 다른 6개여야 합니다.'); }
+                    return r.json();
+                })
+                .then(function(data) {
+                    var zoneText = data.common_zone.low + '~' + data.common_zone.high;
+                    var pct = (data.percentile * 100).toFixed(1);
+                    var inZone = data.in_common_zone
+                        ? '<span class="text-green-600 dark:text-green-400 font-medium">공통 영역 내</span>'
+                        : '<span class="text-amber font-medium">공통 영역 밖</span>';
+                    resultEl.innerHTML = '합계 <strong>' + data.sum + '</strong> · ' + inZone +
+                        ' (공통 영역 ' + zoneText + ', 백분위 ' + pct + '%)';
+                })
+                .catch(function(err) {
+                    resultEl.innerHTML = '<span class="text-red-600 dark:text-red-400">' + err.message + '</span>';
+                });
+        });
+    }
+})();
+</script>
+{% endif %}
+{% endblock %}

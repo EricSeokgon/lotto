@@ -618,6 +618,28 @@ async def yearly_prize_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 합계 범위 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-049
+@router.get("/stats/sum-range")
+async def sum_range_page(request: Request) -> TemplateResponse:
+    """합계 범위 분석 페이지 — 합계 분포 막대 차트 + 테이블 + 조합 체커 (SPEC-LOTTO-049).
+
+    - 요약 카드: 평균/최소/최대 합계, 최빈 구간, 공통 영역
+    - 합계 버킷 분포 막대 차트 (Chart.js, 최빈 구간 강조)
+    - 분포 상세 테이블
+    - 조합 합계 체커 폼 (번호 6개 → /api/stats/sum-range/evaluate 호출)
+    - 데이터 부재(total_draws==0) 시 빈 상태 메시지
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    analysis = wd.sum_range_analysis(wd.get_draws())
+    return _render(request, "sum_range.html", {
+        "active_tab": "sum_range",
+        "analysis": analysis,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-043 — 연속 번호 패턴 분석 페이지
 # @MX:SPEC: SPEC-LOTTO-043 REQ-CONSEC-040
 @router.get("/patterns/consecutive")
