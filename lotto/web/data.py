@@ -1287,6 +1287,107 @@ def save_reservations(reservations: list[dict[str, Any]]) -> None:
         raise
 
 
+# ─── SPEC-LOTTO-048: 시뮬레이션 결과 저장/비교 (sim_history) ──────────────────
+
+# SPEC-LOTTO-048: 저장된 시뮬레이션 결과 경로 (favorites.json과 동일 패턴)
+_SIM_HISTORY_PATH = settings.data_dir / "sim_history.json"
+# SPEC-LOTTO-048: 최대 보관 건수 (오래된 것부터 제거)
+_SIM_HISTORY_MAX = 50
+
+
+def list_simulation_results() -> list[dict[str, Any]]:
+    """저장된 시뮬레이션 결과를 최신순(newest-first)으로 반환합니다 (SPEC-LOTTO-048).
+
+    파일이 없거나 손상되어 있으면 빈 리스트를 반환한다. 저장은 추가 순서로
+    이루어지므로 최신 항목이 앞에 오도록 역순으로 반환한다.
+    """
+    if not _SIM_HISTORY_PATH.exists():
+        return []
+    try:
+        data = json.loads(_SIM_HISTORY_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Failed to read sim_history.json: %s", exc, exc_info=True)
+        return []
+    if not isinstance(data, list):
+        logger.warning("sim_history.json 최상위가 list 아님 — 빈 목록 반환")
+        return []
+    # 저장 순서의 역순(최신 우선)
+    return list(reversed(data))
+
+
+def _write_sim_history(results: list[dict[str, Any]]) -> None:
+    """시뮬레이션 결과 목록을 원자적으로 저장합니다 (SPEC-LOTTO-048).
+
+    임시 파일에 먼저 기록한 뒤 os.replace로 교체하여 쓰기 중단 시에도
+    기존 파일이 손상되지 않도록 한다 (favorites/reservations와 동일 패턴).
+    저장 순서(오래된 것 → 최신)로 보존한다.
+    """
+    _SIM_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".sim_history_", suffix=".json.tmp", dir=str(_SIM_HISTORY_PATH.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(results, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, _SIM_HISTORY_PATH)
+    except Exception:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        raise
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-048 — 시뮬레이션 결과를 라벨과 함께 영속 저장
+# @MX:SPEC: SPEC-LOTTO-048
+def save_simulation_result(entry: dict[str, Any]) -> dict[str, Any]:
+    """시뮬레이션 결과 1건을 라벨과 함께 저장하고 부여된 엔트리를 반환합니다.
+
+    - id(8자리 hex)와 created_at(UTC ISO-8601)을 서버에서 부여한다.
+    - 최근 _SIM_HISTORY_MAX 건만 유지하며 초과 시 오래된 것부터 제거한다.
+    - 저장 순서(오래된 것 → 최신)로 디스크에 보존하되, 반환값은 입력 필드를
+      포함한 저장 엔트리(dict)다.
+    """
+    import uuid
+
+    saved: dict[str, Any] = dict(entry)
+    saved["id"] = uuid.uuid4().hex[:8]
+    # SPEC-LOTTO-048: UTC ISO-8601 (Python 3.9 호환)
+    saved["created_at"] = datetime.datetime.now(tz=datetime.timezone.utc).isoformat()  # noqa: UP017
+
+    # 디스크는 저장 순서(오래된 것 → 최신)로 보관하므로 reversed로 되돌린다
+    stored = list(reversed(list_simulation_results()))
+    stored.append(saved)
+    if len(stored) > _SIM_HISTORY_MAX:
+        stored = stored[-_SIM_HISTORY_MAX:]
+    _write_sim_history(stored)
+    return saved
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-048 — 저장된 시뮬레이션 결과 단건 조회
+# @MX:SPEC: SPEC-LOTTO-048
+def get_simulation_result(result_id: str) -> dict[str, Any] | None:
+    """지정한 id의 저장된 시뮬레이션 결과를 반환합니다. 없으면 None."""
+    for result in list_simulation_results():
+        if result.get("id") == result_id:
+            return result
+    return None
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-048 — 저장된 시뮬레이션 결과 삭제
+# @MX:SPEC: SPEC-LOTTO-048
+def delete_simulation_result(result_id: str) -> bool:
+    """지정한 id의 저장된 시뮬레이션 결과를 삭제합니다.
+
+    삭제에 성공하면 True, 해당 id가 없으면 False를 반환한다.
+    """
+    # 디스크 저장 순서(오래된 것 → 최신)로 다시 정렬
+    stored = list(reversed(list_simulation_results()))
+    remaining = [r for r in stored if r.get("id") != result_id]
+    if len(remaining) == len(stored):
+        return False
+    _write_sim_history(remaining)
+    return True
+
+
 # ─── SPEC-LOTTO-038: 통계 대규모 대시보드 (dashboard_overview) ───────────────
 
 # SPEC-LOTTO-038: 범위 분포 5개 구간 (라벨 → (하한, 상한))

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import (  # noqa: UP035 — FastAPI는 Python 3.9에서 List/Union 런타임 평가 필요
     TYPE_CHECKING,
     Any,
+    Dict,
     List,
     Optional,  # noqa: UP045 — FastAPI requires Optional for Query params on Python 3.9
     Union,
@@ -41,6 +42,7 @@ from lotto.web.data import (
     pattern_analysis,
     save_favorites,
     save_reservations,
+    save_simulation_result,
     trend_heatmap,
     weekly_report,
 )
@@ -1346,6 +1348,87 @@ async def delete_favorite(fav_id: str) -> dict[str, Any]:
     save_favorites(new_favorites)
     invalidate_cache()
     return {"status": "ok"}
+
+
+# ─── SPEC-LOTTO-048: 시뮬레이션 결과 저장/비교 (sim_history) ──────────────────
+
+
+class SimHistoryRequest(BaseModel):
+    """시뮬레이션 결과 저장 요청 모델 (SPEC-LOTTO-048).
+
+    - label: 필수, 1~50자(공백 trim 후 비어 있으면 거부).
+    - strategy / numbers / iterations / rank_counts: 시뮬레이션 결과 본문.
+    - total_spent / total_won / roi: 선택(예산 분석 결과).
+    """
+
+    label: str
+    strategy: str = "random"
+    numbers: List[int] = []  # noqa: UP006 — Pydantic + Python 3.9 호환
+    iterations: int = 0
+    rank_counts: Dict[str, int] = {}  # noqa: UP006 — Pydantic + Python 3.9 호환
+    total_spent: Optional[int] = None  # noqa: UP045 — Pydantic + Python 3.9 호환
+    total_won: Optional[int] = None  # noqa: UP045
+    roi: Optional[float] = None  # noqa: UP045
+
+    @field_validator("label")
+    @classmethod
+    def validate_label(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("라벨은 비어 있을 수 없습니다.")
+        if len(stripped) > 50:  # noqa: PLR2004
+            raise ValueError("라벨은 최대 50자여야 합니다.")
+        return stripped
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-048 — 시뮬레이션 결과 저장 API
+# @MX:SPEC: SPEC-LOTTO-048
+@router.post("/simulation-history", status_code=200)
+async def add_simulation_history(req: SimHistoryRequest) -> dict[str, Any]:
+    """시뮬레이션 결과를 라벨과 함께 저장합니다 (SPEC-LOTTO-048).
+
+    빈 라벨은 Pydantic 검증 단계에서 422로 거부된다.
+    """
+    entry: dict[str, Any] = {
+        "label": req.label,
+        "strategy": req.strategy,
+        "numbers": req.numbers,
+        "iterations": req.iterations,
+        "rank_counts": req.rank_counts,
+        "total_spent": req.total_spent,
+        "total_won": req.total_won,
+        "roi": req.roi,
+    }
+    return save_simulation_result(entry)
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-048 — 저장된 시뮬레이션 결과 목록 조회 API
+# @MX:SPEC: SPEC-LOTTO-048
+@router.get("/simulation-history")
+async def list_simulation_history() -> list[dict[str, Any]]:
+    """저장된 시뮬레이션 결과를 최신순으로 반환합니다 (SPEC-LOTTO-048)."""
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    return wd.list_simulation_results()
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-048 — 저장된 시뮬레이션 결과 삭제 API
+# @MX:SPEC: SPEC-LOTTO-048
+@router.delete("/simulation-history/{result_id}", status_code=200)
+async def delete_simulation_history(result_id: str) -> dict[str, Any]:
+    """지정한 id의 저장된 시뮬레이션 결과를 삭제합니다 (SPEC-LOTTO-048).
+
+    존재하지 않는 id면 404를 반환한다.
+    """
+    from lotto.web import data as wd
+
+    if not wd.delete_simulation_result(result_id):
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "not_found", "message": "저장된 시뮬레이션 결과를 찾을 수 없습니다."},
+        )
+    return {"deleted": True}
 
 
 # ─── SPEC-LOTTO-036: 번호 메모 (number_notes) ───────────────────────────────

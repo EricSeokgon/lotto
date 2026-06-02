@@ -34,6 +34,7 @@ from lotto.web.data import (
     get_stats,
     get_strategy_comparison,
     interpolate_color,
+    list_simulation_results,
 )
 
 router = APIRouter()
@@ -329,6 +330,23 @@ async def simulate_page(
         "budget_info": budget_info,
         "per_round_data": per_round_data,
         "strategy_comparison": strategy_comparison,
+    })
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-048 — 저장된 시뮬레이션 결과 목록/비교 페이지
+# @MX:SPEC: SPEC-LOTTO-048
+@router.get("/simulation-history")
+async def simulation_history_page(request: Request) -> TemplateResponse:
+    """저장된 시뮬레이션 결과 목록 + 비교 페이지 (SPEC-LOTTO-048).
+
+    저장된 결과를 최신순 카드로 표시하고, 삭제(JS fetch DELETE)와
+    2건 이상 선택 시 나란히 비교(클라이언트 측)를 지원한다. 저장된
+    결과가 없으면 빈 상태 안내를 노출한다.
+    """
+    results = list_simulation_results()
+    return _render(request, "sim_history.html", {
+        "active_tab": "sim_history",
+        "results": results,
     })
 
 
