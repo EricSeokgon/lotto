@@ -33,8 +33,12 @@ def _make_draws(n: int = 20, seed: int = 42) -> list[DrawResult]:
             DrawResult(
                 drwNo=i,
                 date=date(2024, 1, ((i - 1) % 28) + 1),
-                n1=nums[0], n2=nums[1], n3=nums[2],
-                n4=nums[3], n5=nums[4], n6=nums[5],
+                n1=nums[0],
+                n2=nums[1],
+                n3=nums[2],
+                n4=nums[3],
+                n5=nums[4],
+                n6=nums[5],
                 bonus=rng.randint(1, 45),
             )
         )
@@ -74,8 +78,8 @@ class TestGapScores:
         """음수 스트릭(미출현)이 양수 갭 점수로 변환된다."""
         mock_stats = MagicMock()
         mock_stats.consecutive_pattern.current_streak = {
-            1: -10,   # 10회 미출현
-            2: 3,     # 3회 연속 출현
+            1: -10,  # 10회 미출현
+            2: 3,  # 3회 연속 출현
             **dict.fromkeys(range(3, 46), 0),
         }
 
@@ -227,6 +231,7 @@ class TestDataSmartStrategy:
     def test_strategy_descriptions_includes_datasmart(self) -> None:
         """STRATEGY_DESCRIPTIONS에 '데이터스마트' 키가 있어야 한다 (REQ-SMART-002)."""
         from lotto.recommender import STRATEGY_DESCRIPTIONS
+
         assert "데이터스마트" in STRATEGY_DESCRIPTIONS
         assert STRATEGY_DESCRIPTIONS["데이터스마트"] != ""
 
@@ -267,9 +272,16 @@ class TestDataSmartStrategy:
     def test_existing_strategies_unchanged(self, stats) -> None:
         """기존 10가지 전략이 데이터스마트 추가 후에도 동작해야 한다 (REQ-SMART-030)."""
         existing = [
-            "고빈도", "저빈도", "균형", "최근편향",
-            "동반패턴", "홀짝균형", "번호대균형", "핫콜드혼합",
-            "갭분석", "앙상블",
+            "고빈도",
+            "저빈도",
+            "균형",
+            "최근편향",
+            "동반패턴",
+            "홀짝균형",
+            "번호대균형",
+            "핫콜드혼합",
+            "갭분석",
+            "앙상블",
         ]
         recommender = LottoRecommender(stats)
         for label in existing:
