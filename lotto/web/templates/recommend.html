@@ -50,6 +50,7 @@
                 ('핫콜드혼합','bg-red-100 text-red-700',       '최근 자주 나온 번호(핫)와 장기 미출현 번호(콜드)를 혼합합니다.'),
                 ('갭분석',    'bg-amber-100 text-amber-700',   '오랫동안 출현하지 않은 번호를 갭 점수로 계산하여 우선 선택합니다.'),
                 ('앙상블',    'bg-cyan-100 text-cyan-700',     '모든 분석 신호(빈도·최근·패턴·갭)를 균등 가중치로 종합합니다.'),
+                ('데이터스마트','bg-violet-100 text-violet-700','빈도·최근·동반·갭·홀짝·번호대 6축을 복합 가중하여 추천합니다.'),
             ] %}
             {% for label, badge_cls, desc in strategy_info %}
             <div class="flex gap-2 items-start">
@@ -104,6 +105,7 @@
                     {% elif rec.strategy_label == '핫콜드혼합' %}bg-red-100 text-red-700
                     {% elif rec.strategy_label == '갭분석' %}bg-amber-100 text-amber-700
                     {% elif rec.strategy_label == '앙상블' %}bg-cyan-100 text-cyan-700
+                    {% elif rec.strategy_label == '데이터스마트' %}bg-violet-100 text-violet-700
                     {% else %}bg-surface text-muted{% endif %}">
                     {{ rec.strategy_label }}
                 </span>

@@ -16,9 +16,17 @@ from lotto.models import Statistics
 # SPEC-LOTTO-002: 추천 가중치 외부화 — LOTTO_RECOMMENDER_WEIGHTS 환경 변수로 오버라이드 가능
 DEFAULT_WEIGHTS = settings.recommender_weights
 STRATEGY_LABELS = [
-    "고빈도", "저빈도", "균형", "최근편향",
-    "동반패턴", "홀짝균형", "번호대균형", "핫콜드혼합",
-    "갭분석", "앙상블",
+    "고빈도",
+    "저빈도",
+    "균형",
+    "최근편향",
+    "동반패턴",
+    "홀짝균형",
+    "번호대균형",
+    "핫콜드혼합",
+    "갭분석",
+    "앙상블",
+    "데이터스마트",
 ]
 STRATEGY_DESCRIPTIONS = {
     "고빈도": "역대 가장 자주 나온 번호를 중심으로 선택합니다.",
@@ -31,6 +39,7 @@ STRATEGY_DESCRIPTIONS = {
     "핫콜드혼합": "자주 나온 번호 3개와 오랫동안 안 나온 번호 3개를 섞습니다.",
     "갭분석": "오랫동안 출현하지 않은 번호(갭 분석)를 중심으로 선택합니다.",
     "앙상블": "빈도·최근·갭·동반 패턴을 균등하게 조합한 복합 전략입니다.",
+    "데이터스마트": "빈도·최근·동반·갭·홀짝·번호대 6축을 복합 가중하여 추천합니다.",
 }
 MIN_COUNT = 1
 MAX_COUNT = 20
@@ -38,16 +47,16 @@ NUM_BALLS = 45
 
 # 전략별 (freq, recent, pair, gap) 가중치 테이블
 _STRATEGY_WEIGHTS: dict[str, tuple[float, float, float, float]] = {
-    "고빈도":     (0.60, 0.25, 0.10, 0.05),
-    "저빈도":     (0.60, 0.20, 0.10, 0.10),  # freq를 역전하여 적용
-    "균형":       (0.35, 0.30, 0.20, 0.15),
-    "최근편향":   (0.15, 0.65, 0.10, 0.10),
-    "동반패턴":   (0.15, 0.15, 0.65, 0.05),
-    "홀짝균형":   (0.35, 0.30, 0.20, 0.15),
+    "고빈도": (0.60, 0.25, 0.10, 0.05),
+    "저빈도": (0.60, 0.20, 0.10, 0.10),  # freq를 역전하여 적용
+    "균형": (0.35, 0.30, 0.20, 0.15),
+    "최근편향": (0.15, 0.65, 0.10, 0.10),
+    "동반패턴": (0.15, 0.15, 0.65, 0.05),
+    "홀짝균형": (0.35, 0.30, 0.20, 0.15),
     "번호대균형": (0.35, 0.30, 0.20, 0.15),
     "핫콜드혼합": (0.35, 0.25, 0.15, 0.25),
-    "갭분석":     (0.10, 0.10, 0.10, 0.70),
-    "앙상블":     (0.25, 0.25, 0.25, 0.25),
+    "갭분석": (0.10, 0.10, 0.10, 0.70),
+    "앙상블": (0.25, 0.25, 0.25, 0.25),
 }
 
 
@@ -103,6 +112,65 @@ class LottoRecommender:
             gap_raw[n] = float(max(0, -streak))
         return _normalize(gap_raw)
 
+    def _smart_scores(self) -> dict[int, float]:
+        """데이터스마트 전략: 6축 복합 가중 점수.
+
+        (freq=0.22, recency=0.22, pair=0.18, gap=0.18, odd_even=0.10, range=0.10)
+        Statistics만 사용 — 원시 draws 미접근 (레이어 분리).
+        """
+        freq_abs = self._stats.frequency.absolute
+        recent_counts = self._stats.recent_pattern.counts
+        top_pairs = self._stats.pair_analysis.top_pairs
+
+        # 축 1: 빈도
+        freq_norm = _normalize({n: float(freq_abs.get(n, 0)) for n in range(1, NUM_BALLS + 1)})
+        # 축 2: 최근 출현
+        recent_norm = _normalize(
+            {n: float(recent_counts.get(n, 0)) for n in range(1, NUM_BALLS + 1)}
+        )
+        # 축 3: 동반 패턴
+        pair_raw: dict[int, float] = dict.fromkeys(range(1, NUM_BALLS + 1), 0.0)
+        for a, b, count in top_pairs:
+            pair_raw[a] = pair_raw.get(a, 0.0) + count
+            pair_raw[b] = pair_raw.get(b, 0.0) + count
+        pair_norm = _normalize(pair_raw)
+        # 축 4: 갭(미출현)
+        gap_norm = self._gap_scores()
+
+        # 축 5: 홀짝 사전 분포 (빈도 기반)
+        total_freq = sum(float(freq_abs.get(n, 0)) for n in range(1, NUM_BALLS + 1))
+        if total_freq > 0:
+            odd_prior = (
+                sum(float(freq_abs.get(n, 0)) for n in range(1, NUM_BALLS + 1) if n % 2 == 1)
+                / total_freq
+            )
+            even_prior = 1.0 - odd_prior
+        else:
+            odd_prior = even_prior = 0.5
+        odd_even_score: dict[int, float] = {
+            n: (odd_prior if n % 2 == 1 else even_prior) for n in range(1, NUM_BALLS + 1)
+        }
+
+        # 축 6: 번호대 사전 분포 (5구간, 빈도 기반)
+        zone_priors: dict[int, float] = {}
+        for z_start, z_end in [(1, 9), (10, 19), (20, 29), (30, 39), (40, 45)]:
+            zone_total = sum(float(freq_abs.get(n, 0)) for n in range(z_start, z_end + 1))
+            prior = zone_total / total_freq if total_freq > 0 else 0.2
+            for n in range(z_start, z_end + 1):
+                zone_priors[n] = prior
+
+        scores: dict[int, float] = {}
+        for n in range(1, NUM_BALLS + 1):
+            scores[n] = (
+                0.22 * freq_norm.get(n, 0.0)
+                + 0.22 * recent_norm.get(n, 0.0)
+                + 0.18 * pair_norm.get(n, 0.0)
+                + 0.18 * gap_norm.get(n, 0.0)
+                + 0.10 * odd_even_score.get(n, 0.5)
+                + 0.10 * zone_priors.get(n, 0.2)
+            )
+        return scores
+
     def _strategy_scores(
         self,
         label: str,
@@ -114,13 +182,20 @@ class LottoRecommender:
         추천 세트 간 다양성을 높입니다. used_numbers에 있는 번호에는
         다양성 페널티를 적용합니다.
         """
+        # 데이터스마트: 6축 복합 점수로 조기 반환
+        if label == "데이터스마트":
+            base_scores = self._smart_scores()
+            if used_numbers:
+                for n in used_numbers:
+                    if n in base_scores:  # pragma: no branch
+                        base_scores[n] = max(0.0, base_scores[n] - 0.12)
+            return base_scores
+
         freq_abs = self._stats.frequency.absolute
         recent_counts = self._stats.recent_pattern.counts
         top_pairs = self._stats.pair_analysis.top_pairs
 
-        freq_base = _normalize(
-            {n: float(freq_abs.get(n, 0)) for n in range(1, NUM_BALLS + 1)}
-        )
+        freq_base = _normalize({n: float(freq_abs.get(n, 0)) for n in range(1, NUM_BALLS + 1)})
         recent_norm = _normalize(
             {n: float(recent_counts.get(n, 0)) for n in range(1, NUM_BALLS + 1)}
         )
@@ -136,11 +211,7 @@ class LottoRecommender:
         wf, wr, wp, wg = _STRATEGY_WEIGHTS.get(label, (0.35, 0.30, 0.20, 0.15))
 
         # 저빈도 전략: 빈도 신호를 역전하여 덜 나온 번호에 높은 점수 부여
-        freq_norm = (
-            {n: 1.0 - v for n, v in freq_base.items()}
-            if label == "저빈도"
-            else freq_base
-        )
+        freq_norm = {n: 1.0 - v for n, v in freq_base.items()} if label == "저빈도" else freq_base
 
         scores: dict[int, float] = {}
         for n in range(1, NUM_BALLS + 1):
@@ -252,8 +323,8 @@ class LottoRecommender:
             )
         return results
 
-    # @MX:WARN: [AUTO] _pick_set — 전략 분기 10개로 복잡도 임계치 초과
-    # @MX:REASON: 전략 수 증가(8→10)로 if-branches >= 10; 전략 추가 시 주의
+    # @MX:WARN: [AUTO] _pick_set — 전략 분기 11개로 복잡도 임계치 초과
+    # @MX:REASON: 전략 수 증가(8→10→11)로 if-branches >= 11; 전략 추가 시 주의
     def _pick_set(
         self,
         scores: dict[int, float],
@@ -283,7 +354,7 @@ class LottoRecommender:
             candidates = sorted_nums[:20]
         elif label == "갭분석":
             candidates = sorted_nums[:22]
-        elif label == "앙상블":
+        elif label in ("앙상블", "데이터스마트"):
             candidates = sorted_nums[:25]
         elif label == "홀짝균형":
             odds = [n for n in range(1, 46) if n % 2 == 1]

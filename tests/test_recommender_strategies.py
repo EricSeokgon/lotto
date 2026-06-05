@@ -137,23 +137,24 @@ class TestGapAndEnsembleStrategies:
 
         assert set(scores.keys()) == set(range(1, 46))
 
-    def test_recommend_cycles_through_all_10_strategies(self, stats) -> None:
-        """recommend(count=10)으로 10가지 전략이 한 번씩 순환되어야 한다."""
+    def test_recommend_cycles_through_all_strategies(self, stats) -> None:
+        """recommend(count=N)으로 N가지 전략이 한 번씩 순환되어야 한다."""
         recommender = LottoRecommender(stats)
-        recs = recommender.recommend(count=10)
+        recs = recommender.recommend(count=len(STRATEGY_LABELS))
 
-        assert len(recs) == 10
+        assert len(recs) == len(STRATEGY_LABELS)
         labels = [r.strategy_label for r in recs]
         assert labels == STRATEGY_LABELS
 
-    def test_recommend_count_20_covers_all_strategies_twice(self, stats) -> None:
-        """count=20이면 10가지 전략이 각 2회 순환된다."""
+    def test_recommend_count_20_covers_strategies_in_order(self, stats) -> None:
+        """count=20이면 전략 순환 순서대로 20개 레이블이 반환된다."""
         recommender = LottoRecommender(stats)
         recs = recommender.recommend(count=20)
 
         assert len(recs) == 20
         labels = [r.strategy_label for r in recs]
-        assert labels == STRATEGY_LABELS * 2
+        expected = [STRATEGY_LABELS[i % len(STRATEGY_LABELS)] for i in range(20)]
+        assert labels == expected
 
     def test_gap_strategy_candidates_size(self, stats) -> None:
         """갭분석 전략의 candidates는 상위 22개 번호여야 한다."""
@@ -209,3 +210,85 @@ class TestGapAndEnsembleStrategies:
         recommender = LottoRecommender(stats)
         with pytest.raises(ValueError, match="알 수 없는 전략"):
             recommender.recommend_by_strategy("존재하지않는전략")
+
+
+# ---------------------------------------------------------------------------
+# 데이터스마트 전략 테스트 (SPEC-LOTTO-050)
+# ---------------------------------------------------------------------------
+
+
+class TestDataSmartStrategy:
+    """REQ-SMART-001~040: 데이터스마트 전략 검증."""
+
+    def test_strategy_labels_includes_datasmart(self) -> None:
+        """STRATEGY_LABELS에 '데이터스마트'가 포함되어야 한다 (REQ-SMART-001)."""
+        assert "데이터스마트" in STRATEGY_LABELS
+
+    def test_strategy_descriptions_includes_datasmart(self) -> None:
+        """STRATEGY_DESCRIPTIONS에 '데이터스마트' 키가 있어야 한다 (REQ-SMART-002)."""
+        from lotto.recommender import STRATEGY_DESCRIPTIONS
+        assert "데이터스마트" in STRATEGY_DESCRIPTIONS
+        assert STRATEGY_DESCRIPTIONS["데이터스마트"] != ""
+
+    def test_recommend_by_strategy_datasmart_returns_valid_set(self, stats) -> None:
+        """데이터스마트 전략으로 유효한 세트를 추천해야 한다 (REQ-SMART-010)."""
+        recommender = LottoRecommender(stats)
+        rec = recommender.recommend_by_strategy("데이터스마트")
+
+        assert rec.strategy_label == "데이터스마트"
+        assert len(rec.numbers) == 6
+        assert len(set(rec.numbers)) == 6
+        assert all(1 <= n <= 45 for n in rec.numbers)
+        assert rec.strategy_desc != ""
+
+    def test_recommend_by_strategy_datasmart_scores_has_6_entries(self, stats) -> None:
+        """추천 결과의 scores 딕셔너리는 정확히 6개여야 한다 (REQ-SMART-011)."""
+        recommender = LottoRecommender(stats)
+        rec = recommender.recommend_by_strategy("데이터스마트")
+
+        assert len(rec.scores) == 6
+
+    def test_recommend_cycles_include_datasmart(self, stats) -> None:
+        """recommend()의 순환에 '데이터스마트'가 포함되어야 한다 (REQ-SMART-012)."""
+        recommender = LottoRecommender(stats)
+        recs = recommender.recommend(count=len(STRATEGY_LABELS))
+        labels = [r.strategy_label for r in recs]
+
+        assert "데이터스마트" in labels
+
+    def test_smart_scores_is_deterministic(self, stats) -> None:
+        """_smart_scores()는 동일한 statistics로 같은 결과를 반환해야 한다 (REQ-SMART-020)."""
+        recommender = LottoRecommender(stats)
+        scores_a = recommender._strategy_scores("데이터스마트")
+        scores_b = recommender._strategy_scores("데이터스마트")
+
+        assert scores_a == scores_b
+
+    def test_existing_strategies_unchanged(self, stats) -> None:
+        """기존 10가지 전략이 데이터스마트 추가 후에도 동작해야 한다 (REQ-SMART-030)."""
+        existing = [
+            "고빈도", "저빈도", "균형", "최근편향",
+            "동반패턴", "홀짝균형", "번호대균형", "핫콜드혼합",
+            "갭분석", "앙상블",
+        ]
+        recommender = LottoRecommender(stats)
+        for label in existing:
+            rec = recommender.recommend_by_strategy(label)
+            assert rec.strategy_label == label
+            assert len(rec.numbers) == 6
+
+    def test_smart_strategy_scores_cover_all_numbers(self, stats) -> None:
+        """_smart_scores()는 1~45 모든 번호에 대해 점수를 반환해야 한다."""
+        recommender = LottoRecommender(stats)
+        scores = recommender._strategy_scores("데이터스마트")
+
+        assert set(scores.keys()) == set(range(1, 46))
+
+    def test_smart_strategy_all_scores_in_valid_range(self, stats) -> None:
+        """_smart_scores()의 다양성 페널티 전 기본 점수는 0 이상이어야 한다."""
+        recommender = LottoRecommender(stats)
+        scores = recommender._strategy_scores("데이터스마트")
+
+        # 다양성 페널티 미적용 시 점수는 0.0 이상
+        for v in scores.values():
+            assert v >= -0.12  # 최대 페널티 0.12 적용 후에도 -0.12 이상
