@@ -6,6 +6,27 @@
 
 ---
 
+## [1.7.0] - 2026-06-09
+
+교차 전략 합의 알림 추가 (SPEC-LOTTO-051)
+
+### 추가
+
+#### 교차 전략 합의 알림 (SPEC-LOTTO-051)
+- `get_cross_strategy_consensus(recommender, target_numbers)` 신규 함수 (`lotto/web/data.py`)
+  - 11개 전략(`STRATEGY_LABELS`)을 요청당 1회씩 순회하여 각 번호의 합의 카운트(0~11) 산출
+  - `recommend_by_strategy(label)`만 호출, raw draws/내부 점수 미접근 (레이어 분리)
+- 추천 페이지(`GET /recommend`) 각 번호에 전략 합의도(`N/11`) 오버레이 표시
+- 합의도 4개 이상 번호에 주의 배지/하이라이트 서버사이드 렌더링 (JS 미추가)
+- `GET /api/recommendations` 응답에 `consensus` 필드 추가 (`{number: count}` 매핑)
+
+### 개선
+
+#### 테스트
+- 1174개 → **1182개** (+8개, `TestCrossStrategyConsensus`)
+
+---
+
 ## [1.6.0] - 2026-06-05
 
 데이터스마트 추천 전략 추가 (SPEC-LOTTO-050)
