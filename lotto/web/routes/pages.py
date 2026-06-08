@@ -29,7 +29,6 @@ from lotto.web.data import (
     get_data_status,
     get_draws,
     get_last_sync_date,
-    get_recommendations,
     get_simulation,
     get_stats,
     get_strategy_comparison,
@@ -248,13 +247,35 @@ async def recommend_page(
     """
     count = max(1, min(20, count))
     data_status = get_data_status()
-    recommendations = get_recommendations(count=count)
+    # SPEC-LOTTO-051: get_recommendations/get_cross_strategy_consensus를 patch하는
+    # 테스트와 호환되도록 lotto.web.data 모듈 네임스페이스로 동적 호출한다.
+    from lotto.web import data as wd
+
+    recommendations = wd.get_recommendations(count=count)
+
+    # SPEC-LOTTO-051 REQ-CONS-004/007/011: 추천이 있을 때만 합의 1회 스캔.
+    # 모든 추천 세트의 번호 합집합을 target으로 11개 전략을 요청당 1회만 스캔한다.
+    consensus: dict[int, int] = {}
+    if recommendations:
+        stats = wd.get_stats()
+        if stats is not None:
+            from lotto.recommender import LottoRecommender
+
+            target_numbers = sorted(
+                {n for rec in recommendations for n in rec.numbers}
+            )
+            consensus = wd.get_cross_strategy_consensus(
+                LottoRecommender(stats), target_numbers
+            )
 
     return _render(request, "recommend.html", {
         "active_tab": "recommend",
         "data_status": data_status,
         "recommendations": recommendations,
         "count": count,
+        # SPEC-LOTTO-051 REQ-CONS-003/006: 번호별 합의 카운트(N/11)와 주의 임계값
+        "consensus": consensus,
+        "consensus_caution_threshold": 4,
     })
 
 

@@ -298,7 +298,25 @@ async def get_recommendation_list(
         except Exception as exc:  # noqa: BLE001 — 이력 저장 실패는 응답을 막지 않는다
             logger.warning("Failed to append gen_history: %s", exc, exc_info=True)
 
-    return [r.model_dump() for r in recs]
+    # SPEC-LOTTO-051 REQ-CONS-005/011: 추천 객체마다 consensus 필드 추가.
+    # 11개 전략 스캔은 요청당 1회 — 모든 추천 번호의 합집합을 target으로 한 번에 계산한다.
+    consensus_map: dict[int, int] = {}
+    stats = wd.get_stats()
+    if recs and stats is not None:
+        from lotto.recommender import LottoRecommender
+
+        target_numbers = sorted({n for r in recs for n in r.numbers})
+        consensus_map = wd.get_cross_strategy_consensus(
+            LottoRecommender(stats), target_numbers
+        )
+
+    payload: list[dict[str, Any]] = []
+    for r in recs:
+        item = r.model_dump()
+        # 해당 세트 번호에 대한 합의 카운트만 추출 (번호→카운트)
+        item["consensus"] = {n: consensus_map.get(n, 0) for n in r.numbers}
+        payload.append(item)
+    return payload
 
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-033 — 번호 생성 이력 조회 공개 API

@@ -189,6 +189,48 @@ def get_recommendations(count: int = 5) -> list[Recommendation] | None:
     return LottoRecommender(stats).recommend(count=count)
 
 
+# ─── SPEC-LOTTO-051: 교차 전략 합의 오버레이 (cross-strategy consensus) ───────
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-051 — 11개 전략을 1회 스캔하여 번호별 합의 카운트 산출
+# @MX:SPEC: SPEC-LOTTO-051 REQ-CONS-001, REQ-CONS-002, REQ-CONS-011
+def get_cross_strategy_consensus(
+    recommender: Any,  # noqa: ANN401 — LottoRecommender 또는 동일 인터페이스 스파이를 허용
+    target_numbers: list[int],
+) -> dict[int, int]:
+    """target_numbers 각 번호가 11개 전략 중 몇 개에서 추천되는지 집계합니다.
+
+    SPEC-LOTTO-051 읽기 전용 합의 오버레이. recommender.recommend_by_strategy(label)를
+    STRATEGY_LABELS마다 정확히 1회씩(총 11회) 호출하여, 각 전략이 추천한 6개 번호
+    집합에 target_numbers의 번호가 포함되는지 카운트한다. recommender 내부 점수나
+    원시 draws에는 접근하지 않는다 (레이어 분리).
+
+    Args:
+        recommender: recommend_by_strategy(label) -> Recommendation 인터페이스 객체.
+        target_numbers: 합의를 계산할 번호 목록. 빈 리스트면 빈 매핑을 반환한다.
+
+    Returns:
+        {number: count} 매핑. target_numbers의 모든 번호를 키로 가지며, 값은 0~11.
+        target_numbers에 없는 번호는 키에 포함되지 않는다.
+    """
+    from lotto.recommender import STRATEGY_LABELS
+
+    # 빈 입력은 11회 스캔 없이 조기 반환 (불필요한 추천 호출 회피)
+    if not target_numbers:
+        return {}
+
+    target_set = set(target_numbers)
+    consensus: dict[int, int] = dict.fromkeys(target_numbers, 0)
+
+    # 전략당 1회 호출 — 추천 6개 중 target에 속한 번호의 카운트를 누적
+    for label in STRATEGY_LABELS:
+        recommended = set(recommender.recommend_by_strategy(label).numbers)
+        for n in target_set & recommended:
+            consensus[n] += 1
+
+    return consensus
+
+
 def get_history() -> list[dict[str, Any]]:
     """저장된 구매 티켓 목록을 반환합니다."""
     if not _HISTORY_PATH.exists():

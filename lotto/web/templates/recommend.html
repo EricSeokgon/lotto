@@ -111,16 +111,27 @@
                 </span>
             </div>
 
-            <!-- 번호 공 -->
-            <div class="flex flex-wrap gap-1.5 mb-3">
+            <!-- 번호 공 + SPEC-LOTTO-051 교차 전략 합의(N/11) -->
+            <div class="consensus-panel flex flex-wrap gap-2 mb-3">
                 {% for num in rec.numbers %}
                 {% if num <= 10 %}{% set bg = '#FBC400' %}{% set fg = '#1f2937' %}
                 {% elif num <= 20 %}{% set bg = '#69C8F2' %}{% set fg = '#ffffff' %}
                 {% elif num <= 30 %}{% set bg = '#FF7272' %}{% set fg = '#ffffff' %}
                 {% elif num <= 40 %}{% set bg = '#AAAAAA' %}{% set fg = '#ffffff' %}
                 {% else %}{% set bg = '#B0D840' %}{% set fg = '#ffffff' %}{% endif %}
-                <span class="inline-flex w-9 h-9 rounded-full items-center justify-center text-sm font-bold shadow-sm"
-                      style="background-color: {{ bg }}; color: {{ fg }};">{{ num }}</span>
+                {% set cons = consensus.get(num, 0) %}
+                {% set is_caution = cons >= consensus_caution_threshold %}
+                <div class="flex flex-col items-center gap-1">
+                    <span class="inline-flex w-9 h-9 rounded-full items-center justify-center text-sm font-bold shadow-sm"
+                          style="background-color: {{ bg }}; color: {{ fg }};">{{ num }}</span>
+                    <!-- 합의 카운트: 주의(>=4)는 강조 배지, 그 외는 카운트만 -->
+                    {% if is_caution %}
+                    <span class="consensus-caution text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800 whitespace-nowrap"
+                          title="주의: {{ cons }}개 전략이 동시 추천한 번호입니다.">⚠ {{ cons }}/11</span>
+                    {% else %}
+                    <span class="consensus-count text-[10px] text-muted whitespace-nowrap">{{ cons }}/11</span>
+                    {% endif %}
+                </div>
                 {% endfor %}
             </div>
 
