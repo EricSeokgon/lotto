@@ -6,6 +6,16 @@
 
 ---
 
+## [1.11.0] - 2026-06-09
+
+### Added (SPEC-LOTTO-055)
+- `get_last_digit_stats(draws)` — 끝자리(0~9)별 출현 빈도·비율·편차 분석 (메모리 캐시)
+- `/stats/last-digit` 페이지 — 끝자리별 count·pct·avg_expected·deviation 표 (과대/과소 강조)
+- `GET /api/stats/last-digit` — 끝자리 분포 JSON API (10개 항목)
+- 14개 신규 테스트 추가 (1242 → 1256)
+
+---
+
 ## [1.10.0] - 2026-06-09
 
 ### Added (SPEC-LOTTO-054)
