@@ -677,6 +677,27 @@ async def stats_rolling_page(
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-055 — 끝자리(1의 자리) 분포 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-055 REQ-LD-010/011/013
+@router.get("/stats/last-digit")
+async def stats_last_digit_page(request: Request) -> TemplateResponse:
+    """끝자리 분포 분석 페이지 — 끝자리 0~9별 출현 횟수/비율/편차 표 (SPEC-LOTTO-055).
+
+    - 10개 끝자리 행을 표로 제시하고, 편차 부호(양/음)에 따라 강조 표시한다.
+    - 데이터 부재 시에도 200 (빈 상태 안내 메시지).
+    """
+    stats = wd.get_last_digit_stats(wd.get_draws())
+    # 끝자리 오름차순 행 리스트 (템플릿 순회용)
+    rows = [stats[d] for d in range(10)]
+    total_draws = sum(row["count"] for row in rows)
+
+    return _render(request, "last_digit.html", {
+        "active_tab": "last_digit",
+        "rows": rows,
+        "total_draws": total_draws,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

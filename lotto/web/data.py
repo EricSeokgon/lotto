@@ -81,6 +81,11 @@ _cooccurrence_cache: dict[tuple[int, int], int] | None = None
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _rolling_cache: dict[tuple[int, ...], dict[int, dict[str, Any]]] = {}
 
+# SPEC-LOTTO-055 REQ-LD-022: 끝자리 분포 결과 메모리 캐시 (단일 엔트리, 키 불필요).
+# 전체 이력에 대한 끝자리 통계는 입력이 고정되므로 단일 결과만 보관한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_last_digit_cache: dict[int, dict[str, Any]] | None = None
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -89,11 +94,13 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-052 REQ-BT-011: 신규 추첨 데이터 적재 시 백테스트 캐시도 무효화한다.
     SPEC-LOTTO-053 REQ-CO-013: 신규 추첨 데이터 적재 시 동시출현 캐시도 무효화한다.
     SPEC-LOTTO-054 REQ-RW-015: 신규 추첨 데이터 적재 시 롤링 윈도우 캐시도 무효화한다.
+    SPEC-LOTTO-055 REQ-LD-014: 신규 추첨 데이터 적재 시 끝자리 분포 캐시도 무효화한다.
     """
-    global _draws_cache, _stats_cache, _cooccurrence_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
+    global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
     _stats_cache = None
     _cooccurrence_cache = None
+    _last_digit_cache = None
     _backtest_cache.clear()
     _rolling_cache.clear()
 
@@ -3191,4 +3198,78 @@ def get_rolling_frequency(
         }
 
     _rolling_cache[cache_key] = result
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-055: 끝자리 분포 분석 (last digit distribution)
+# ---------------------------------------------------------------------------
+
+# REQ-LD-003: 끝자리 d(0~9)별 번호 그룹 — n % 10 == d 인 1~45 번호 오름차순.
+# 0:{10,20,30,40}, 1~5:{각 5개}, 6~9:{각 4개}. 모듈 로드 시 1회 산출하여 재사용한다.
+_LAST_DIGIT_GROUPS: dict[int, list[int]] = {
+    d: [n for n in range(1, 46) if n % 10 == d] for d in range(10)
+}
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-055 — 끝자리(1의 자리)별 출현 분포 분석 + 균등 기대치 대비 편차
+# @MX:SPEC: SPEC-LOTTO-055 REQ-LD-001~009, REQ-LD-021/022
+def get_last_digit_stats(
+    draws: list[DrawResult] | None,
+) -> dict[int, dict[str, Any]]:
+    """끝자리(units digit) 0~9별 당첨 본번호 출현 분포를 분석합니다 (SPEC-LOTTO-055).
+
+    각 끝자리 d에 대해 해당 그룹(n % 10 == d) 번호들이 본번호 6개로 출현한 총
+    횟수를 집계하고, 비율·균등 기대치·편차를 산출한다. 보너스 번호는 제외한다
+    (REQ-LD-005). 결과는 항상 10개 끝자리(0~9)를 모두 포함한다 (REQ-LD-009).
+
+    번호별 빈도를 1회 집계한 뒤 끝자리로 묶어 재스캔을 피한다 (REQ-LD-021).
+    결과는 모듈 레벨 단일 엔트리 캐시에 보관하여 반복 요청 시 재계산을 피하며
+    (REQ-LD-022), invalidate_cache()로 무효화된다 (REQ-LD-014).
+
+    정의:
+        - count:        끝자리 그룹 번호들의 본번호 출현 총 횟수 (한 회차 중복 포함).
+        - pct:          count / (total_draws * 6) * 100 (소수 2자리). total 0이면 0.0.
+        - avg_expected: (len(numbers) / 45) * 6 * total_draws (균등 분포 기대 횟수).
+        - deviation:    count - avg_expected (양수=과대표, 음수=과소표).
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 모든 끝자리 count 0,
+               pct/avg_expected/deviation 0.0 의 일관된 구조를 반환한다.
+
+    Returns:
+        {d: LastDigitStat} 매핑 (d ∈ 0~9). LastDigitStat은
+        {"digit", "count", "pct", "numbers", "avg_expected", "deviation"}.
+    """
+    global _last_digit_cache  # noqa: PLW0603 — 의도된 모듈 캐시 상태
+
+    if _last_digit_cache is not None:
+        return _last_digit_cache
+
+    total_draws = len(draws) if draws else 0
+
+    # 번호 1~45 출현 빈도를 1회 집계 (보너스 제외, REQ-LD-021)
+    freq: dict[int, int] = dict.fromkeys(range(1, 46), 0)
+    if draws:
+        for draw in draws:
+            for n in draw.numbers():  # 정렬된 본번호 6개 (보너스 제외)
+                freq[n] += 1
+
+    total_slots = total_draws * 6
+    result: dict[int, dict[str, Any]] = {}
+    for d in range(10):
+        numbers = _LAST_DIGIT_GROUPS[d]
+        count = sum(freq[n] for n in numbers)
+        pct = round(count / total_slots * 100, 2) if total_slots else 0.0
+        avg_expected = (len(numbers) / 45) * 6 * total_draws
+        result[d] = {
+            "digit": d,
+            "count": count,
+            "pct": pct,
+            "numbers": numbers,
+            "avg_expected": avg_expected,
+            "deviation": count - avg_expected,
+        }
+
+    _last_digit_cache = result
     return result

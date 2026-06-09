@@ -645,6 +645,20 @@ async def get_rolling(
     return {str(w): result for w, result in results.items()}
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-055 — 끝자리(1의 자리) 분포 분석 API
+# @MX:SPEC: SPEC-LOTTO-055 REQ-LD-012
+@router.get("/stats/last-digit")
+async def get_last_digit() -> list[dict[str, Any]]:
+    """끝자리 0~9별 출현 분포(count/pct/avg_expected/deviation)를 반환합니다 (SPEC-LOTTO-055).
+
+    - 끝자리 오름차순(0이 먼저)으로 10개 항목 리스트를 반환한다 (REQ-LD-012).
+    - 데이터 부재 시에도 200 으로 정상 응답 (10개 모두 count 0, REQ-LD-013).
+    """
+    stats = wd.get_last_digit_stats(wd.get_draws())
+    # dict(int 키) → 끝자리 오름차순 리스트로 직렬화
+    return [stats[d] for d in range(10)]
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
