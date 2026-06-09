@@ -697,6 +697,19 @@ async def get_prime() -> dict[str, Any]:
     return wd.get_prime_stats(wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-059 — 십의 자리 구간 분포 분석 API
+# @MX:SPEC: SPEC-LOTTO-059
+@router.get("/stats/decade")
+async def get_decade() -> dict[str, Any]:
+    """본번호 6개의 십의 자리 구간 분포 통계를 반환합니다 (SPEC-LOTTO-059).
+
+    - 5개 구간(01-09 ~ 40-45)별 평균/기대/편차/출현 분포를 집계한다.
+    - distribution 키는 int(0~6)이며 JSON 직렬화 시 문자열로 변환된다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_decade_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")

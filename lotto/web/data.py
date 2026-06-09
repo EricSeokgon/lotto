@@ -102,6 +102,11 @@ _ac_cache: dict[str, Any] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _prime_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-059: 십의 자리 구간 분포 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_decade_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -114,6 +119,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-056: 신규 추첨 데이터 적재 시 간격 패턴 캐시도 무효화한다.
     SPEC-LOTTO-057: 신규 추첨 데이터 적재 시 AC값 분석 캐시도 무효화한다.
     SPEC-LOTTO-058: 신규 추첨 데이터 적재 시 소수/합성수 분포 캐시도 무효화한다.
+    SPEC-LOTTO-059: 신규 추첨 데이터 적재 시 십의 자리 구간 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -125,6 +131,7 @@ def invalidate_cache() -> None:
     _gap_cache.clear()
     _ac_cache.clear()
     _prime_cache.clear()
+    _decade_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -3649,4 +3656,139 @@ def get_prime_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "one_appeared_pct": round(one_appeared_count / total_draws * 100, 2),
     }
     _prime_cache[cache_key] = result
+    return result
+
+
+# SPEC-LOTTO-059: 십의 자리 구간 정의 (label, low, high, size).
+# 명시적 범위 비교로 분류한다. n // 10 사용 시 1~9가 'decade 0'으로 잘못
+# 묶이고 40~45가 두 그룹(40~49, 미존재)으로 흩어지므로 사용하지 않는다.
+_DECADE_GROUPS: list[tuple[str, int, int, int]] = [
+    ("01-09", 1, 9, 9),
+    ("10-19", 10, 19, 10),
+    ("20-29", 20, 29, 10),
+    ("30-39", 30, 39, 10),
+    ("40-45", 40, 45, 6),
+]
+
+_DECADE_COUNT_MIN = 0  # 회차당 한 구간의 가능 최솟값
+_DECADE_COUNT_MAX = 6  # 회차당 한 구간의 가능 최댓값 (본번호 6개)
+_DECADE_TOTAL_NUMBERS = 45  # 전체 번호 풀
+_DECADE_PICK = 6  # 회차당 본번호 개수
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-059 십의 자리 구간 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-059
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_decade_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개를 5개 십의 자리 구간으로 분류한 분포를 분석합니다 (SPEC-LOTTO-059).
+
+    각 회차의 본번호 6개(보너스 제외)를 다음 5개 구간으로 분류한다.
+        - "01-09": 1~9 (크기 9)
+        - "10-19": 10~19 (크기 10)
+        - "20-29": 20~29 (크기 10)
+        - "30-39": 30~39 (크기 10)
+        - "40-45": 40~45 (크기 6)
+
+    구간 분류는 n // 10 이 아니라 명시적 범위 비교(low <= n <= high)로 수행한다.
+
+    각 구간에 대해 회차당 평균 출현 개수, 기대 평균((size/45)*6),
+    편차(평균-기대), 출현 개수(0~6) 분포를 집계하고,
+    전체에서 평균 출현이 가장 많은/적은 구간을 식별한다.
+
+    회차별 분류를 1회 집계한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               각 구간 avg_count=0.0, expected_avg 계산값, deviation=0-expected,
+               빈 distribution을 반환한다.
+
+    Returns:
+        {total_draws, groups[{label, size, avg_count, expected_avg, deviation,
+        distribution}], most_frequent_group, least_frequent_group} 매핑.
+        groups는 고정 순서(01-09 먼저, 40-45 마지막)이다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _decade_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    total_draws = len(draws) if draws else 0
+
+    if total_draws == 0:
+        groups: list[dict[str, Any]] = []
+        for label, _low, _high, size in _DECADE_GROUPS:
+            expected_avg = round(size / _DECADE_TOTAL_NUMBERS * _DECADE_PICK, 2)
+            groups.append(
+                {
+                    "label": label,
+                    "size": size,
+                    "avg_count": 0.0,
+                    "expected_avg": expected_avg,
+                    "deviation": round(0.0 - expected_avg, 2),
+                    "distribution": {},
+                }
+            )
+        result: dict[str, Any] = {
+            "total_draws": 0,
+            "groups": groups,
+            # 빈 데이터에서도 일관된 라벨을 제공 (고정 순서 첫 구간)
+            "most_frequent_group": _DECADE_GROUPS[0][0],
+            "least_frequent_group": _DECADE_GROUPS[0][0],
+        }
+        _decade_cache[cache_key] = result
+        return result
+
+    # 구간별 합계와 0~6 출현 개수 분포를 초기화
+    sums: dict[str, int] = {g[0]: 0 for g in _DECADE_GROUPS}
+    dists: dict[str, dict[int, int]] = {
+        g[0]: dict.fromkeys(
+            range(_DECADE_COUNT_MIN, _DECADE_COUNT_MAX + 1), 0
+        )
+        for g in _DECADE_GROUPS
+    }
+
+    assert draws is not None  # total_draws > 0 이므로 보장됨
+    for draw in draws:
+        per_group: dict[str, int] = {g[0]: 0 for g in _DECADE_GROUPS}
+        for n in draw.numbers():  # 본번호 6개만 사용 (보너스 제외)
+            for label, low, high, _size in _DECADE_GROUPS:
+                if low <= n <= high:
+                    per_group[label] += 1
+                    break
+        for label, count in per_group.items():
+            sums[label] += count
+            dists[label][count] += 1
+
+    groups = []
+    for label, _low, _high, size in _DECADE_GROUPS:
+        avg_count = round(sums[label] / total_draws, 2)
+        expected_avg = round(size / _DECADE_TOTAL_NUMBERS * _DECADE_PICK, 2)
+        groups.append(
+            {
+                "label": label,
+                "size": size,
+                "avg_count": avg_count,
+                "expected_avg": expected_avg,
+                "deviation": round(avg_count - expected_avg, 2),
+                "distribution": dists[label],
+            }
+        )
+
+    # 최빈/최소 구간 — avg_count 기준, 동률은 고정 순서(_DECADE_GROUPS) 첫 번째 선택.
+    # enumerate 인덱스를 보조 키로 사용하여 동률 시 앞선 구간을 우선한다.
+    most_frequent_group = max(
+        enumerate(groups), key=lambda iv: (iv[1]["avg_count"], -iv[0])
+    )[1]["label"]
+    least_frequent_group = min(
+        enumerate(groups), key=lambda iv: (iv[1]["avg_count"], iv[0])
+    )[1]["label"]
+
+    result = {
+        "total_draws": total_draws,
+        "groups": groups,
+        "most_frequent_group": most_frequent_group,
+        "least_frequent_group": least_frequent_group,
+    }
+    _decade_cache[cache_key] = result
     return result

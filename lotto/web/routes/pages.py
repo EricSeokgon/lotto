@@ -749,6 +749,23 @@ async def stats_prime_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-059 — 십의 자리 구간 분포 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-059
+@router.get("/stats/decade")
+async def stats_decade_page(request: Request) -> TemplateResponse:
+    """십의 자리 구간 분포 분석 페이지 — 5개 구간 평균/기대/편차 (SPEC-LOTTO-059).
+
+    - 구간별 평균 출현 개수와 기대 평균, 편차, 최빈/최소 구간을 제시한다.
+    - 데이터 부재 시에도 200 (빈 상태 안내 메시지).
+    """
+    stats = wd.get_decade_stats(wd.get_draws())
+
+    return _render(request, "decade.html", {
+        "active_tab": "decade",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")
