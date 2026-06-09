@@ -659,6 +659,18 @@ async def get_last_digit() -> list[dict[str, Any]]:
     return [stats[d] for d in range(10)]
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-056 — 번호 간격 패턴 분석 API
+# @MX:SPEC: SPEC-LOTTO-056
+@router.get("/stats/gap")
+async def get_gap() -> dict[str, Any]:
+    """정렬된 본번호 6개의 인접 간격 패턴 통계를 반환합니다 (SPEC-LOTTO-056).
+
+    - 회차당 5개 간격을 소(1~5)/중(6~10)/대(11+)로 분류하고 위치별 평균을 산출한다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (모든 수치 0).
+    """
+    return wd.get_gap_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")

@@ -698,6 +698,23 @@ async def stats_last_digit_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-056 — 번호 간격 패턴 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-056
+@router.get("/stats/gap")
+async def stats_gap_page(request: Request) -> TemplateResponse:
+    """번호 간격 패턴 분석 페이지 — 인접 간격의 분류/위치별 평균/최빈 간격 (SPEC-LOTTO-056).
+
+    - 소/중/대 분류 요약, 위치별 평균 간격 표, 최빈 간격 상위 10개 표를 제시한다.
+    - 데이터 부재 시에도 200 (빈 상태 안내 메시지).
+    """
+    stats = wd.get_gap_stats(wd.get_draws())
+
+    return _render(request, "gap.html", {
+        "active_tab": "gap",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

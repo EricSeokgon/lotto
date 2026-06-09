@@ -86,6 +86,11 @@ _rolling_cache: dict[tuple[int, ...], dict[int, dict[str, Any]]] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _last_digit_cache: dict[int, dict[str, Any]] | None = None
 
+# SPEC-LOTTO-056: 번호 간격 패턴 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_gap_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -95,6 +100,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-053 REQ-CO-013: 신규 추첨 데이터 적재 시 동시출현 캐시도 무효화한다.
     SPEC-LOTTO-054 REQ-RW-015: 신규 추첨 데이터 적재 시 롤링 윈도우 캐시도 무효화한다.
     SPEC-LOTTO-055 REQ-LD-014: 신규 추첨 데이터 적재 시 끝자리 분포 캐시도 무효화한다.
+    SPEC-LOTTO-056: 신규 추첨 데이터 적재 시 간격 패턴 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -103,6 +109,7 @@ def invalidate_cache() -> None:
     _last_digit_cache = None
     _backtest_cache.clear()
     _rolling_cache.clear()
+    _gap_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -3272,4 +3279,150 @@ def get_last_digit_stats(
         }
 
     _last_digit_cache = result
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-056: 번호 간격 패턴 분석 (gap pattern analysis)
+# ---------------------------------------------------------------------------
+
+# SPEC-LOTTO-056: 간격 크기 분류 경계 (소: 1~5, 중: 6~10, 대: 11+)
+_GAP_SMALL_MAX = 5
+_GAP_MEDIUM_MAX = 10
+# SPEC-LOTTO-056: most_common_gaps 반환 최대 개수
+_GAP_TOP_N = 10
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-056 — 정렬된 본번호 6개의 인접 간격 5개 분포 분석 + 메모리 캐시
+# @MX:SPEC: SPEC-LOTTO-056
+def get_gap_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 정렬된 본번호 6개의 인접 간격 패턴을 분석합니다 (SPEC-LOTTO-056).
+
+    각 회차의 정렬된 본번호 6개(보너스 제외)에서 인접한 두 번호 차이 5개를
+    구하고, 전체 회차에 걸쳐 평균/분류/위치별 평균/최빈 간격을 집계한다.
+
+    정의:
+        - 간격(gap): 정렬된 본번호의 인접 차이. 회차당 정확히 5개 (sorted[i+1]-sorted[i]).
+        - small/medium/large: 1~5 / 6~10 / 11+ 로 분류한 간격 총 개수.
+        - position i: sorted[i+1] - sorted[i] (i=0..4)의 회차 평균.
+
+    번호별 간격을 1회 집계한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 모든 수치 0,
+               빈 리스트의 일관된 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_gap, small_count, medium_count, large_count,
+        small_pct, medium_pct, large_pct, most_common_gaps, avg_min_gap,
+        avg_max_gap, position_avg} 매핑.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _gap_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_gap": 0.0,
+            "small_count": 0,
+            "medium_count": 0,
+            "large_count": 0,
+            "small_pct": 0.0,
+            "medium_pct": 0.0,
+            "large_pct": 0.0,
+            "most_common_gaps": [],
+            "avg_min_gap": 0.0,
+            "avg_max_gap": 0.0,
+            "position_avg": [0.0, 0.0, 0.0, 0.0, 0.0],
+        }
+        _gap_cache[cache_key] = result
+        return result
+
+    total_draws = len(draws)
+    small_count = 0
+    medium_count = 0
+    large_count = 0
+    gap_value_counts: dict[int, int] = {}
+    # 위치별 간격 합계 (5개 위치) — 회차 평균 산출용
+    position_sums = [0, 0, 0, 0, 0]
+    min_gap_sum = 0
+    max_gap_sum = 0
+
+    for draw in draws:
+        nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+        # 인접 쌍의 차이 5개 (zip으로 인접 쌍 생성)
+        gaps = [b - a for a, b in zip(nums, nums[1:])]  # noqa: B905 — Python 3.9 호환
+
+        for i, gap in enumerate(gaps):
+            position_sums[i] += gap
+            gap_value_counts[gap] = gap_value_counts.get(gap, 0) + 1
+            if gap <= _GAP_SMALL_MAX:
+                small_count += 1
+            elif gap <= _GAP_MEDIUM_MAX:
+                medium_count += 1
+            else:
+                large_count += 1
+
+        min_gap_sum += min(gaps)
+        max_gap_sum += max(gaps)
+
+    total_gaps = small_count + medium_count + large_count
+    avg_gap = round(
+        sum(gap * cnt for gap, cnt in gap_value_counts.items()) / total_gaps, 2
+    )
+
+    # 최빈 간격 — count 내림차순, 동률은 간격 오름차순, 상위 10개
+    ranked = sorted(gap_value_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    most_common_gaps = [
+        {"gap": gap, "count": count} for gap, count in ranked[:_GAP_TOP_N]
+    ]
+
+    return _cache_gap_result(
+        cache_key,
+        total_draws=total_draws,
+        avg_gap=avg_gap,
+        small_count=small_count,
+        medium_count=medium_count,
+        large_count=large_count,
+        total_gaps=total_gaps,
+        most_common_gaps=most_common_gaps,
+        min_gap_sum=min_gap_sum,
+        max_gap_sum=max_gap_sum,
+        position_sums=position_sums,
+    )
+
+
+def _cache_gap_result(
+    cache_key: str,
+    *,
+    total_draws: int,
+    avg_gap: float,
+    small_count: int,
+    medium_count: int,
+    large_count: int,
+    total_gaps: int,
+    most_common_gaps: list[dict[str, int]],
+    min_gap_sum: int,
+    max_gap_sum: int,
+    position_sums: list[int],
+) -> dict[str, Any]:
+    """집계 결과를 백분율/평균으로 마무리하여 캐시에 보관합니다 (SPEC-LOTTO-056)."""
+    result: dict[str, Any] = {
+        "total_draws": total_draws,
+        "avg_gap": avg_gap,
+        "small_count": small_count,
+        "medium_count": medium_count,
+        "large_count": large_count,
+        "small_pct": round(small_count / total_gaps * 100, 2),
+        "medium_pct": round(medium_count / total_gaps * 100, 2),
+        "large_pct": round(large_count / total_gaps * 100, 2),
+        "most_common_gaps": most_common_gaps,
+        "avg_min_gap": round(min_gap_sum / total_draws, 2),
+        "avg_max_gap": round(max_gap_sum / total_draws, 2),
+        "position_avg": [round(s / total_draws, 2) for s in position_sums],
+    }
+    _gap_cache[cache_key] = result
     return result
