@@ -743,6 +743,36 @@ async def get_number_affinity(
     return wd.number_affinity(target, wd.get_draws(), top_k=top_k)
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-053 — 번호 동시 출현 분석 API (number 유/무 분기)
+# @MX:SPEC: SPEC-LOTTO-053 REQ-CO-009, REQ-CO-010
+@router.get("/numbers/cooccurrence")
+async def get_cooccurrence(
+    number: Optional[int] = Query(  # noqa: UP045 — FastAPI는 Python 3.9에서 Optional 필요
+        default=None, ge=1, le=45, description="동반 파트너를 조회할 번호 (1~45)"
+    ),
+    top: int = Query(
+        default=20, ge=1, le=100,
+        description="반환할 상위 쌍/파트너 수 (1~100, 기본 20)",
+    ),
+) -> dict[str, Any]:
+    """번호 동시 출현 분석 결과를 반환합니다 (SPEC-LOTTO-053).
+
+    - number 지정(1~45): 해당 번호의 상위 top 동반 파트너 (REQ-CO-009).
+    - number 없음: 전체 상위 top 동시 출현 쌍 (REQ-CO-010, 기본 top=20).
+    - 데이터 부재 시에도 200 으로 정상 응답 (빈 목록).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    draws = wd.get_draws()
+    if number is not None:
+        return {
+            "number": number,
+            "partners": wd.get_number_partners(draws, number, top_k=top),
+        }
+    return {"pairs": wd.get_top_cooccurrences(draws, n=top)}
+
+
 @router.get("/simulation")
 async def run_simulation_results(
     rounds: int = Query(default=1000, ge=1, le=100000, description="시뮬레이션 회차 수 (1~100000)"),

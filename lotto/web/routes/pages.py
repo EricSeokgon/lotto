@@ -531,6 +531,39 @@ async def numbers_cycle_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-053 — 번호 동시 출현 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-053 REQ-CO-007, REQ-CO-008, REQ-CO-012
+# 주의: /numbers/{number} 동적 라우트보다 먼저 등록해야 "cooccurrence"가 number로 캡처되지 않는다.
+@router.get("/numbers/cooccurrence")
+async def numbers_cooccurrence_page(
+    request: Request,
+    number: Optional[int] = Query(default=None, ge=1, le=45),  # noqa: UP045
+) -> TemplateResponse:
+    """번호 동시 출현 분석 페이지 — 상위 동시 출현 쌍 또는 특정 번호의 파트너 (SPEC-LOTTO-053).
+
+    - number 없음: 상위 20개 동시 출현 쌍 표 (REQ-CO-007).
+    - number 지정(1~45): 해당 번호의 상위 10개 동반 파트너 표 (REQ-CO-008/012).
+    - 데이터 부재 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    draws = wd.get_draws()
+    partners: list[dict[str, Any]] | None = None
+    pairs: list[dict[str, Any]] | None = None
+    if number is not None:
+        partners = wd.get_number_partners(draws, number, top_k=10)
+    else:
+        pairs = wd.get_top_cooccurrences(draws, n=20)
+
+    return _render(request, "cooccurrence.html", {
+        "active_tab": "cooccurrence",
+        "number": number,
+        "partners": partners,
+        "pairs": pairs,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-030 — 번호 상세 통계 페이지
 # @MX:SPEC: SPEC-LOTTO-030
 @router.get("/numbers/{number}")

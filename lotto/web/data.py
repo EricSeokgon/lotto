@@ -71,16 +71,23 @@ _stats_cache: _CacheEntry | None = None
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _backtest_cache: dict[int, dict[str, Any]] = {}
 
+# SPEC-LOTTO-053 REQ-CO-013/020: 동시 출현 행렬 메모리 캐시 (단일 엔트리).
+# 요청당 1회만 행렬을 구성하고 top/partner는 이 행렬에서 파생한다(REQ-CO-019).
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_cooccurrence_cache: dict[tuple[int, int], int] | None = None
+
 
 def invalidate_cache() -> None:
-    """get_draws/get_stats/백테스트의 메모리 캐시를 비웁니다.
+    """get_draws/get_stats/백테스트/동시출현의 메모리 캐시를 비웁니다.
 
     SPEC-LOTTO-009 REQ-CACHE-003: 데이터 수집/분석/크롤링 완료 후 호출됩니다.
     SPEC-LOTTO-052 REQ-BT-011: 신규 추첨 데이터 적재 시 백테스트 캐시도 무효화한다.
+    SPEC-LOTTO-053 REQ-CO-013: 신규 추첨 데이터 적재 시 동시출현 캐시도 무효화한다.
     """
-    global _draws_cache, _stats_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
+    global _draws_cache, _stats_cache, _cooccurrence_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
     _stats_cache = None
+    _cooccurrence_cache = None
     _backtest_cache.clear()
 
 
@@ -2914,3 +2921,151 @@ def run_backtest(
     # REQ-BT-008/011: 성공 결과만 n_past 별로 캐시 (에러는 즉시 재시도 허용)
     _backtest_cache[n_past] = result
     return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-053: 번호 동시 출현 분석기 (number co-occurrence)
+# ---------------------------------------------------------------------------
+
+# SPEC-LOTTO-053: 상위 쌍 / 파트너 기본 반환 개수
+_COOCCURRENCE_TOP_N = 20
+_COOCCURRENCE_PARTNER_TOP_K = 10
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-053 — 쌍별 동시 출현 행렬 (i<j 단일 집계, 보너스 제외) + 메모리 캐시
+# @MX:SPEC: SPEC-LOTTO-053 REQ-CO-001, REQ-CO-002, REQ-CO-003
+def get_cooccurrence_matrix(
+    draws: list[DrawResult] | None,
+) -> dict[tuple[int, int], int]:
+    """전체 회차에서 번호 쌍 (i, j) (단 i<j)의 동시 출현 횟수를 집계합니다 (SPEC-LOTTO-053).
+
+    각 회차의 정렬된 본번호 6개(보너스 제외)에서 i<j 순서로 C(6,2)=15개 쌍을
+    정확히 한 번씩만 순회하여(이중 집계 금지) 함께 나온 회차 수를 누적한다.
+    한 번이라도 함께 나온 쌍만 키로 포함하며 (j, i) 역순 키는 절대 생성하지 않는다.
+
+    동일 프로세스 수명 동안 결과를 모듈 레벨 단일 엔트리 캐시에 보관하여
+    (REQ-CO-020) 반복 요청 시 재계산을 피한다. invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 빈 행렬을 반환한다.
+
+    Returns:
+        {(i, j): count} 매핑 (i<j). 데이터 부재 시 빈 dict.
+    """
+    global _cooccurrence_cache  # noqa: PLW0603 — 의도된 모듈 캐시 상태
+
+    if _cooccurrence_cache is not None:
+        return _cooccurrence_cache
+
+    matrix: dict[tuple[int, int], int] = {}
+    if not draws:
+        # 빈 데이터도 캐시 — 동일 입력에 대한 반복 호출을 일관되게 처리
+        _cooccurrence_cache = matrix
+        return matrix
+
+    for draw in draws:
+        nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+        # i<j 순서로 각 쌍을 정확히 한 번만 순회 (이중 집계 금지)
+        for a in range(len(nums)):
+            for b in range(a + 1, len(nums)):
+                pair = (nums[a], nums[b])
+                matrix[pair] = matrix.get(pair, 0) + 1
+
+    _cooccurrence_cache = matrix
+    return matrix
+
+
+def _cooccurrence_pct(count: int, total_draws: int) -> float:
+    """동시 출현 백분율을 계산합니다 = count / total_draws * 100 (소수 2자리).
+
+    total_draws가 0이면 0.0을 반환한다 (REQ-CO-006).
+    """
+    if total_draws <= 0:
+        return 0.0
+    return round(count / total_draws * 100, 2)
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-053 — 동시 출현 상위 N개 쌍 (count 내림차순, 동률은 쌍 오름차순)
+# @MX:SPEC: SPEC-LOTTO-053 REQ-CO-004, REQ-CO-006
+def get_top_cooccurrences(
+    draws: list[DrawResult] | None,
+    n: int = _COOCCURRENCE_TOP_N,
+) -> list[dict[str, Any]]:
+    """동시 출현 횟수 상위 n개 쌍을 반환합니다 (SPEC-LOTTO-053).
+
+    get_cooccurrence_matrix로 구성한 행렬에서 파생하며(요청당 행렬 1회 구성,
+    REQ-CO-019) draws를 재스캔하지 않는다. count 내림차순으로 정렬하고
+    동률은 쌍 (i, j) 오름차순으로 결정론적으로 정렬한다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 빈 목록을 반환한다.
+        n:     반환할 상위 쌍 수 (기본 20).
+
+    Returns:
+        [{"pair": [i, j], "count": int, "pct": float}, ...] 최대 n개.
+        pct는 count / total_draws * 100 (소수 2자리). 데이터 부재 시 빈 목록.
+    """
+    if not draws:
+        return []
+
+    matrix = get_cooccurrence_matrix(draws)
+    total_draws = len(draws)
+
+    # count 내림차순, 동률은 쌍 오름차순 (결정론적)
+    ranked = sorted(matrix.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [
+        {
+            "pair": [pair[0], pair[1]],
+            "count": count,
+            "pct": _cooccurrence_pct(count, total_draws),
+        }
+        for pair, count in ranked[:n]
+    ]
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-053 — 번호별 동반 파트너 상위 top_k (count 내림차순)
+# @MX:SPEC: SPEC-LOTTO-053 REQ-CO-005, REQ-CO-006
+def get_number_partners(
+    draws: list[DrawResult] | None,
+    number: int,
+    top_k: int = _COOCCURRENCE_PARTNER_TOP_K,
+) -> list[dict[str, Any]]:
+    """특정 번호와 함께 나온 동반 파트너를 상위 top_k개 반환합니다 (SPEC-LOTTO-053).
+
+    get_cooccurrence_matrix로 구성한 행렬에서 number를 포함한 쌍만 추려
+    파생하며(draws 재스캔 없음, REQ-CO-019), number 자신은 파트너에서 제외한다.
+    count 내림차순으로 정렬하고 동률은 파트너 번호 오름차순으로 정렬한다.
+
+    Args:
+        draws:  분석 대상 회차 리스트. 빈 리스트/None이면 빈 목록을 반환한다.
+        number: 동반 파트너를 조회할 번호 (1~45, 검증은 API 레이어가 수행).
+        top_k:  반환할 상위 파트너 수 (기본 10).
+
+    Returns:
+        [{"number": int, "count": int, "pct": float}, ...] 최대 top_k개.
+        pct는 count / total_draws * 100 (소수 2자리). 데이터 부재 시 빈 목록.
+    """
+    if not draws:
+        return []
+
+    matrix = get_cooccurrence_matrix(draws)
+    total_draws = len(draws)
+
+    # number를 포함한 쌍에서 상대 파트너 번호의 동반 횟수를 추출
+    partner_counts: dict[int, int] = {}
+    for (i, j), count in matrix.items():
+        if i == number:
+            partner_counts[j] = count
+        elif j == number:
+            partner_counts[i] = count
+
+    # count 내림차순, 동률은 번호 오름차순
+    ranked = sorted(partner_counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [
+        {
+            "number": partner,
+            "count": count,
+            "pct": _cooccurrence_pct(count, total_draws),
+        }
+        for partner, count in ranked[:top_k]
+    ]
