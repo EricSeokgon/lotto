@@ -6,6 +6,18 @@
 
 ---
 
+## [1.9.0] - 2026-06-09
+
+### Added (SPEC-LOTTO-053)
+- `get_cooccurrence_matrix` — 전체 번호 쌍(i<j) 동시 출현 횟수 원시 행렬 (메모리 캐시)
+- `get_top_cooccurrences(n=20)` — 동시 출현 상위 N쌍 (count·pct 포함)
+- `get_number_partners(number, top_k=10)` — 특정 번호의 상위 동반 번호 목록
+- `/numbers/cooccurrence` 페이지 — 상위 쌍 표 / `?number=N` 시 특정 번호 파트너 표
+- `GET /api/numbers/cooccurrence?number=N&top=T` — 동시 출현 JSON API
+- 21개 신규 테스트 추가 (1200 → 1221)
+
+---
+
 ## [1.8.0] - 2026-06-09
 
 ### Added (SPEC-LOTTO-052)

@@ -1,7 +1,7 @@
 # 로또 번호 추천 프로그램
 
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-1200-green)](./tests/)
+[![Tests](https://img.shields.io/badge/Tests-1221-green)](./tests/)
 [![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen)](#)
 
 통계 분석 기반의 로또 번호 추천 CLI 도구 및 웹 대시보드입니다. 동행복권 공식 데이터를 수집하여 다각적인 통계 분석을 수행하고, 가중치 기반 알고리즘으로 추천 번호를 생성합니다. 또한 과거 데이터에 대한 백테스팅으로 알고리즘의 유효성을 검증합니다.
@@ -24,6 +24,7 @@
 - **번호 즐겨찾기**: 자주 쓰는 번호 조합 저장·관리·시뮬레이션 연동
 - **인과 안전 백테스팅**: 과거 데이터로 알고리즘 효용성 검증
 - **전략 백테스팅 분석기**: 11개 전략의 과거 N회차 성능을 look-ahead 없이 비교, `/backtest` 페이지 및 JSON API 제공
+- **번호 동시 출현 분석기**: 전체 추첨 이력 기반 번호 쌍별 동시 출현 행렬, 상위 쌍 및 특정 번호 파트너 목록 제공, `/numbers/cooccurrence` 페이지 및 JSON API
 - **웹 대시보드**: 브라우저 기반 대시보드 (FastAPI + Jinja2, 다크모드 지원)
 - **데이터 내보내기**: 추첨 데이터·구매 이력 CSV/JSON 다운로드
 - **당첨금 분석**: 1등 당첨금 추이 차트 및 평균/최대/최소 통계
@@ -36,7 +37,7 @@
 - 외부 데이터베이스 불필요 — 로컬 CSV/JSON 파일 기반
 - 원자적 파일 저장 — 쓰기 중 충돌 방지
 - 타입 안전성 — Python 3.9+ 호환
-- 높은 커버리지 — 1200개 테스트, 96%+ 라인 커버리지
+- 높은 커버리지 — 1221개 테스트, 96%+ 라인 커버리지
 - 다크모드 지원 — 시스템 테마 감지 + 수동 토글 (Tailwind CSS)
 
 ## 설치
