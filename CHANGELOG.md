@@ -6,6 +6,17 @@
 
 ---
 
+## [1.10.0] - 2026-06-09
+
+### Added (SPEC-LOTTO-054)
+- `get_rolling_frequency(draws, windows)` — 윈도우별 번호 빈도·델타·추세 분류 (메모리 캐시)
+- 추세 분류: 델타 > +0.02 "상승", < -0.02 "하락", 그 외 "보합"
+- `/stats/rolling` 페이지 — 윈도우별 상승/하락 번호 표 (`?w=N` 단일 윈도우 지원)
+- `GET /api/stats/rolling?windows=10,20,50,100` — 롤링 빈도 JSON API
+- 21개 신규 테스트 추가 (1221 → 1242)
+
+---
+
 ## [1.9.0] - 2026-06-09
 
 ### Added (SPEC-LOTTO-053)
