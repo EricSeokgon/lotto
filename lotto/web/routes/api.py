@@ -661,6 +661,25 @@ async def evaluate_sum_combination(
     return wd.evaluate_sum(n, wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-052 — 전략 백테스팅 공개 API
+# @MX:SPEC: SPEC-LOTTO-052
+@router.get("/backtest")
+async def get_backtest(
+    n: int = Query(default=50, ge=1, description="평가할 최근 회차 수 (기본 50)"),
+) -> dict[str, Any]:
+    """11개 전략의 과거 적중 성능 백테스트 결과를 JSON으로 반환합니다 (SPEC-LOTTO-052).
+
+    - 각 전략 라벨 → {match_counts, avg_match, best_draw, score} 매핑.
+    - 회차 부족(20회 미만) 시 {"error": ...} 페이로드를 반환한다 (REQ-BT-009).
+    - look-ahead bias 제거: 회차마다 prior_draws로 통계를 재구성한다 (run_backtest).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    draws = wd.get_draws() or []
+    return wd.run_backtest(draws, n_past=n)
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-030 — 번호별 상세 통계 공개 API
 # @MX:SPEC: SPEC-LOTTO-030
 @router.get("/numbers/{number}/stats")

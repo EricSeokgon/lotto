@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-052: 전략 백테스팅 분석 — 11개 전략의 과거 적중 성능을 score 내림차순 표로 표시 #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">전략 백테스트</h2>
+    </div>
+
+    {# AC-21: 과거 성능 한계 안내 (예측 보장/투자 권유 문구 금지) #}
+    <div class="bg-amber/10 border border-amber/30 rounded-lg p-4">
+        <p class="text-sm text-muted dark:text-gray-300">
+            본 백테스트는 과거 실제 추첨 결과에 대한 전략별 적중 성능을 측정한 것일 뿐,
+            미래 당첨을 보장하지 않습니다. 각 회차는 그 이전 회차 데이터만으로 평가됩니다
+            (look-ahead bias 제거).
+        </p>
+    </div>
+
+    {% if error_message %}
+    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-muted dark:text-gray-400">{{ error_message }}</p>
+    </div>
+    {% else %}
+    <p class="text-sm text-muted dark:text-gray-400">최근 {{ n_past }}개 회차를 대상으로 11개 전략을 백테스트했습니다.</p>
+
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700 overflow-x-auto">
+        <h3 class="text-base font-medium text-ink dark:text-gray-100 mb-3">전략별 성능 (종합 점수 내림차순)</h3>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="py-2 pr-4">순위</th>
+                    <th class="py-2 pr-4">전략</th>
+                    <th class="py-2 pr-4 text-right">평균 적중</th>
+                    <th class="py-2 pr-4">적중 분포 (0~6)</th>
+                    <th class="py-2 pr-4 text-right">최고 회차</th>
+                    <th class="py-2 pr-4 text-right">종합 점수</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                <tr class="border-b border-border dark:border-gray-700">
+                    <td class="py-2 pr-4 text-muted dark:text-gray-400">{{ loop.index }}</td>
+                    <td class="py-2 pr-4 font-medium text-ink dark:text-gray-100">{{ row.strategy_label }}</td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ "%.3f"|format(row.avg_match) }}</td>
+                    <td class="py-2 pr-4 text-muted dark:text-gray-400">
+                        <span class="whitespace-nowrap">
+                            {% for k in range(7) %}{{ k }}:{{ row.match_counts[k] }}{% if not loop.last %} / {% endif %}{% endfor %}
+                        </span>
+                    </td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">
+                        {% if row.best_draw.round %}
+                        {{ row.best_draw.round }}회 ({{ row.best_draw.matched }}개 적중)
+                        {% else %}-{% endif %}
+                    </td>
+                    <td class="py-2 pr-4 text-right font-semibold text-data-blue dark:text-data-muted">{{ "%.3f"|format(row.score) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

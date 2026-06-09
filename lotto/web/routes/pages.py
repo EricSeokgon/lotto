@@ -709,6 +709,50 @@ async def prediction_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-052 — 전략 백테스팅 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-052
+@router.get("/backtest")
+async def backtest_page(
+    request: Request,
+    n: int = 50,
+) -> TemplateResponse:
+    """전략 백테스팅 페이지 — 11개 전략의 과거 적중 성능을 표로 표시 (SPEC-LOTTO-052).
+
+    - 각 전략의 평균 적중/적중 분포(0~6)/최고 회차/종합 점수를 표시한다.
+    - 데이터 부족(20회 미만) 시 안내 메시지를 렌더한다 (REQ-BT-009).
+    - ?n=N 으로 평가 윈도를 조정한다 (기본 50, REQ-BT-006/017).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    n = max(1, n)
+    draws = wd.get_draws() or []
+    result = wd.run_backtest(draws, n_past=n)
+
+    error_message: str | None = None
+    rows: list[dict[str, Any]] = []
+    if "error" in result:
+        error_message = str(result["error"])
+    else:
+        # REQ-BT-006: score 내림차순 정렬된 전략 행 목록
+        for label, br in result.items():
+            rows.append({
+                "strategy_label": label,
+                "avg_match": br["avg_match"],
+                "match_counts": br["match_counts"],
+                "best_draw": br["best_draw"],
+                "score": br["score"],
+            })
+        rows.sort(key=lambda r: r["score"], reverse=True)
+
+    return _render(request, "backtest.html", {
+        "active_tab": "backtest",
+        "n_past": n,
+        "rows": rows,
+        "error_message": error_message,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-040 — 번호 비교 분석기 페이지
 # @MX:SPEC: SPEC-LOTTO-040
 @router.get("/compare")

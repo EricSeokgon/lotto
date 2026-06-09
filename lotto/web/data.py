@@ -17,6 +17,7 @@ import tempfile
 # SPEC-LOTTO-045: 명시적 재노출(redundant-alias). 테스트가 모듈 네임스페이스
 # (lotto.web.data.time)로 time.time을 패치하므로 명시적 재노출로 처리한다 (런타임 동작 무관).
 import time as time
+import warnings
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -66,15 +67,21 @@ class _CacheEntry:
 _draws_cache: _CacheEntry | None = None
 _stats_cache: _CacheEntry | None = None
 
+# SPEC-LOTTO-052 REQ-BT-008/011/014: 백테스트 결과 메모리 캐시 (n_past 별 키).
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_backtest_cache: dict[int, dict[str, Any]] = {}
+
 
 def invalidate_cache() -> None:
-    """get_draws/get_stats의 메모리 캐시를 비웁니다.
+    """get_draws/get_stats/백테스트의 메모리 캐시를 비웁니다.
 
     SPEC-LOTTO-009 REQ-CACHE-003: 데이터 수집/분석/크롤링 완료 후 호출됩니다.
+    SPEC-LOTTO-052 REQ-BT-011: 신규 추첨 데이터 적재 시 백테스트 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
     _stats_cache = None
+    _backtest_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -2786,3 +2793,124 @@ def get_last_sync_date() -> str | None:
         latest = max(draws, key=lambda d: d.drwNo)
         return str(latest.date)
     return None
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-052: 전략 백테스팅 분석기 (look-ahead bias 제거)
+# ---------------------------------------------------------------------------
+
+# REQ-BT-009: 백테스트 실행 최소 회차 임계값 (이 미만이면 에러 결과)
+_BACKTEST_MIN_DRAWS = 20
+# 회차별 통계 재구성에 필요한 최소 prior 회차 수 (analyzer 폴백 임계값과 정합)
+_BACKTEST_MIN_PRIOR = 3
+# REQ-BT-017: 페이지/API 기본 평가 윈도
+_BACKTEST_DEFAULT_N = 50
+# 고적중(3+ 매치) 가중치 — score는 평균 적중 + 고적중 빈도 가중의 단조 합
+_BACKTEST_HIGH_MATCH_THRESHOLD = 3
+_BACKTEST_HIGH_MATCH_WEIGHT = 2.0
+
+
+# @MX:ANCHOR: [AUTO] run_backtest — 전략 백테스팅의 핵심 진입점 (look-ahead bias 제거)
+# @MX:REASON: pages.py(/backtest), api.py(/api/backtest), 테스트에서 호출 (fan_in >= 3).
+#             회차마다 prior_draws로 통계를 재구성하는 인과 안전성이 핵심 불변식.
+def run_backtest(
+    draws: list[DrawResult],
+    n_past: int = _BACKTEST_DEFAULT_N,
+) -> dict[str, Any]:
+    """11개 전략을 최근 n_past 회차에 대해 백테스트하여 전략별 성능을 산출한다.
+
+    각 평가 회차 #k에 대해 prior_draws(#1..#k-1)만으로 통계를 재구성하고
+    (look-ahead bias 제거, REQ-BT-002/012), 그 recommender로 11개 전략을
+    한 번에 추천한다(회차당 1회 재구성, REQ-BT-016). 추천 6개와 실제 당첨 6개의
+    교집합 크기를 적중 개수로 집계한다(보너스 제외, REQ-BT-003/015).
+
+    Args:
+        draws:  전체 추첨 목록 (회차 오름차순 가정, 아니면 내부에서 정렬).
+        n_past: 평가할 최근 회차 수 (기본 50). 가용 회차보다 크면 클램프된다.
+
+    Returns:
+        성공 시 STRATEGY_LABELS 11개 라벨 → BacktestResult 매핑.
+        회차 부족(REQ-BT-009) 시 {"error": <메시지>} 형태의 에러 결과.
+    """
+    from lotto.analyzer import LottoAnalyzer
+    from lotto.recommender import STRATEGY_LABELS, LottoRecommender
+
+    # REQ-BT-008: 동일 n_past 결과가 캐시되어 있으면 재계산 없이 반환
+    if n_past in _backtest_cache:
+        return _backtest_cache[n_past]
+
+    # REQ-BT-009: 최소 회차 미달이면 백테스트를 실행하지 않고 에러 결과 반환
+    if not draws or len(draws) < _BACKTEST_MIN_DRAWS:
+        return {
+            "error": f"백테스트에는 최소 {_BACKTEST_MIN_DRAWS}회차가 필요합니다.",
+        }
+
+    # 회차 오름차순 정렬 보장 (#1..#N)
+    ordered = sorted(draws, key=lambda d: d.drwNo)
+
+    # 평가 가능 회차: prior가 최소 _BACKTEST_MIN_PRIOR개 존재하는 회차들
+    # = 인덱스 _BACKTEST_MIN_PRIOR 이후의 회차 (앞쪽 회차는 prior 부족으로 제외)
+    evaluable = ordered[_BACKTEST_MIN_PRIOR:]
+    # REQ-BT-010: n_past가 평가 가능 회차보다 크면 가능한 최대로 클램프
+    window = evaluable[-n_past:] if n_past < len(evaluable) else evaluable
+
+    analyzer = LottoAnalyzer()
+
+    # 전략별 누적 집계 초기화 (match_counts는 0~6 키를 모두 포함)
+    agg: dict[str, dict[str, Any]] = {
+        label: {
+            "match_counts": dict.fromkeys(range(7), 0),
+            "match_sum": 0,
+            "best_matched": -1,
+            "best_draw": {"round": 0, "matched": 0, "recommended": [], "actual": []},
+        }
+        for label in STRATEGY_LABELS
+    }
+
+    for target in window:
+        # REQ-BT-002/012: 평가 대상 회차 직전까지(#1..#k-1)만으로 통계 재구성
+        prior_draws = [d for d in ordered if d.drwNo < target.drwNo]
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            stats = analyzer.analyze(prior_draws)
+        # REQ-BT-016: 회차당 recommender 1회 생성 후 11개 전략에 재사용
+        recommender = LottoRecommender(stats)
+        actual = target.numbers()
+        actual_set = set(actual)
+
+        for label in STRATEGY_LABELS:
+            rec = recommender.recommend_by_strategy(label)
+            # REQ-BT-003/015: 추천 6개 ∩ 실제 6개 (보너스 제외)
+            matched = len(set(rec.numbers) & actual_set)
+            bucket = agg[label]
+            bucket["match_counts"][matched] += 1
+            bucket["match_sum"] += matched
+            if matched > bucket["best_matched"]:
+                bucket["best_matched"] = matched
+                bucket["best_draw"] = {
+                    "round": target.drwNo,
+                    "matched": matched,
+                    "recommended": list(rec.numbers),
+                    "actual": list(actual),
+                }
+
+    evaluated = len(window)
+    result: dict[str, Any] = {}
+    for label in STRATEGY_LABELS:
+        bucket = agg[label]
+        mc: dict[int, int] = bucket["match_counts"]
+        avg_match = bucket["match_sum"] / evaluated if evaluated else 0.0
+        # REQ-BT-004/AC-13: composite score = 평균 적중 + 고적중(3+) 빈도 가중
+        high_hits = sum(v for k, v in mc.items() if k >= _BACKTEST_HIGH_MATCH_THRESHOLD)
+        high_rate = high_hits / evaluated if evaluated else 0.0
+        score = avg_match + _BACKTEST_HIGH_MATCH_WEIGHT * high_rate
+        result[label] = {
+            "match_counts": mc,
+            "avg_match": avg_match,
+            "best_draw": bucket["best_draw"],
+            "score": score,
+        }
+
+    # REQ-BT-008/011: 성공 결과만 n_past 별로 캐시 (에러는 즉시 재시도 허용)
+    _backtest_cache[n_past] = result
+    return result
