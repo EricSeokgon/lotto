@@ -6,6 +6,16 @@
 
 ---
 
+## [1.14.0] - 2026-06-09
+
+### Added (SPEC-LOTTO-058)
+- `get_prime_stats(draws)` — 소수/합성수/숫자1 분포 분석 (_PRIMES_1_45 frozenset 기반, 메모리 캐시)
+- `/stats/prime` 페이지 — 소수·합성수 개수별 분포 표
+- `GET /api/stats/prime` — 소수/합성수 통계 JSON API
+- 24개 신규 테스트 추가 (1296 → 1320)
+
+---
+
 ## [1.13.0] - 2026-06-09
 
 ### Added (SPEC-LOTTO-057)
