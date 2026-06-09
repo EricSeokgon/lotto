@@ -76,19 +76,26 @@ _backtest_cache: dict[int, dict[str, Any]] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _cooccurrence_cache: dict[tuple[int, int], int] | None = None
 
+# SPEC-LOTTO-054 REQ-RW-015/023: 롤링 윈도우 빈도 결과 메모리 캐시.
+# 요청 windows 튜플(정렬)을 키로 결과를 보관하여 동일 요청의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_rolling_cache: dict[tuple[int, ...], dict[int, dict[str, Any]]] = {}
+
 
 def invalidate_cache() -> None:
-    """get_draws/get_stats/백테스트/동시출현의 메모리 캐시를 비웁니다.
+    """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
 
     SPEC-LOTTO-009 REQ-CACHE-003: 데이터 수집/분석/크롤링 완료 후 호출됩니다.
     SPEC-LOTTO-052 REQ-BT-011: 신규 추첨 데이터 적재 시 백테스트 캐시도 무효화한다.
     SPEC-LOTTO-053 REQ-CO-013: 신규 추첨 데이터 적재 시 동시출현 캐시도 무효화한다.
+    SPEC-LOTTO-054 REQ-RW-015: 신규 추첨 데이터 적재 시 롤링 윈도우 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
     _stats_cache = None
     _cooccurrence_cache = None
     _backtest_cache.clear()
+    _rolling_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -3069,3 +3076,119 @@ def get_number_partners(
         }
         for partner, count in ranked[:top_k]
     ]
+
+
+# SPEC-LOTTO-054: 롤링 윈도우 빈도 분석 ----------------------------------------
+
+# REQ-RW-001: 기본 윈도우 집합 (최근 10/20/50/100 회차).
+_ROLLING_DEFAULT_WINDOWS = (10, 20, 50, 100)
+# REQ-RW-005/017: 추세 분류 임계값 — 하드코딩 상수 (설정/쿼리 노출 금지).
+_ROLLING_TREND_THRESHOLD = 0.02
+# REQ-RW-006: 최고 상승/하락 목록 크기.
+_ROLLING_TOP_N = 5
+
+
+def _classify_trend(delta: float) -> str:
+    """추세 델타를 '상승'/'하락'/'보합'으로 분류합니다 (SPEC-LOTTO-054).
+
+    REQ-RW-005: 엄격 부등호를 사용한다. 경계값 정확히 ±0.02는 '보합'으로 본다.
+
+    Args:
+        delta: 회차당 정규화된 빈도 차이.
+
+    Returns:
+        delta > +0.02 → "상승", delta < -0.02 → "하락", 그 외 → "보합".
+    """
+    if delta > _ROLLING_TREND_THRESHOLD:
+        return "상승"
+    if delta < -_ROLLING_TREND_THRESHOLD:
+        return "하락"
+    return "보합"
+
+
+def _count_main_numbers(draws: list[DrawResult]) -> dict[int, int]:
+    """주어진 회차들에서 번호 1~45 각각의 출현 회차 수를 집계합니다 (보너스 제외).
+
+    REQ-RW-003: DrawResult.numbers()의 본번호 6개만 사용하며 보너스는 제외한다.
+    """
+    freq = dict.fromkeys(range(1, 46), 0)
+    for draw in draws:
+        for n in draw.numbers():
+            freq[n] += 1
+    return freq
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-054 — 롤링 윈도우 빈도/델타/추세 분석 진입점
+# @MX:REASON: pages.py(/stats/rolling), api.py(/api/stats/rolling)에서 호출되는 공개 게이트웨이
+# @MX:SPEC: SPEC-LOTTO-054 REQ-RW-001~007, REQ-RW-022/023
+def get_rolling_frequency(
+    draws: list[DrawResult] | None,
+    windows: tuple[int, ...] = _ROLLING_DEFAULT_WINDOWS,
+) -> dict[int, dict[str, Any]]:
+    """여러 롤링 윈도우의 번호 빈도/델타/추세를 산출합니다 (SPEC-LOTTO-054).
+
+    각 윈도우 W에 대해 최근 W회차(drwNo 기준 내림차순) 내 본번호 1~45의 출현
+    빈도를 세고, 전체 이력 대비 정규화한 추세 델타로 비교한다. 번호별로
+    상승/하락/보합을 분류하고 윈도우별 최고 상승·하락 상위 5개를 산출한다.
+
+    전체 빈도(freq_total)는 요청당 1회만 계산하여 모든 윈도우가 재사용한다
+    (REQ-RW-022). 결과는 windows 튜플(정렬)을 키로 모듈 캐시에 보관하며
+    (REQ-RW-023), invalidate_cache()로 무효화된다.
+
+    Args:
+        draws:   분석 대상 회차 리스트. 빈 리스트/None이면 빈 dict를 반환한다.
+        windows: 비교할 윈도우 크기 튜플 (기본 10/20/50/100).
+
+    Returns:
+        {W: RollingResult} 매핑. RollingResult는
+        {"window": int, "freq": dict[int,int], "delta": dict[int,float],
+        "trend": dict[int,str], "rising": list[int], "falling": list[int]}.
+        가용 회차보다 큰 윈도우는 예외 없이 생략된다 (REQ-RW-012).
+    """
+    if not draws:
+        return {}
+
+    cache_key = tuple(sorted(windows))
+    cached = _rolling_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    # drwNo 내림차순으로 정렬하여 최근 회차가 앞에 오게 한다 (REQ-RW-002).
+    ordered = sorted(draws, key=lambda d: d.drwNo, reverse=True)
+    total_draws = len(ordered)
+
+    # 전체 빈도는 1회만 계산하여 모든 윈도우가 재사용 (REQ-RW-022).
+    freq_total = _count_main_numbers(ordered)
+
+    result: dict[int, dict[str, Any]] = {}
+    for w in windows:
+        if w > total_draws:
+            continue  # REQ-RW-012: 가용 회차보다 큰 윈도우는 조용히 스킵
+
+        recent = ordered[:w]
+        freq_window = _count_main_numbers(recent)
+
+        delta = {
+            n: freq_window[n] / w - freq_total[n] / total_draws
+            for n in range(1, 46)
+        }
+        trend = {n: _classify_trend(delta[n]) for n in range(1, 46)}
+
+        # 델타 내림차순(동률은 번호 오름차순) → 상위 5개가 rising
+        by_delta_desc = sorted(range(1, 46), key=lambda n: (-delta[n], n))
+        rising = by_delta_desc[:_ROLLING_TOP_N]
+        # 델타 오름차순(동률은 번호 오름차순) → 하위 5개가 falling
+        by_delta_asc = sorted(range(1, 46), key=lambda n: (delta[n], n))
+        falling = by_delta_asc[:_ROLLING_TOP_N]
+
+        result[w] = {
+            "window": w,
+            "freq": freq_window,
+            "delta": delta,
+            "trend": trend,
+            "rising": rising,
+            "falling": falling,
+        }
+
+    _rolling_cache[cache_key] = result
+    return result

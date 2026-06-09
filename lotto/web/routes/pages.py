@@ -23,6 +23,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
     from lotto.models import DrawResult
 
+from lotto.web import data as wd  # SPEC-LOTTO-054: 모듈 레벨 patch 호환용 별칭
 from lotto.web.data import (
     compute_frequency_percentiles,
     compute_ticket_results,
@@ -648,6 +649,31 @@ async def stats_range_page(
         "end_drw": end_drw,
         "stats": stats,
         "error_message": error_message,
+    })
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-054 — 롤링 윈도우 빈도 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-054 REQ-RW-008/009/014
+@router.get("/stats/rolling")
+async def stats_rolling_page(
+    request: Request,
+    w: Optional[int] = Query(default=None, ge=1),  # noqa: UP045
+) -> TemplateResponse:
+    """롤링 윈도우 빈도 분석 페이지 — 최근 N회차별 빈도/델타/추세 비교 (SPEC-LOTTO-054).
+
+    - w 없음: 기본 윈도우(10/20/50/100)를 나란히 비교 (REQ-RW-008).
+    - w=W 지정: 해당 단일 윈도우만 포커스 표시 (REQ-RW-009/014).
+    - 데이터 부재 시에도 200 (빈 상태 안내 메시지).
+    """
+    draws = wd.get_draws()
+    # w가 주어지면 단일 윈도우, 아니면 기본 4개 윈도우 (REQ-RW-014)
+    windows: tuple[int, ...] = (w,) if w is not None else (10, 20, 50, 100)
+    results = wd.get_rolling_frequency(draws, windows=windows)
+
+    return _render(request, "rolling.html", {
+        "active_tab": "rolling",
+        "single_window": w,
+        "results": results,
     })
 
 

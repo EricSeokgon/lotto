@@ -29,6 +29,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, field_validator, model_validator
 
 from lotto.config import settings
+from lotto.web import data as wd  # SPEC-LOTTO-054: 모듈 레벨 patch 호환용 별칭
 from lotto.web.data import (
     get_draws,
     get_favorites,
@@ -612,6 +613,36 @@ async def get_sum_range() -> dict[str, Any]:
     from lotto.web import data as wd
 
     return wd.sum_range_analysis(wd.get_draws())
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-054 — 롤링 윈도우 빈도 분석 API
+# @MX:SPEC: SPEC-LOTTO-054 REQ-RW-010/011
+@router.get("/stats/rolling")
+async def get_rolling(
+    windows: str = Query(
+        default="10,20,50,100",
+        description="비교할 윈도우 크기 (콤마 구분, 예: 10,20,50,100)",
+    ),
+) -> dict[str, Any]:
+    """롤링 윈도우 빈도/델타/추세 분석 결과를 반환합니다 (SPEC-LOTTO-054).
+
+    - windows: 콤마로 구분된 윈도우 크기 목록 (기본 10,20,50,100, REQ-RW-011).
+    - 가용 회차보다 큰 윈도우는 조용히 생략된다 (REQ-RW-012).
+    - 데이터 부재 시에도 200 으로 정상 응답 (빈 객체).
+
+    JSON 키는 문자열이어야 하므로 윈도우 크기를 문자열 키로 직렬화한다.
+    """
+    # 콤마 구분 윈도우 파싱 — 정수가 아닌 토큰은 무시하고, 양의 정수만 채택한다
+    parsed: list[int] = []
+    for token in windows.split(","):
+        token = token.strip()
+        if token.isdigit() and int(token) > 0:
+            parsed.append(int(token))
+    window_tuple = tuple(parsed) if parsed else (10, 20, 50, 100)
+
+    results = wd.get_rolling_frequency(wd.get_draws(), windows=window_tuple)
+    # int 키 → str 키로 변환하여 JSON 직렬화 (REQ-RW-010)
+    return {str(w): result for w, result in results.items()}
 
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
