@@ -732,6 +732,23 @@ async def stats_ac_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-058 — 소수/합성수 분포 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-058
+@router.get("/stats/prime")
+async def stats_prime_page(request: Request) -> TemplateResponse:
+    """소수/합성수 분포 분석 페이지 — 소수/합성수 개수(0~6) 분포 (SPEC-LOTTO-058).
+
+    - 평균 소수/합성수 개수, 숫자 1 출현 회차 요약과 분포 표 2종을 제시한다.
+    - 데이터 부재 시에도 200 (빈 상태 안내 메시지).
+    """
+    stats = wd.get_prime_stats(wd.get_draws())
+
+    return _render(request, "prime.html", {
+        "active_tab": "prime",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

@@ -684,6 +684,19 @@ async def get_ac() -> dict[str, Any]:
     return wd.get_ac_stats(wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-058 — 소수/합성수 분포 분석 API
+# @MX:SPEC: SPEC-LOTTO-058
+@router.get("/stats/prime")
+async def get_prime() -> dict[str, Any]:
+    """본번호 6개의 소수/합성수 분포 통계를 반환합니다 (SPEC-LOTTO-058).
+
+    - 회차별 소수/합성수 개수(0~6)를 분포/평균/최빈/1 출현 비율로 집계한다.
+    - prime_distribution 키는 int(0~6)이며 JSON 직렬화 시 문자열로 변환된다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (모든 수치 0).
+    """
+    return wd.get_prime_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")

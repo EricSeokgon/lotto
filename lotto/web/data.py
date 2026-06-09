@@ -97,6 +97,11 @@ _gap_cache: dict[str, Any] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _ac_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-058: 소수/합성수 분포 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_prime_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -108,6 +113,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-055 REQ-LD-014: 신규 추첨 데이터 적재 시 끝자리 분포 캐시도 무효화한다.
     SPEC-LOTTO-056: 신규 추첨 데이터 적재 시 간격 패턴 캐시도 무효화한다.
     SPEC-LOTTO-057: 신규 추첨 데이터 적재 시 AC값 분석 캐시도 무효화한다.
+    SPEC-LOTTO-058: 신규 추첨 데이터 적재 시 소수/합성수 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -118,6 +124,7 @@ def invalidate_cache() -> None:
     _rolling_cache.clear()
     _gap_cache.clear()
     _ac_cache.clear()
+    _prime_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -3532,4 +3539,114 @@ def get_ac_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "low_ac_pct": round(low_ac_count / total_draws * 100, 2),
     }
     _ac_cache[cache_key] = result
+    return result
+
+
+# SPEC-LOTTO-058: 1~45 범위의 소수 14개. 본번호 분류에 사용한다.
+_PRIMES_1_45: frozenset[int] = frozenset(
+    {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43}
+)
+_PRIME_COUNT_MIN = 0  # 회차당 소수/합성수 가능 최솟값
+_PRIME_COUNT_MAX = 6  # 회차당 소수/합성수 가능 최댓값 (본번호 6개)
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-058 소수/합성수 분포 분석 — 페이지/API 라우트의 공통 진입점
+# @MX:SPEC: SPEC-LOTTO-058
+# @MX:REASON: pages/api 라우트와 캐시 무효화 경로에서 호출되는 데이터 계층 단일 진입점
+def get_prime_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개를 소수/합성수/1로 분류한 분포를 분석합니다 (SPEC-LOTTO-058).
+
+    각 회차의 본번호 6개(보너스 제외)를 다음 기준으로 분류한다.
+        - 1: one (소수도 합성수도 아님)
+        - 1~45 소수 14개: prime
+        - 그 외(1과 소수 제외 30개): composite
+
+    전체 회차에 걸쳐 평균 소수/합성수 개수, 소수 개수(0~6) 분포, 최빈 소수 개수,
+    합성수 개수(0~6) 분포, 숫자 1 출현 회차 수/비율을 집계한다.
+
+    회차별 분류를 1회 집계한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 모든 수치 0,
+               빈 dict의 일관된 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_prime, avg_composite, prime_distribution,
+        prime_distribution_pct, most_common_prime_count, composite_distribution,
+        one_appeared_count, one_appeared_pct} 매핑.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _prime_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_prime": 0.0,
+            "avg_composite": 0.0,
+            "prime_distribution": {},
+            "prime_distribution_pct": {},
+            "most_common_prime_count": 0,
+            "composite_distribution": {},
+            "one_appeared_count": 0,
+            "one_appeared_pct": 0.0,
+        }
+        _prime_cache[cache_key] = result
+        return result
+
+    total_draws = len(draws)
+    # 0..6 모든 개수를 키로 미리 초기화 (count 0이어도 존재 보장)
+    prime_dist: dict[int, int] = dict.fromkeys(
+        range(_PRIME_COUNT_MIN, _PRIME_COUNT_MAX + 1), 0
+    )
+    composite_dist: dict[int, int] = dict.fromkeys(
+        range(_PRIME_COUNT_MIN, _PRIME_COUNT_MAX + 1), 0
+    )
+    prime_sum = 0
+    composite_sum = 0
+    one_appeared_count = 0
+
+    for draw in draws:
+        prime_count = 0
+        composite_count = 0
+        one_count = 0
+        for n in draw.numbers():  # 본번호 6개만 사용 (보너스 제외)
+            if n == 1:
+                one_count += 1
+            elif n in _PRIMES_1_45:
+                prime_count += 1
+            else:
+                composite_count += 1
+
+        prime_dist[prime_count] += 1
+        composite_dist[composite_count] += 1
+        prime_sum += prime_count
+        composite_sum += composite_count
+        if one_count > 0:
+            one_appeared_count += 1
+
+    avg_prime = round(prime_sum / total_draws, 2)
+    avg_composite = round(composite_sum / total_draws, 2)
+    prime_dist_pct = {
+        k: round(cnt / total_draws * 100, 2) for k, cnt in prime_dist.items()
+    }
+    # 최빈 소수 개수 — count 내림차순, 동률은 개수 오름차순으로 가장 작은 값 선택
+    most_common_prime_count = max(
+        prime_dist, key=lambda k: (prime_dist[k], -k)
+    )
+
+    result = {
+        "total_draws": total_draws,
+        "avg_prime": avg_prime,
+        "avg_composite": avg_composite,
+        "prime_distribution": prime_dist,
+        "prime_distribution_pct": prime_dist_pct,
+        "most_common_prime_count": most_common_prime_count,
+        "composite_distribution": composite_dist,
+        "one_appeared_count": one_appeared_count,
+        "one_appeared_pct": round(one_appeared_count / total_draws * 100, 2),
+    }
+    _prime_cache[cache_key] = result
     return result

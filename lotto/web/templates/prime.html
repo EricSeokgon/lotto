@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-058: 소수/합성수 분포 분석 — 소수/합성수 개수(0~6) 분포 (JS 없음) #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">소수/합성수 분포 분석</h2>
+    </div>
+
+    <p class="text-sm text-muted dark:text-gray-400">
+        당첨 본번호 6개를 소수(1~45 범위 14개)와 합성수(30개)로 분류해 분포를 집계합니다.
+        숫자 1은 소수도 합성수도 아니므로 별도로 집계합니다. 과거 통계일 뿐 미래 출현을
+        보장하지 않습니다.
+    </p>
+
+    {% if stats.total_draws == 0 %}
+    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+    </div>
+    {% else %}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">분석 회차</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.total_draws }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">평균 소수 개수</p>
+            <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">{{ stats.avg_prime }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">평균 합성수 개수</p>
+            <p class="text-xl font-bold text-orange-600 dark:text-orange-400">{{ stats.avg_composite }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">숫자 1 출현 회차</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.one_appeared_count }} ({{ stats.one_appeared_pct }}%)</p>
+        </div>
+    </div>
+
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-sm text-muted dark:text-gray-400">
+            최빈 소수 개수: <span class="text-2xl font-bold text-ink dark:text-gray-100">{{ stats.most_common_prime_count }}</span>
+        </p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">소수 개수 분포 (0~6)</h3>
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                        <th class="py-2 pr-4">소수 개수</th>
+                        <th class="py-2 pr-4 text-right">회차 수</th>
+                        <th class="py-2 pr-4 text-right">비율</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for k in range(7) %}
+                    <tr class="border-b border-border dark:border-gray-700">
+                        <td class="py-2 pr-4 font-semibold text-emerald-600 dark:text-emerald-400">{{ k }}</td>
+                        <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ stats.prime_distribution[k] }}</td>
+                        <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ stats.prime_distribution_pct[k] }}%</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">합성수 개수 분포 (0~6)</h3>
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                        <th class="py-2 pr-4">합성수 개수</th>
+                        <th class="py-2 pr-4 text-right">회차 수</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for k in range(7) %}
+                    <tr class="border-b border-border dark:border-gray-700">
+                        <td class="py-2 pr-4 font-semibold text-orange-600 dark:text-orange-400">{{ k }}</td>
+                        <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ stats.composite_distribution[k] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
