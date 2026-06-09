@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import itertools
 import json
 import logging
 import math
@@ -91,6 +92,11 @@ _last_digit_cache: dict[int, dict[str, Any]] | None = None
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _gap_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-057: AC값(산술 복잡도) 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_ac_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -101,6 +107,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-054 REQ-RW-015: 신규 추첨 데이터 적재 시 롤링 윈도우 캐시도 무효화한다.
     SPEC-LOTTO-055 REQ-LD-014: 신규 추첨 데이터 적재 시 끝자리 분포 캐시도 무효화한다.
     SPEC-LOTTO-056: 신규 추첨 데이터 적재 시 간격 패턴 캐시도 무효화한다.
+    SPEC-LOTTO-057: 신규 추첨 데이터 적재 시 AC값 분석 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -110,6 +117,7 @@ def invalidate_cache() -> None:
     _backtest_cache.clear()
     _rolling_cache.clear()
     _gap_cache.clear()
+    _ac_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -3425,4 +3433,103 @@ def _cache_gap_result(
         "position_avg": [round(s / total_draws, 2) for s in position_sums],
     }
     _gap_cache[cache_key] = result
+    return result
+
+
+# SPEC-LOTTO-057: AC값 산술 복잡도 분석 상수.
+_AC_HIGH_MIN = 7  # AC >= 7 → 고복잡도
+_AC_LOW_MAX = 3  # AC <= 3 → 저복잡도
+_AC_MIN = 0  # AC 가능 최솟값
+_AC_MAX = 10  # AC 가능 최댓값 (C(6,2)=15개 차이 전부 고유: 15-5)
+
+
+def _ac_value(numbers: list[int]) -> int:
+    """정렬된 본번호 6개의 AC(산술 복잡도)를 계산합니다 (SPEC-LOTTO-057).
+
+    C(6,2)=15개 쌍의 차이 중 서로 다른 값의 개수 U를 구하고 AC = U - 5.
+    """
+    diffs = {b - a for a, b in itertools.combinations(numbers, 2)}
+    return len(diffs) - 5
+
+
+def get_ac_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개의 AC값(산술 복잡도) 분포를 분석합니다 (SPEC-LOTTO-057).
+
+    각 회차의 정렬된 본번호 6개(보너스 제외)에서 모든 C(6,2)=15개 쌍의
+    차이를 구하고, 서로 다른 차이 개수 U로부터 AC = U - 5 (범위 0..10)를
+    산출한다. 전체 회차에 걸쳐 평균/분포/최빈/고저복잡도 비율을 집계한다.
+
+    정의:
+        - AC(arithmetic complexity): 고유 쌍차이 개수 U에서 5를 뺀 값 (0..10).
+        - high: AC >= 7 인 회차 (고복잡도).
+        - low: AC <= 3 인 회차 (저복잡도).
+        - most_common_ac: 최빈 AC. 동률 시 더 작은 AC를 선택한다.
+
+    회차별 AC를 1회 집계한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 모든 수치 0,
+               빈 dict의 일관된 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_ac, ac_distribution, ac_distribution_pct,
+        most_common_ac, high_ac_count, high_ac_pct, low_ac_count,
+        low_ac_pct} 매핑.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _ac_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_ac": 0.0,
+            "ac_distribution": {},
+            "ac_distribution_pct": {},
+            "most_common_ac": 0,
+            "high_ac_count": 0,
+            "high_ac_pct": 0.0,
+            "low_ac_count": 0,
+            "low_ac_pct": 0.0,
+        }
+        _ac_cache[cache_key] = result
+        return result
+
+    total_draws = len(draws)
+    # 0..10 모든 AC 값을 키로 미리 초기화 (count 0이어도 존재 보장)
+    distribution: dict[int, int] = dict.fromkeys(range(_AC_MIN, _AC_MAX + 1), 0)
+    ac_sum = 0
+    high_ac_count = 0
+    low_ac_count = 0
+
+    for draw in draws:
+        ac = _ac_value(draw.numbers())  # 본번호 6개만 사용 (보너스 제외)
+        distribution[ac] += 1
+        ac_sum += ac
+        if ac >= _AC_HIGH_MIN:
+            high_ac_count += 1
+        if ac <= _AC_LOW_MAX:
+            low_ac_count += 1
+
+    avg_ac = round(ac_sum / total_draws, 2)
+    distribution_pct = {
+        ac: round(cnt / total_draws * 100, 2) for ac, cnt in distribution.items()
+    }
+    # 최빈 AC — count 내림차순, 동률은 AC 오름차순으로 가장 작은 값 선택
+    most_common_ac = max(distribution, key=lambda ac: (distribution[ac], -ac))
+
+    result = {
+        "total_draws": total_draws,
+        "avg_ac": avg_ac,
+        "ac_distribution": distribution,
+        "ac_distribution_pct": distribution_pct,
+        "most_common_ac": most_common_ac,
+        "high_ac_count": high_ac_count,
+        "high_ac_pct": round(high_ac_count / total_draws * 100, 2),
+        "low_ac_count": low_ac_count,
+        "low_ac_pct": round(low_ac_count / total_draws * 100, 2),
+    }
+    _ac_cache[cache_key] = result
     return result

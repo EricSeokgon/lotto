@@ -715,6 +715,23 @@ async def stats_gap_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-057 — AC값(산술 복잡도) 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-057
+@router.get("/stats/ac")
+async def stats_ac_page(request: Request) -> TemplateResponse:
+    """AC값(산술 복잡도) 분석 페이지 — AC 0~10 분포/고저복잡도 비율 (SPEC-LOTTO-057).
+
+    - AC 0~10 분포 표(고복잡도 7~10 강조, 저복잡도 0~3 강조)와 요약을 제시한다.
+    - 데이터 부재 시에도 200 (빈 상태 안내 메시지).
+    """
+    stats = wd.get_ac_stats(wd.get_draws())
+
+    return _render(request, "ac.html", {
+        "active_tab": "ac",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")
