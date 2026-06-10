@@ -847,6 +847,27 @@ async def stats_last_digit_sum_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-064 — 최솟값·최댓값 분포 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-064
+@router.get("/stats/min-max")
+async def stats_min_max_page(request: Request) -> TemplateResponse:
+    """최솟값·최댓값 분포 분석 페이지 (SPEC-LOTTO-064).
+
+    - 요약 카드: 분석 회차 / 평균 최솟값 / 평균 최댓값 / 평균 범위
+    - 카테고리 테이블: small(범위<30)/large(범위>=30) 회차 수·비율
+    - 분포 테이블: 최빈 상위 15개 최솟값·최댓값 (회차 수 내림차순, 동률 값 오름차순)
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_min_max_stats(wd.get_draws())
+    return _render(request, "min_max.html", {
+        "active_tab": "min_max",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

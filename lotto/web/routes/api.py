@@ -769,6 +769,21 @@ async def get_last_digit_sum_stats_route() -> dict[str, Any]:
     return wd.get_last_digit_sum_stats(wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-064 — 최솟값·최댓값 분포 분석 API
+# @MX:SPEC: SPEC-LOTTO-064
+@router.get("/stats/min-max")
+async def get_min_max_stats_route() -> dict[str, Any]:
+    """본번호 6개의 최솟값·최댓값·범위 분포 통계를 반환합니다 (SPEC-LOTTO-064).
+
+    - 회차별 최솟값/최댓값/범위(max-min)를 집계해 평균, 세 분포,
+      각 최빈값, small/large 카테고리 회차 수와 비율을 제공한다.
+    - min/max/range_distribution 키는 int이며 JSON 직렬화 시 문자열로 변환된다.
+      다른 분석과 달리 실제로 관측된 값만 키로 포함한다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0, 분포={}).
+    """
+    return wd.get_min_max_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")

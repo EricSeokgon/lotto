@@ -127,6 +127,11 @@ _consecutive_cache: dict[str, Any] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _last_digit_sum_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-064: 최솟값·최댓값 분포 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_min_max_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -144,6 +149,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-061: 신규 추첨 데이터 적재 시 고저 비율 분석 캐시도 무효화한다.
     SPEC-LOTTO-062: 신규 추첨 데이터 적재 시 연속 번호 패턴 분석 캐시도 무효화한다.
     SPEC-LOTTO-063: 신규 추첨 데이터 적재 시 끝자리 합계 분석 캐시도 무효화한다.
+    SPEC-LOTTO-064: 신규 추첨 데이터 적재 시 최솟값·최댓값 분석 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -160,6 +166,7 @@ def invalidate_cache() -> None:
     _high_low_cache.clear()
     _consecutive_cache.clear()
     _last_digit_sum_cache.clear()
+    _min_max_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -4429,4 +4436,142 @@ def get_last_digit_sum_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "high_sum_pct": round(high_count / total_draws * 100, 2),
     }
     _last_digit_sum_cache[cache_key] = result
+    return result
+
+
+# SPEC-LOTTO-064: small/large range 경계 (미만이 small, 이상이 large)
+_RANGE_LARGE_MIN = 30
+
+
+def _most_common_seen(distribution: dict[int, int]) -> int:
+    """희소 분포(관측된 키만 포함)에서 최빈값을 반환한다. 동률 시 더 작은 값을 선택한다.
+
+    SPEC-LOTTO-064: 0 채움 없는 분포를 대상으로 한다. 관측된 키만 오름차순
+    순회하며 엄격 초과(>)일 때만 갱신해 동률 시 더 작은 키를 유지한다.
+    빈 분포면 0을 반환한다. (range 순회형 _most_common_smallest와 구분됨)
+    """
+    best_value = 0
+    best_count = -1
+    for v in sorted(distribution):
+        if distribution[v] > best_count:
+            best_count = distribution[v]
+            best_value = v
+    return best_value
+
+
+def _empty_min_max_stats() -> dict[str, Any]:
+    """최솟값·최댓값 분석의 일관된 빈 구조를 생성합니다 (SPEC-LOTTO-064).
+
+    빈 데이터 / None 모든 경우에서 세 분포는 빈 dict이며
+    (다른 분석과 달리 0 채움을 하지 않는다) 모든 수치는 0이다.
+    """
+    return {
+        "total_draws": 0,
+        "avg_min": 0.0,
+        "avg_max": 0.0,
+        "avg_range": 0.0,
+        "min_distribution": {},
+        "max_distribution": {},
+        "range_distribution": {},
+        "most_common_min": 0,
+        "most_common_max": 0,
+        "most_common_range": 0,
+        "small_range_count": 0,
+        "large_range_count": 0,
+        "small_range_pct": 0.0,
+        "large_range_pct": 0.0,
+    }
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-064 최솟값·최댓값 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-064
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_min_max_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개의 최솟값·최댓값·범위 분포를 분석합니다 (SPEC-LOTTO-064).
+
+    각 회차의 본번호 6개(보너스 제외)에서 다음을 구한다.
+        - min_num:   6개의 최솟값.
+        - max_num:   6개의 최댓값.
+        - range_val: max_num - min_num.
+    범위를 다음 2개 카테고리로 분류한다.
+        - small: range_val < 30
+        - large: range_val >= 30
+
+    정의:
+        - avg_min/avg_max/avg_range: 회차 평균 (소수 2자리).
+        - min/max/range_distribution: 값 → 회차 수. 다른 분석과 달리 실제로
+          관측된 값만 키로 포함한다(미관측 값 0 채움 없음).
+        - most_common_min/max/range: 각 분포의 최빈값. 동률 시 더 작은 값을 선택한다.
+        - small/large_range_count: 각 카테고리에 속한 회차 수.
+        - small/large_range_pct:   count / total_draws * 100 (소수 2자리).
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               모든 수치 0, 세 분포 {} 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_min, avg_max, avg_range, min_distribution,
+        max_distribution, range_distribution, most_common_min, most_common_max,
+        most_common_range, small_range_count, large_range_count,
+        small_range_pct, large_range_pct} 매핑.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _min_max_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result = _empty_min_max_stats()
+        _min_max_cache[cache_key] = result
+        return result
+
+    total_draws = len(draws)
+    min_dist: dict[int, int] = {}
+    max_dist: dict[int, int] = {}
+    range_dist: dict[int, int] = {}
+    min_total = 0
+    max_total = 0
+    range_total = 0
+    small_count = 0
+    large_count = 0
+
+    for draw in draws:
+        nums = draw.numbers()  # 본번호 6개 (보너스 제외)
+        min_num = min(nums)
+        max_num = max(nums)
+        range_val = max_num - min_num
+
+        min_dist[min_num] = min_dist.get(min_num, 0) + 1
+        max_dist[max_num] = max_dist.get(max_num, 0) + 1
+        range_dist[range_val] = range_dist.get(range_val, 0) + 1
+
+        min_total += min_num
+        max_total += max_num
+        range_total += range_val
+
+        if range_val >= _RANGE_LARGE_MIN:
+            large_count += 1
+        else:
+            small_count += 1
+
+    result = {
+        "total_draws": total_draws,
+        "avg_min": round(min_total / total_draws, 2),
+        "avg_max": round(max_total / total_draws, 2),
+        "avg_range": round(range_total / total_draws, 2),
+        "min_distribution": min_dist,
+        "max_distribution": max_dist,
+        "range_distribution": range_dist,
+        "most_common_min": _most_common_seen(min_dist),
+        "most_common_max": _most_common_seen(max_dist),
+        "most_common_range": _most_common_seen(range_dist),
+        "small_range_count": small_count,
+        "large_range_count": large_count,
+        "small_range_pct": round(small_count / total_draws * 100, 2),
+        "large_range_pct": round(large_count / total_draws * 100, 2),
+    }
+    _min_max_cache[cache_key] = result
     return result
