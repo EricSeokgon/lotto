@@ -738,6 +738,21 @@ async def get_high_low() -> dict[str, Any]:
     return wd.get_high_low_stats(wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-062 — 연속 번호 패턴 분석 API
+# @MX:SPEC: SPEC-LOTTO-062
+@router.get("/stats/consecutive-pattern")
+async def get_consecutive_pattern_stats_route() -> dict[str, Any]:
+    """본번호 6개의 연속 번호 패턴 분포 통계를 반환합니다 (SPEC-LOTTO-062).
+
+    - 회차별 연속 쌍 개수(0~5)와 트리플(3연속) 여부를 집계해 평균/분포/비율,
+      최빈 개수, 연속 없음/트리플 회차 수와 비율을 제공한다.
+    - pair_distribution 키는 int(0~5)이며 JSON 직렬화 시 문자열로 변환된다.
+    - SPEC-043의 /api/pattern-analysis와 독립적인 별도 엔드포인트다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_consecutive_pattern_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")

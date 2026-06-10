@@ -117,6 +117,11 @@ _odd_even_cache: dict[str, Any] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _high_low_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-062: 연속 번호 패턴 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_consecutive_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -132,6 +137,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-059: 신규 추첨 데이터 적재 시 십의 자리 구간 분포 캐시도 무효화한다.
     SPEC-LOTTO-060: 신규 추첨 데이터 적재 시 홀짝 비율 분석 캐시도 무효화한다.
     SPEC-LOTTO-061: 신규 추첨 데이터 적재 시 고저 비율 분석 캐시도 무효화한다.
+    SPEC-LOTTO-062: 신규 추첨 데이터 적재 시 연속 번호 패턴 분석 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -146,6 +152,7 @@ def invalidate_cache() -> None:
     _decade_cache.clear()
     _odd_even_cache.clear()
     _high_low_cache.clear()
+    _consecutive_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -4131,4 +4138,160 @@ def get_high_low_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "balanced_pct": round(balanced_count / total_draws * 100, 2),
     }
     _high_low_cache[cache_key] = result
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-062: 연속 번호 패턴 분석 (consecutive number pattern analysis)
+# ---------------------------------------------------------------------------
+
+_CONSEC_PAT_MIN = 0  # 회차당 연속 쌍 가능 최솟값
+_CONSEC_PAT_MAX = 5  # 회차당 연속 쌍 가능 최댓값 (본번호 6개 → 최대 5쌍)
+_CONSEC_PAT_PICK = 6  # 회차당 본번호 개수
+_CONSEC_TRIPLE_MIN = 3  # 연속 트리플(3연속) 판정 최소 런 길이
+
+
+def _consecutive_pair_count(nums: list[int]) -> int:
+    """정렬된 본번호의 인접 차이가 1인 연속 쌍 개수를 반환합니다 (SPEC-LOTTO-062).
+
+    예) [5,6,7] → (5,6),(6,7) 2쌍 / [1,2,4,5,7,8] → 3쌍.
+    """
+    sorted_nums = sorted(nums)
+    return sum(
+        1
+        for i in range(len(sorted_nums) - 1)
+        if sorted_nums[i + 1] - sorted_nums[i] == 1
+    )
+
+
+def _has_consecutive_triple(nums: list[int]) -> bool:
+    """정렬된 번호 중 3개 이상 연속(차이 1) 런이 있으면 True를 반환합니다 (SPEC-LOTTO-062).
+
+    예) [5,6,7,...] → True / [1,2,4,5,...] → False (최장 런 길이 2).
+    """
+    sorted_nums = sorted(nums)
+    run = 1
+    for i in range(1, len(sorted_nums)):
+        if sorted_nums[i] - sorted_nums[i - 1] == 1:
+            run += 1
+            if run >= _CONSEC_TRIPLE_MIN:
+                return True
+        else:
+            run = 1
+    return False
+
+
+def _empty_consecutive_pattern_stats() -> dict[str, Any]:
+    """연속 번호 패턴 분석의 일관된 빈 구조를 생성합니다 (SPEC-LOTTO-062).
+
+    빈 데이터 / None 모든 경우에서 pair_distribution 0..5 키가 모두 존재하도록 보장한다.
+    """
+    return {
+        "total_draws": 0,
+        "avg_consecutive_pairs": 0.0,
+        "pair_distribution": dict.fromkeys(
+            range(_CONSEC_PAT_MIN, _CONSEC_PAT_MAX + 1), 0
+        ),
+        "pair_distribution_pct": dict.fromkeys(
+            range(_CONSEC_PAT_MIN, _CONSEC_PAT_MAX + 1), 0.0
+        ),
+        "most_common_pair_count": 0,
+        "no_consecutive_count": 0,
+        "no_consecutive_pct": 0.0,
+        "has_triple_count": 0,
+        "has_triple_pct": 0.0,
+        "max_consecutive_count": 0,
+    }
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-062 연속 번호 패턴 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-062
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_consecutive_pattern_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개의 연속 번호 패턴 분포를 분석합니다 (SPEC-LOTTO-062).
+
+    각 회차의 정렬된 본번호 6개(보너스 제외)에서 인접 차이가 1인 연속 쌍의 개수
+    (pair_count, 0~5)를 세고, 3개 이상 연속(트리플)이 존재하는지(has_triple)를
+    판정한다. SPEC-LOTTO-043의 consecutive_pattern과는 독립적으로 구현된다.
+
+    정의:
+        - pair_count:   회차당 연속 쌍 개수. 예) [5,6,7]→2, [1,2,4,5,7,8]→3.
+        - has_triple:   정렬 번호 중 3개 이상 연속 런이 있으면 True.
+        - avg_consecutive_pairs: 회차 평균 연속 쌍 (소수 2자리).
+        - pair_distribution: 쌍 개수(0~5) → 회차 수 (모든 키 존재).
+        - pair_distribution_pct: count / total_draws * 100 (소수 2자리, 모든 키 존재).
+        - most_common_pair_count: 최빈 쌍 개수. 동률 시 더 작은 개수 선택.
+        - no_consecutive_count/pct: 연속 쌍이 0인 회차 수와 비율(2자리).
+        - has_triple_count/pct: 트리플을 포함한 회차 수와 비율(2자리).
+        - max_consecutive_count: 관측된 최대 연속 쌍 개수.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               모든 수치 0, pair_distribution 0..5 키 0의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_consecutive_pairs, pair_distribution,
+        pair_distribution_pct, most_common_pair_count, no_consecutive_count,
+        no_consecutive_pct, has_triple_count, has_triple_pct,
+        max_consecutive_count} 매핑.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _consecutive_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result = _empty_consecutive_pattern_stats()
+        _consecutive_cache[cache_key] = result
+        return result
+
+    total_draws = len(draws)
+    distribution: dict[int, int] = dict.fromkeys(
+        range(_CONSEC_PAT_MIN, _CONSEC_PAT_MAX + 1), 0
+    )
+    pair_sum = 0
+    no_consecutive_count = 0
+    has_triple_count = 0
+    max_consecutive_count = 0
+
+    for draw in draws:
+        nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+        pair_count = _consecutive_pair_count(nums)
+
+        distribution[pair_count] += 1
+        pair_sum += pair_count
+        max_consecutive_count = max(max_consecutive_count, pair_count)
+        if pair_count == 0:
+            no_consecutive_count += 1
+        if _has_consecutive_triple(nums):
+            has_triple_count += 1
+
+    distribution_pct = {
+        k: round(cnt / total_draws * 100, 2) for k, cnt in distribution.items()
+    }
+    # 최빈 쌍 개수 — count 내림차순, 동률은 개수 오름차순으로 가장 작은 값 선택.
+    # 오름차순으로 순회하며 엄격 초과(>)일 때만 갱신해 동률 시 작은 키를 유지한다.
+    most_common_pair_count = _CONSEC_PAT_MIN
+    best_count = -1
+    for k in range(_CONSEC_PAT_MIN, _CONSEC_PAT_MAX + 1):
+        if distribution[k] > best_count:
+            best_count = distribution[k]
+            most_common_pair_count = k
+
+    result = {
+        "total_draws": total_draws,
+        "avg_consecutive_pairs": round(pair_sum / total_draws, 2),
+        "pair_distribution": distribution,
+        "pair_distribution_pct": distribution_pct,
+        "most_common_pair_count": most_common_pair_count,
+        "no_consecutive_count": no_consecutive_count,
+        "no_consecutive_pct": round(no_consecutive_count / total_draws * 100, 2),
+        "has_triple_count": has_triple_count,
+        "has_triple_pct": round(has_triple_count / total_draws * 100, 2),
+        "max_consecutive_count": max_consecutive_count,
+    }
+    _consecutive_cache[cache_key] = result
     return result

@@ -805,6 +805,26 @@ async def stats_high_low_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-062 — 연속 번호 패턴 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-062
+@router.get("/stats/consecutive-pattern")
+async def stats_consecutive_pattern_page(request: Request) -> TemplateResponse:
+    """연속 번호 패턴 분석 페이지 — 연속 쌍 개수(0~5)별 분포/비율 (SPEC-LOTTO-062).
+
+    - 요약 카드: 분석 회차 / 평균 연속 쌍 / 연속 없음 회차 수·비율 /
+      트리플(3연속) 회차 수·비율 / 최대 연속 쌍
+    - 연속 쌍 개수별 분포 테이블 (쌍 개수 / 회차 수 / 비율)
+    - SPEC-043의 consecutive_pattern과 독립적인 별도 집계.
+    - 데이터 부재 시에도 200 (빈 상태 안내 메시지).
+    """
+    stats = wd.get_consecutive_pattern_stats(wd.get_draws())
+
+    return _render(request, "consecutive_pattern.html", {
+        "active_tab": "consecutive_pattern",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")
