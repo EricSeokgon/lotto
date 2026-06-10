@@ -107,6 +107,11 @@ _prime_cache: dict[str, Any] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _decade_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-060: 홀짝 비율 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_odd_even_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -120,6 +125,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-057: 신규 추첨 데이터 적재 시 AC값 분석 캐시도 무효화한다.
     SPEC-LOTTO-058: 신규 추첨 데이터 적재 시 소수/합성수 분포 캐시도 무효화한다.
     SPEC-LOTTO-059: 신규 추첨 데이터 적재 시 십의 자리 구간 분포 캐시도 무효화한다.
+    SPEC-LOTTO-060: 신규 추첨 데이터 적재 시 홀짝 비율 분석 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -132,6 +138,7 @@ def invalidate_cache() -> None:
     _ac_cache.clear()
     _prime_cache.clear()
     _decade_cache.clear()
+    _odd_even_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -3791,4 +3798,165 @@ def get_decade_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "least_frequent_group": least_frequent_group,
     }
     _decade_cache[cache_key] = result
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-060: 홀짝 비율 분석 (odd/even ratio analysis)
+# ---------------------------------------------------------------------------
+
+_ODD_EVEN_MIN = 0  # 회차당 홀수/짝수 가능 최솟값
+_ODD_EVEN_MAX = 6  # 회차당 홀수/짝수 가능 최댓값 (본번호 6개)
+_ODD_EVEN_PICK = 6  # 회차당 본번호 개수
+_ODD_EVEN_BALANCED = 3  # 균형 회차 기준 (홀 3 / 짝 3)
+
+
+def _empty_odd_even_distribution() -> dict[int, int]:
+    """0..6 모든 키를 0으로 채운 분포를 생성합니다 (SPEC-LOTTO-060)."""
+    return dict.fromkeys(range(_ODD_EVEN_MIN, _ODD_EVEN_MAX + 1), 0)
+
+
+def _empty_odd_even_distribution_pct() -> dict[int, float]:
+    """0..6 모든 키를 0.0으로 채운 비율 분포를 생성합니다 (SPEC-LOTTO-060)."""
+    return {k: 0.0 for k in range(_ODD_EVEN_MIN, _ODD_EVEN_MAX + 1)}
+
+
+def _most_common_smallest(distribution: dict[int, int]) -> int:
+    """분포에서 가장 빈도 높은 키를 반환합니다. 동률 시 더 작은 키를 택합니다.
+
+    SPEC-LOTTO-060 REQ-OE-007: count 내림차순, 동률은 키 오름차순으로
+    가장 작은 값을 선택한다. 오름차순으로 순회하며 엄격 초과(>)일 때만 갱신해
+    동률 시 먼저 만난(더 작은) 키가 유지되도록 한다.
+    """
+    best_key = _ODD_EVEN_MIN
+    best_count = -1
+    for k in range(_ODD_EVEN_MIN, _ODD_EVEN_MAX + 1):
+        if distribution[k] > best_count:
+            best_count = distribution[k]
+            best_key = k
+    return best_key
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-060 홀짝 비율 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-060
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_odd_even_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개의 홀짝 비율 분포를 분석합니다 (SPEC-LOTTO-060).
+
+    각 회차의 본번호 6개(보너스 제외)에서 홀수 개수(odd_count, 0~6)를 세고,
+    짝수 개수는 even_count = 6 - odd_count로 파생한다(독립 분류 금지, 합 불변식
+    보장, REQ-OE-012). 전체 회차에 걸친 평균/분포/비율/최빈 개수/균형 회차를
+    집계한다.
+
+    정의:
+        - odd_count:   한 회차 본번호 중 홀수(n % 2 == 1) 개수 (0~6).
+        - even_count:  6 - odd_count.
+        - avg_odd/avg_even: 회차 평균 (소수 2자리).
+        - odd_distribution/even_distribution: 개수(0~6) → 회차 수 (모든 키 존재).
+        - *_distribution_pct: count / total_draws * 100 (소수 2자리, 모든 키 존재).
+        - most_common_*_count: 최빈 개수. 동률 시 더 작은 개수 선택 (REQ-OE-007).
+        - balanced_count/balanced_pct: odd==even(즉 3:3)인 회차 수와 비율(2자리).
+
+    본번호가 6개 미만인 회차는 집계에서 제외한다(REQ-OE-015). 회차별 분류를
+    1회 집계한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다. 캐시 키는
+    str(len(draws))이며 invalidate_cache()로 무효화된다(REQ-OE-016).
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               avg_odd/avg_even=0, 모든 분포 키 0, most_common=0,
+               balanced_count/pct=0 의 일관된 빈 구조를 반환한다(REQ-OE-013).
+
+    Returns:
+        {total_draws, avg_odd, avg_even, odd_distribution, even_distribution,
+        odd_distribution_pct, even_distribution_pct, most_common_odd_count,
+        most_common_even_count, balanced_count, balanced_pct} 매핑.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _odd_even_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_odd": 0,
+            "avg_even": 0,
+            "odd_distribution": _empty_odd_even_distribution(),
+            "even_distribution": _empty_odd_even_distribution(),
+            "odd_distribution_pct": _empty_odd_even_distribution_pct(),
+            "even_distribution_pct": _empty_odd_even_distribution_pct(),
+            "most_common_odd_count": 0,
+            "most_common_even_count": 0,
+            "balanced_count": 0,
+            "balanced_pct": 0,
+        }
+        _odd_even_cache[cache_key] = result
+        return result
+
+    odd_distribution = _empty_odd_even_distribution()
+    even_distribution = _empty_odd_even_distribution()
+    odd_sum = 0
+    even_sum = 0
+    balanced_count = 0
+    counted_draws = 0
+
+    for draw in draws:
+        nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+        # REQ-OE-015: 본번호가 6개 미만이면 집계에서 제외
+        if len(nums) < _ODD_EVEN_PICK:
+            continue
+
+        odd_count = sum(1 for n in nums if n % 2 == 1)
+        # REQ-OE-012: even은 독립 분류가 아니라 6 - odd로 파생 (합 불변식 보장)
+        even_count = _ODD_EVEN_PICK - odd_count
+
+        odd_distribution[odd_count] += 1
+        even_distribution[even_count] += 1
+        odd_sum += odd_count
+        even_sum += even_count
+        if odd_count == _ODD_EVEN_BALANCED:
+            balanced_count += 1
+        counted_draws += 1
+
+    total_draws = counted_draws
+
+    if total_draws == 0:
+        # 유효 회차가 하나도 없으면 빈 구조 (키 일관성 유지)
+        result = {
+            "total_draws": 0,
+            "avg_odd": 0,
+            "avg_even": 0,
+            "odd_distribution": _empty_odd_even_distribution(),
+            "even_distribution": _empty_odd_even_distribution(),
+            "odd_distribution_pct": _empty_odd_even_distribution_pct(),
+            "even_distribution_pct": _empty_odd_even_distribution_pct(),
+            "most_common_odd_count": 0,
+            "most_common_even_count": 0,
+            "balanced_count": 0,
+            "balanced_pct": 0,
+        }
+        _odd_even_cache[cache_key] = result
+        return result
+
+    odd_distribution_pct = {
+        k: round(cnt / total_draws * 100, 2) for k, cnt in odd_distribution.items()
+    }
+    even_distribution_pct = {
+        k: round(cnt / total_draws * 100, 2) for k, cnt in even_distribution.items()
+    }
+
+    result = {
+        "total_draws": total_draws,
+        "avg_odd": round(odd_sum / total_draws, 2),
+        "avg_even": round(even_sum / total_draws, 2),
+        "odd_distribution": odd_distribution,
+        "even_distribution": even_distribution,
+        "odd_distribution_pct": odd_distribution_pct,
+        "even_distribution_pct": even_distribution_pct,
+        "most_common_odd_count": _most_common_smallest(odd_distribution),
+        "most_common_even_count": _most_common_smallest(even_distribution),
+        "balanced_count": balanced_count,
+        "balanced_pct": round(balanced_count / total_draws * 100, 2),
+    }
+    _odd_even_cache[cache_key] = result
     return result

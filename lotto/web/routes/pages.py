@@ -766,6 +766,25 @@ async def stats_decade_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-060 — 홀짝 비율 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-060
+@router.get("/stats/odd-even")
+async def stats_odd_even_page(request: Request) -> TemplateResponse:
+    """홀짝 비율 분석 페이지 — 홀수 개수(0~6)별 분포/비율 + 균형 회차 (SPEC-LOTTO-060).
+
+    - 요약 카드: 분석 회차 / 평균 홀수·짝수 / 균형(3:3) 회차 수·비율
+    - 홀수 개수별 분포 테이블 (홀수 개수 / 회차 수 / 비율 / 짝수 개수 / 회차 수 / 비율)
+    - 균형(홀 3) 행 하이라이트
+    - 데이터 부재 시에도 200 (빈 상태 안내 메시지).
+    """
+    stats = wd.get_odd_even_stats(wd.get_draws())
+
+    return _render(request, "odd_even.html", {
+        "active_tab": "odd_even",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")
