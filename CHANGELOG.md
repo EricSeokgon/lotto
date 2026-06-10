@@ -6,6 +6,15 @@
 
 ---
 
+## [1.23.0] - 2026-06-10
+
+### Added
+- SPEC-LOTTO-062: 연속 번호 패턴 분석 (`get_consecutive_pattern_stats`, `/stats/consecutive-pattern`, `GET /api/stats/consecutive-pattern`)
+  - 회차별 연속 쌍(diff=1) 개수 0~5 분포, 트리플(3연속) 포함 회차 비율
+  - +27 테스트 (1402→1429)
+
+---
+
 ## [1.22.0] - 2026-06-10
 
 ### Added
