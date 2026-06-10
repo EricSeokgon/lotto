@@ -6,6 +6,15 @@
 
 ---
 
+## [1.24.0] - 2026-06-10
+
+### Added
+- SPEC-LOTTO-063: 끝자리 합계 분석 (`get_last_digit_sum_stats`, `/stats/last-digit-sum`, `GET /api/stats/last-digit-sum`)
+  - 회차별 본번호 6개 끝자리 합계 분석 (범위 0~54, 저/중/고 3구간 분류)
+  - +26 테스트 (1429→1455)
+
+---
+
 ## [1.23.0] - 2026-06-10
 
 ### Added
