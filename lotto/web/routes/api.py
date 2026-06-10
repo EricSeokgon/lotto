@@ -724,6 +724,20 @@ async def get_odd_even() -> dict[str, Any]:
     return wd.get_odd_even_stats(wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-061 — 고저 비율 분석 API
+# @MX:SPEC: SPEC-LOTTO-061
+@router.get("/stats/high-low")
+async def get_high_low() -> dict[str, Any]:
+    """본번호 6개의 고저 비율 분포 통계를 반환합니다 (SPEC-LOTTO-061).
+
+    - 회차별 저(1~22) 개수(0~6)와 고(23~45) 개수(6-저)를 집계해 평균/분포/비율,
+      최빈 개수, 균형(3:3) 회차 수/비율을 제공한다.
+    - distribution 키는 int(0~6)이며 JSON 직렬화 시 문자열로 변환된다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_high_low_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")

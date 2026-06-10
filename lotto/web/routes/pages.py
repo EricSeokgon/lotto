@@ -785,6 +785,26 @@ async def stats_odd_even_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-061 — 고저 비율 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-061
+@router.get("/stats/high-low")
+async def stats_high_low_page(request: Request) -> TemplateResponse:
+    """고저 비율 분석 페이지 — 저 개수(0~6)별 분포/비율 + 균형 회차 (SPEC-LOTTO-061).
+
+    - 요약 카드: 분석 회차 / 평균 저·고 / 균형(3:3) 회차 수·비율
+    - 저 개수별 분포 테이블 (저 개수 / 회차 수 / 비율 / 고 개수 / 회차 수 / 비율)
+    - 균형(저 3) 행 하이라이트
+    - 저(low): 1~22, 고(high): 23~45 (경계 22는 저, 23은 고)
+    - 데이터 부재 시에도 200 (빈 상태 안내 메시지).
+    """
+    stats = wd.get_high_low_stats(wd.get_draws())
+
+    return _render(request, "high_low.html", {
+        "active_tab": "high_low",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

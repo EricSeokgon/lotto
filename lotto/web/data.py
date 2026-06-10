@@ -112,6 +112,11 @@ _decade_cache: dict[str, Any] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _odd_even_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-061: 고저 비율 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_high_low_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -126,6 +131,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-058: 신규 추첨 데이터 적재 시 소수/합성수 분포 캐시도 무효화한다.
     SPEC-LOTTO-059: 신규 추첨 데이터 적재 시 십의 자리 구간 분포 캐시도 무효화한다.
     SPEC-LOTTO-060: 신규 추첨 데이터 적재 시 홀짝 비율 분석 캐시도 무효화한다.
+    SPEC-LOTTO-061: 신규 추첨 데이터 적재 시 고저 비율 분석 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -139,6 +145,7 @@ def invalidate_cache() -> None:
     _prime_cache.clear()
     _decade_cache.clear()
     _odd_even_cache.clear()
+    _high_low_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -3818,7 +3825,7 @@ def _empty_odd_even_distribution() -> dict[int, int]:
 
 def _empty_odd_even_distribution_pct() -> dict[int, float]:
     """0..6 모든 키를 0.0으로 채운 비율 분포를 생성합니다 (SPEC-LOTTO-060)."""
-    return {k: 0.0 for k in range(_ODD_EVEN_MIN, _ODD_EVEN_MAX + 1)}
+    return dict.fromkeys(range(_ODD_EVEN_MIN, _ODD_EVEN_MAX + 1), 0.0)
 
 
 def _most_common_smallest(distribution: dict[int, int]) -> int:
@@ -3959,4 +3966,169 @@ def get_odd_even_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "balanced_pct": round(balanced_count / total_draws * 100, 2),
     }
     _odd_even_cache[cache_key] = result
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-061: 고저 비율 분석 (high/low ratio analysis)
+# ---------------------------------------------------------------------------
+
+_HIGH_LOW_MIN = 0  # 회차당 저/고 가능 최솟값
+_HIGH_LOW_MAX = 6  # 회차당 저/고 가능 최댓값 (본번호 6개)
+_HIGH_LOW_PICK = 6  # 회차당 본번호 개수
+_HIGH_LOW_BALANCED = 3  # 균형 회차 기준 (저 3 / 고 3)
+_HIGH_LOW_BOUNDARY = 22  # 저(low) 상한 — n <= 22 저, n >= 23 고
+
+
+def _empty_high_low_distribution() -> dict[int, int]:
+    """0..6 모든 키를 0으로 채운 분포를 생성합니다 (SPEC-LOTTO-061)."""
+    return dict.fromkeys(range(_HIGH_LOW_MIN, _HIGH_LOW_MAX + 1), 0)
+
+
+def _empty_high_low_distribution_pct() -> dict[int, float]:
+    """0..6 모든 키를 0.0으로 채운 비율 분포를 생성합니다 (SPEC-LOTTO-061)."""
+    return dict.fromkeys(range(_HIGH_LOW_MIN, _HIGH_LOW_MAX + 1), 0.0)
+
+
+def _most_common_high_low_smallest(distribution: dict[int, int]) -> int:
+    """분포에서 가장 빈도 높은 키를 반환합니다. 동률 시 더 작은 키를 택합니다.
+
+    SPEC-LOTTO-061: count 내림차순, 동률은 키 오름차순으로 가장 작은 값을 선택한다.
+    오름차순으로 순회하며 엄격 초과(>)일 때만 갱신해 동률 시 먼저 만난(더 작은)
+    키가 유지되도록 한다.
+    """
+    best_key = _HIGH_LOW_MIN
+    best_count = -1
+    for k in range(_HIGH_LOW_MIN, _HIGH_LOW_MAX + 1):
+        if distribution[k] > best_count:
+            best_count = distribution[k]
+            best_key = k
+    return best_key
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-061 고저 비율 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-061
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_high_low_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개의 고저 비율 분포를 분석합니다 (SPEC-LOTTO-061).
+
+    각 회차의 본번호 6개(보너스 제외)에서 저(low) 개수(low_count, 0~6)를 세고,
+    고(high) 개수는 high_count = 6 - low_count로 파생한다(독립 분류 금지, 합 불변식
+    보장). 전체 회차에 걸친 평균/분포/비율/최빈 개수/균형 회차를 집계한다.
+
+    분류:
+        - 저(low):  1~22 (n <= 22, 경계 22는 저).
+        - 고(high): 23~45 (n >= 23, 경계 23은 고).
+
+    정의:
+        - low_count:   한 회차 본번호 중 저(n <= 22) 개수 (0~6).
+        - high_count:  6 - low_count.
+        - avg_low/avg_high: 회차 평균 (소수 2자리).
+        - low_distribution/high_distribution: 개수(0~6) → 회차 수 (모든 키 존재).
+        - *_distribution_pct: count / total_draws * 100 (소수 2자리, 모든 키 존재).
+        - most_common_*_count: 최빈 개수. 동률 시 더 작은 개수 선택.
+        - balanced_count/balanced_pct: low==high(즉 3:3)인 회차 수와 비율(2자리).
+
+    본번호가 6개 미만인 회차는 집계에서 제외한다. 회차별 분류를 1회 집계한 뒤
+    캐시에 보관하여 반복 요청 시 재계산을 피한다. 캐시 키는 str(len(draws))이며
+    invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               avg_low/avg_high=0.0, 모든 분포 키 0, most_common=0,
+               balanced_count=0/balanced_pct=0.0 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_low, avg_high, low_distribution, high_distribution,
+        low_distribution_pct, high_distribution_pct, most_common_low_count,
+        most_common_high_count, balanced_count, balanced_pct} 매핑.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _high_low_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_low": 0.0,
+            "avg_high": 0.0,
+            "low_distribution": _empty_high_low_distribution(),
+            "high_distribution": _empty_high_low_distribution(),
+            "low_distribution_pct": _empty_high_low_distribution_pct(),
+            "high_distribution_pct": _empty_high_low_distribution_pct(),
+            "most_common_low_count": 0,
+            "most_common_high_count": 0,
+            "balanced_count": 0,
+            "balanced_pct": 0.0,
+        }
+        _high_low_cache[cache_key] = result
+        return result
+
+    low_distribution = _empty_high_low_distribution()
+    high_distribution = _empty_high_low_distribution()
+    low_sum = 0
+    high_sum = 0
+    balanced_count = 0
+    counted_draws = 0
+
+    for draw in draws:
+        nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+        # 본번호가 6개 미만이면 집계에서 제외
+        if len(nums) < _HIGH_LOW_PICK:
+            continue
+
+        low_count = sum(1 for n in nums if n <= _HIGH_LOW_BOUNDARY)
+        # high는 독립 분류가 아니라 6 - low로 파생 (합 불변식 보장)
+        high_count = _HIGH_LOW_PICK - low_count
+
+        low_distribution[low_count] += 1
+        high_distribution[high_count] += 1
+        low_sum += low_count
+        high_sum += high_count
+        if low_count == _HIGH_LOW_BALANCED:
+            balanced_count += 1
+        counted_draws += 1
+
+    total_draws = counted_draws
+
+    if total_draws == 0:
+        # 유효 회차가 하나도 없으면 빈 구조 (키 일관성 유지)
+        result = {
+            "total_draws": 0,
+            "avg_low": 0.0,
+            "avg_high": 0.0,
+            "low_distribution": _empty_high_low_distribution(),
+            "high_distribution": _empty_high_low_distribution(),
+            "low_distribution_pct": _empty_high_low_distribution_pct(),
+            "high_distribution_pct": _empty_high_low_distribution_pct(),
+            "most_common_low_count": 0,
+            "most_common_high_count": 0,
+            "balanced_count": 0,
+            "balanced_pct": 0.0,
+        }
+        _high_low_cache[cache_key] = result
+        return result
+
+    low_distribution_pct = {
+        k: round(cnt / total_draws * 100, 2) for k, cnt in low_distribution.items()
+    }
+    high_distribution_pct = {
+        k: round(cnt / total_draws * 100, 2) for k, cnt in high_distribution.items()
+    }
+
+    result = {
+        "total_draws": total_draws,
+        "avg_low": round(low_sum / total_draws, 2),
+        "avg_high": round(high_sum / total_draws, 2),
+        "low_distribution": low_distribution,
+        "high_distribution": high_distribution,
+        "low_distribution_pct": low_distribution_pct,
+        "high_distribution_pct": high_distribution_pct,
+        "most_common_low_count": _most_common_high_low_smallest(low_distribution),
+        "most_common_high_count": _most_common_high_low_smallest(high_distribution),
+        "balanced_count": balanced_count,
+        "balanced_pct": round(balanced_count / total_draws * 100, 2),
+    }
+    _high_low_cache[cache_key] = result
     return result

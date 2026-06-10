@@ -382,7 +382,6 @@ def test_decade_stats_invalidate_clears_cache() -> None:
 
 def test_decade_page_renders(api_client: TestClient) -> None:
     """GET /stats/decade는 200으로 렌더된다."""
-    from lotto.web import data as wd
 
     with _patch_draws([_mk(1, [1, 5, 15, 25, 35, 42])]):
         resp = api_client.get("/stats/decade")
