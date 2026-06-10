@@ -825,6 +825,28 @@ async def stats_consecutive_pattern_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-063 — 끝자리 합계 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-063
+@router.get("/stats/last-digit-sum")
+async def stats_last_digit_sum_page(request: Request) -> TemplateResponse:
+    """끝자리 합계 분석 페이지 — 끝자리 합 분포/카테고리 분류 (SPEC-LOTTO-063).
+
+    - 요약 카드: 분석 회차 / 평균 합 / 최소 합 / 최대 합
+    - 카테고리 테이블: low(<15)/mid(15~29)/high(>=30) 회차 수·비율
+    - 분포 테이블: 최빈 상위 20개 끝자리 합 (회차 수 내림차순, 동률 합계 오름차순)
+    - SPEC-055의 끝자리 분포(/stats/last-digit)와 독립적인 별도 집계.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_last_digit_sum_stats(wd.get_draws())
+    return _render(request, "last_digit_sum.html", {
+        "active_tab": "last_digit_sum",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

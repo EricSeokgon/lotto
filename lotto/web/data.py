@@ -122,6 +122,11 @@ _high_low_cache: dict[str, Any] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _consecutive_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-063: 끝자리 합계 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_last_digit_sum_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -138,6 +143,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-060: 신규 추첨 데이터 적재 시 홀짝 비율 분석 캐시도 무효화한다.
     SPEC-LOTTO-061: 신규 추첨 데이터 적재 시 고저 비율 분석 캐시도 무효화한다.
     SPEC-LOTTO-062: 신규 추첨 데이터 적재 시 연속 번호 패턴 분석 캐시도 무효화한다.
+    SPEC-LOTTO-063: 신규 추첨 데이터 적재 시 끝자리 합계 분석 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -153,6 +159,7 @@ def invalidate_cache() -> None:
     _odd_even_cache.clear()
     _high_low_cache.clear()
     _consecutive_cache.clear()
+    _last_digit_sum_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -4294,4 +4301,132 @@ def get_consecutive_pattern_stats(draws: list[DrawResult] | None) -> dict[str, A
         "max_consecutive_count": max_consecutive_count,
     }
     _consecutive_cache[cache_key] = result
+    return result
+
+
+# SPEC-LOTTO-063: 끝자리 합계 카테고리 경계.
+# low:  합계 < 15
+# mid:  15 <= 합계 <= 29
+# high: 합계 >= 30
+_LDS_LOW_MAX = 15  # low/mid 경계 (미만이 low)
+_LDS_HIGH_MIN = 30  # mid/high 경계 (이상이 high)
+
+
+def _last_digit_sum(nums: list[int]) -> int:
+    """본번호 6개의 끝자리(n % 10) 합을 반환합니다 (SPEC-LOTTO-063)."""
+    return sum(n % 10 for n in nums)
+
+
+def _empty_last_digit_sum_stats() -> dict[str, Any]:
+    """끝자리 합계 분석의 일관된 빈 구조를 생성합니다 (SPEC-LOTTO-063).
+
+    빈 데이터 / None 모든 경우에서 sum_distribution은 빈 dict이며
+    (다른 분석과 달리 0 채움을 하지 않는다) 모든 수치는 0이다.
+    """
+    return {
+        "total_draws": 0,
+        "avg_sum": 0.0,
+        "min_sum": 0,
+        "max_sum": 0,
+        "sum_distribution": {},
+        "most_common_sum": 0,
+        "low_sum_count": 0,
+        "mid_sum_count": 0,
+        "high_sum_count": 0,
+        "low_sum_pct": 0.0,
+        "mid_sum_pct": 0.0,
+        "high_sum_pct": 0.0,
+    }
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-063 끝자리 합계 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-063
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_last_digit_sum_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개의 끝자리 합계 분포를 분석합니다 (SPEC-LOTTO-063).
+
+    각 회차의 본번호 6개(보너스 제외)에서 끝자리(n % 10) 합을 구한다.
+    이론상 범위는 0~54(6 x 9)이며, 합계를 다음 3개 카테고리로 분류한다.
+        - low:  합계 < 15
+        - mid:  15 <= 합계 <= 29
+        - high: 합계 >= 30
+
+    정의:
+        - avg_sum:           회차 평균 끝자리 합 (소수 2자리).
+        - min_sum/max_sum:   관측된 최소/최대 끝자리 합.
+        - sum_distribution:  끝자리 합 → 회차 수. 다른 분석과 달리 실제로
+                             관측된 합계 값만 키로 포함한다(미관측 값 0 채움 없음).
+        - most_common_sum:   최빈 끝자리 합. 동률 시 더 작은 값을 선택한다.
+        - low/mid/high_sum_count: 각 카테고리에 속한 회차 수.
+        - low/mid/high_sum_pct:   count / total_draws * 100 (소수 2자리).
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+    SPEC-LOTTO-055의 get_last_digit_stats(끝자리별 분포)와는 완전히 독립적이다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               모든 수치 0, sum_distribution={} 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_sum, min_sum, max_sum, sum_distribution,
+        most_common_sum, low_sum_count, mid_sum_count, high_sum_count,
+        low_sum_pct, mid_sum_pct, high_sum_pct} 매핑.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _last_digit_sum_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result = _empty_last_digit_sum_stats()
+        _last_digit_sum_cache[cache_key] = result
+        return result
+
+    total_draws = len(draws)
+    distribution: dict[int, int] = {}
+    sum_total = 0
+    low_count = 0
+    mid_count = 0
+    high_count = 0
+    min_sum = None
+    max_sum = 0
+
+    for draw in draws:
+        s = _last_digit_sum(draw.numbers())  # 본번호 6개 끝자리 합 (보너스 제외)
+        distribution[s] = distribution.get(s, 0) + 1
+        sum_total += s
+        max_sum = max(max_sum, s)
+        min_sum = s if min_sum is None else min(min_sum, s)
+        if s < _LDS_LOW_MAX:
+            low_count += 1
+        elif s >= _LDS_HIGH_MIN:
+            high_count += 1
+        else:
+            mid_count += 1
+
+    # 최빈 합계 — count 내림차순, 동률은 합계 오름차순으로 가장 작은 값 선택.
+    # 관측된 키만 오름차순 순회하며 엄격 초과(>)일 때만 갱신해 동률 시 작은 키를 유지한다.
+    most_common_sum = 0
+    best_count = -1
+    for s in sorted(distribution):
+        if distribution[s] > best_count:
+            best_count = distribution[s]
+            most_common_sum = s
+
+    result = {
+        "total_draws": total_draws,
+        "avg_sum": round(sum_total / total_draws, 2),
+        "min_sum": min_sum if min_sum is not None else 0,
+        "max_sum": max_sum,
+        "sum_distribution": distribution,
+        "most_common_sum": most_common_sum,
+        "low_sum_count": low_count,
+        "mid_sum_count": mid_count,
+        "high_sum_count": high_count,
+        "low_sum_pct": round(low_count / total_draws * 100, 2),
+        "mid_sum_pct": round(mid_count / total_draws * 100, 2),
+        "high_sum_pct": round(high_count / total_draws * 100, 2),
+    }
+    _last_digit_sum_cache[cache_key] = result
     return result

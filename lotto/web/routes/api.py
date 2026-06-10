@@ -753,6 +753,22 @@ async def get_consecutive_pattern_stats_route() -> dict[str, Any]:
     return wd.get_consecutive_pattern_stats(wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-063 — 끝자리 합계 분석 API
+# @MX:SPEC: SPEC-LOTTO-063
+@router.get("/stats/last-digit-sum")
+async def get_last_digit_sum_stats_route() -> dict[str, Any]:
+    """본번호 6개의 끝자리 합계 분포 통계를 반환합니다 (SPEC-LOTTO-063).
+
+    - 회차별 끝자리(n % 10) 합을 집계해 평균/최소/최대, 합계 분포,
+      최빈 합계, low/mid/high 카테고리 회차 수와 비율을 제공한다.
+    - sum_distribution 키는 int이며 JSON 직렬화 시 문자열로 변환된다.
+      다른 분석과 달리 실제로 관측된 합계 값만 키로 포함한다.
+    - SPEC-055의 /api/stats/last-digit(끝자리별 분포)와 독립적인 별도 엔드포인트다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0, sum_distribution={}).
+    """
+    return wd.get_last_digit_sum_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
