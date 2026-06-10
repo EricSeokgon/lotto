@@ -132,6 +132,11 @@ _last_digit_sum_cache: dict[str, Any] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _min_max_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-065: 번호 표준편차(모표준편차) 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_std_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -150,6 +155,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-062: 신규 추첨 데이터 적재 시 연속 번호 패턴 분석 캐시도 무효화한다.
     SPEC-LOTTO-063: 신규 추첨 데이터 적재 시 끝자리 합계 분석 캐시도 무효화한다.
     SPEC-LOTTO-064: 신규 추첨 데이터 적재 시 최솟값·최댓값 분석 캐시도 무효화한다.
+    SPEC-LOTTO-065: 신규 추첨 데이터 적재 시 표준편차 분석 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -167,6 +173,7 @@ def invalidate_cache() -> None:
     _consecutive_cache.clear()
     _last_digit_sum_cache.clear()
     _min_max_cache.clear()
+    _std_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -4574,4 +4581,161 @@ def get_min_max_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "large_range_pct": round(large_count / total_draws * 100, 2),
     }
     _min_max_cache[cache_key] = result
+    return result
+
+
+# SPEC-LOTTO-065: 표준편차 분포 bucket 라벨(정의 순서). 항상 6개 키를 유지한다.
+# 경계: "0-4"=[0,4), "4-8"=[4,8), "8-12"=[8,12), "12-16"=[12,16),
+#       "16-20"=[16,20), "20+"=[20,∞)
+_STD_BUCKET_BOUNDS: tuple[tuple[str, float], ...] = (
+    ("0-4", 4.0),
+    ("4-8", 8.0),
+    ("8-12", 12.0),
+    ("12-16", 16.0),
+    ("16-20", 20.0),
+    ("20+", float("inf")),
+)
+# SPEC-LOTTO-065: 저/중 편차 카테고리 경계. low<10.0, 10.0<=mid<14.0, high>=14.0.
+_STD_LOW_MAX = 10.0
+_STD_MID_MAX = 14.0
+
+
+def _std_bucket_label(std: float) -> str:
+    """표준편차 값을 6개 고정 bucket 라벨 중 하나로 매핑합니다 (SPEC-LOTTO-065).
+
+    a-b bucket 은 a <= std < b, 마지막 "20+" 은 std >= 20 을 포함한다.
+    """
+    for label, upper in _STD_BUCKET_BOUNDS:
+        if std < upper:
+            return label
+    return _STD_BUCKET_BOUNDS[-1][0]  # pragma: no cover — inf 상한으로 도달 불가
+
+
+def _empty_std_stats() -> dict[str, Any]:
+    """표준편차 분석의 일관된 빈 구조를 생성합니다 (SPEC-LOTTO-065).
+
+    빈 데이터 / None 모든 경우에서 모든 수치는 0이며 std_distribution 은
+    6개 bucket 키를 모두 0으로 채우고 most_common_bucket 은 첫 라벨 "0-4" 이다.
+    """
+    return {
+        "total_draws": 0,
+        "avg_std": 0.0,
+        "min_std": 0.0,
+        "max_std": 0.0,
+        "low_std_count": 0,
+        "mid_std_count": 0,
+        "high_std_count": 0,
+        "low_std_pct": 0.0,
+        "mid_std_pct": 0.0,
+        "high_std_pct": 0.0,
+        "std_distribution": {label: 0 for label, _ in _STD_BUCKET_BOUNDS},
+        "most_common_bucket": _STD_BUCKET_BOUNDS[0][0],
+    }
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-065 표준편차 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-065
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_std_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개의 모표준편차 분포를 분석합니다 (SPEC-LOTTO-065).
+
+    각 회차의 본번호 6개(보너스 제외)에서 다음을 구한다.
+        - mean     = sum(nums) / 6
+        - variance = sum((n - mean)**2) / 6  (모분산, n=6으로 나눔; 표본분산 아님)
+        - std      = round(variance ** 0.5, 2)  (회차당 소수 둘째 자리 반올림)
+    표준편차 크기로 3개 카테고리로 분류한다.
+        - low:  std < 10.0
+        - mid:  10.0 <= std < 14.0
+        - high: std >= 14.0
+
+    정의:
+        - avg_std: 모든 회차 per-draw std 의 평균 (소수 2자리).
+        - min_std/max_std: 관측된 per-draw std 의 최소/최대 (소수 2자리).
+        - low/mid/high_std_count: 각 카테고리 회차 수 (합은 total_draws).
+        - low/mid/high_std_pct:   count / total_draws * 100 (소수 2자리).
+        - std_distribution: bucket 라벨 → 회차 수. 6개 고정 키
+          ("0-4","4-8","8-12","12-16","16-20","20+")를 항상 정의 순서로 포함하며
+          미관측 bucket 도 0 으로 유지한다.
+        - most_common_bucket: 최다 count bucket 라벨. 동률 시 정의 순서상 앞선 라벨.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               모든 수치 0, std_distribution 6키 전부 0, most_common_bucket="0-4"
+               의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_std, min_std, max_std, low_std_count, mid_std_count,
+        high_std_count, low_std_pct, mid_std_pct, high_std_pct, std_distribution,
+        most_common_bucket} 매핑.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _std_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result = _empty_std_stats()
+        _std_cache[cache_key] = result
+        return result
+
+    distribution: dict[str, int] = {label: 0 for label, _ in _STD_BUCKET_BOUNDS}
+    std_total = 0.0
+    min_std: float | None = None
+    max_std: float | None = None
+    low_count = 0
+    mid_count = 0
+    high_count = 0
+    counted = 0
+
+    for draw in draws:
+        nums = draw.numbers()  # 본번호 6개 (보너스 제외)
+        if len(nums) < 6:  # REQ-SD-015: 6개 미만이면 집계에서 제외
+            continue
+        mean = sum(nums) / 6
+        variance = sum((n - mean) ** 2 for n in nums) / 6  # 모분산 (n=6)
+        std = round(variance**0.5, 2)
+
+        counted += 1
+        std_total += std
+        min_std = std if min_std is None else min(min_std, std)
+        max_std = std if max_std is None else max(max_std, std)
+
+        if std < _STD_LOW_MAX:
+            low_count += 1
+        elif std < _STD_MID_MAX:
+            mid_count += 1
+        else:
+            high_count += 1
+
+        distribution[_std_bucket_label(std)] += 1
+
+    if counted == 0:  # 모든 회차가 6개 미만이었던 예외적 경우
+        result = _empty_std_stats()
+        _std_cache[cache_key] = result
+        return result
+
+    # 동률 시 정의 순서상 앞선 라벨이 이기도록 라벨 순서대로 최댓값을 찾는다.
+    most_common_bucket = max(
+        (label for label, _ in _STD_BUCKET_BOUNDS),
+        key=lambda label: distribution[label],
+    )
+
+    result = {
+        "total_draws": counted,
+        "avg_std": round(std_total / counted, 2),
+        "min_std": round(min_std if min_std is not None else 0.0, 2),
+        "max_std": round(max_std if max_std is not None else 0.0, 2),
+        "low_std_count": low_count,
+        "mid_std_count": mid_count,
+        "high_std_count": high_count,
+        "low_std_pct": round(low_count / counted * 100, 2),
+        "mid_std_pct": round(mid_count / counted * 100, 2),
+        "high_std_pct": round(high_count / counted * 100, 2),
+        "std_distribution": distribution,
+        "most_common_bucket": most_common_bucket,
+    }
+    _std_cache[cache_key] = result
     return result

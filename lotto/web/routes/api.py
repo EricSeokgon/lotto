@@ -784,6 +784,22 @@ async def get_min_max_stats_route() -> dict[str, Any]:
     return wd.get_min_max_stats(wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-065 — 번호 표준편차 분포 분석 API
+# @MX:SPEC: SPEC-LOTTO-065
+@router.get("/stats/std")
+async def get_std_stats_route() -> dict[str, Any]:
+    """본번호 6개의 모표준편차 분포 통계를 반환합니다 (SPEC-LOTTO-065).
+
+    - 회차별 모표준편차(분산을 n=6으로 나눈 뒤 제곱근)를 집계해 평균/최소/최대,
+      저(<10)/중([10,14))/고(>=14) 카테고리 회차 수·비율, 6개 고정 bucket 분포,
+      최빈 bucket 을 제공한다.
+    - std_distribution 은 "0-4","4-8","8-12","12-16","16-20","20+" 6개 키를
+      항상 포함한다(미관측 구간 0 유지).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_std_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
