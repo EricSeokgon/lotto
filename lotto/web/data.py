@@ -142,6 +142,11 @@ _std_cache: dict[str, Any] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _prime_sum_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-067: 번호 총합 분포 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_total_sum_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -162,6 +167,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-064: 신규 추첨 데이터 적재 시 최솟값·최댓값 분석 캐시도 무효화한다.
     SPEC-LOTTO-065: 신규 추첨 데이터 적재 시 표준편차 분석 캐시도 무효화한다.
     SPEC-LOTTO-066: 신규 추첨 데이터 적재 시 소수합 분포 캐시도 무효화한다.
+    SPEC-LOTTO-067: 신규 추첨 데이터 적재 시 번호 총합 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -181,6 +187,7 @@ def invalidate_cache() -> None:
     _min_max_cache.clear()
     _std_cache.clear()
     _prime_sum_cache.clear()
+    _total_sum_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -4880,4 +4887,138 @@ def get_prime_sum_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "high_pct": round(high_count / total * 100, 2),
     }
     _prime_sum_cache[cache_key] = result
+    return result
+
+
+# SPEC-LOTTO-067: 번호 총합 분포 6개 고정 bucket 라벨(상한 포함).
+_TOTAL_SUM_BUCKETS: list[str] = [
+    "21-80", "81-110", "111-130", "131-150", "151-170", "171-255",
+]
+# 총합 3단계 분류 경계.
+_TOTAL_SUM_LOW_MAX = 110   # total_sum < 110 → low
+_TOTAL_SUM_HIGH_MIN = 171  # total_sum > 170 (>= 171) → high, 그 사이는 mid
+
+
+def _total_sum_bucket(s: int) -> str:
+    """총합 정수값을 6개 고정 bucket 라벨로 분류합니다(상한 포함)."""
+    if s <= 80:
+        return "21-80"
+    if s <= 110:
+        return "81-110"
+    if s <= 130:
+        return "111-130"
+    if s <= 150:
+        return "131-150"
+    if s <= 170:
+        return "151-170"
+    return "171-255"
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-067 번호 총합 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-067
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_total_sum_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개의 총합(total_sum) 분포를 분석합니다 (SPEC-LOTTO-067).
+
+    각 회차의 본번호 6개(보너스 제외)의 합(total_sum)을 구한다.
+    이론적 범위는 21([1,2,3,4,5,6])~255([40,41,42,43,44,45])이며 평균은 약 138,
+    표준편차는 약 30이다.
+
+    총합 크기로 3개 카테고리로 분류한다.
+        - low:  total_sum < 110
+        - mid:  110 <= total_sum <= 170
+        - high: total_sum > 170
+
+    정의:
+        - avg_total_sum: 모든 회차 per-draw 총합의 평균 (소수 2자리).
+        - min_total_sum/max_total_sum: 관측된 per-draw 총합의 최소/최대 (정수).
+        - low/mid/high_count: 각 카테고리 회차 수 (합은 total_draws).
+        - low/mid/high_pct:   count / total_draws * 100 (소수 2자리).
+        - total_sum_distribution: bucket 라벨 → 회차 수. 6개 고정 키
+          ("21-80","81-110","111-130","131-150","151-170","171-255")를 항상
+          정의 순서로 포함하며 미관측 bucket 도 0 으로 유지한다.
+        - most_common_bucket: 최다 count bucket 라벨. 동률 시 정의 순서상 앞선 라벨.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               모든 수치 0, total_sum_distribution 6키 전부 0,
+               most_common_bucket="" 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_total_sum, min_total_sum, max_total_sum,
+        most_common_bucket, total_sum_distribution, low_count, mid_count,
+        high_count, low_pct, mid_pct, high_pct} 매핑.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _total_sum_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_total_sum": 0.0,
+            "min_total_sum": 0,
+            "max_total_sum": 0,
+            "most_common_bucket": "",
+            "total_sum_distribution": dict.fromkeys(_TOTAL_SUM_BUCKETS, 0),
+            "low_count": 0,
+            "mid_count": 0,
+            "high_count": 0,
+            "low_pct": 0.0,
+            "mid_pct": 0.0,
+            "high_pct": 0.0,
+        }
+        _total_sum_cache[cache_key] = result
+        return result
+
+    distribution: dict[str, int] = dict.fromkeys(_TOTAL_SUM_BUCKETS, 0)
+    sum_total = 0
+    min_ts: int | None = None
+    max_ts: int | None = None
+    low_count = 0
+    mid_count = 0
+    high_count = 0
+
+    for draw in draws:
+        total_sum = sum(draw.numbers())  # 본번호 6개만 (보너스 제외)
+
+        sum_total += total_sum
+        min_ts = total_sum if min_ts is None else min(min_ts, total_sum)
+        max_ts = total_sum if max_ts is None else max(max_ts, total_sum)
+
+        if total_sum < _TOTAL_SUM_LOW_MAX:
+            low_count += 1
+        elif total_sum < _TOTAL_SUM_HIGH_MIN:
+            mid_count += 1
+        else:
+            high_count += 1
+
+        distribution[_total_sum_bucket(total_sum)] += 1
+
+    total = len(draws)
+    # 동률 시 정의 순서상 앞선 라벨이 이기도록 라벨 순서대로 최댓값을 찾는다.
+    most_common_bucket = max(
+        _TOTAL_SUM_BUCKETS,
+        key=lambda label: distribution[label],
+    )
+
+    result = {
+        "total_draws": total,
+        "avg_total_sum": round(sum_total / total, 2),
+        "min_total_sum": min_ts if min_ts is not None else 0,
+        "max_total_sum": max_ts if max_ts is not None else 0,
+        "most_common_bucket": most_common_bucket,
+        "total_sum_distribution": distribution,
+        "low_count": low_count,
+        "mid_count": mid_count,
+        "high_count": high_count,
+        "low_pct": round(low_count / total * 100, 2),
+        "mid_pct": round(mid_count / total * 100, 2),
+        "high_pct": round(high_count / total * 100, 2),
+    }
+    _total_sum_cache[cache_key] = result
     return result

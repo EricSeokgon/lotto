@@ -816,6 +816,22 @@ async def get_prime_sum_stats_route() -> dict[str, Any]:
     return wd.get_prime_sum_stats(wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-067 — 번호 총합 분포 분석 API
+# @MX:SPEC: SPEC-LOTTO-067
+@router.get("/stats/total_sum")
+async def get_total_sum_stats_route() -> dict[str, Any]:
+    """본번호 6개의 총합(total_sum) 분포 통계를 반환합니다 (SPEC-LOTTO-067).
+
+    - 회차별 본번호 6개 합(보너스 제외)을 집계해 평균/최소/최대,
+      저(<110)/중([110,170])/고(>170) 카테고리 회차 수·비율, 6개 고정 bucket 분포,
+      최빈 bucket 을 제공한다.
+    - total_sum_distribution 은 "21-80","81-110","111-130","131-150",
+      "151-170","171-255" 6개 키를 항상 포함한다(미관측 구간 0 유지).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_total_sum_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
