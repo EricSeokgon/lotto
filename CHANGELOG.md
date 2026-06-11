@@ -6,6 +6,15 @@
 
 ---
 
+## [1.27.0] - 2026-06-11
+
+### Added
+- SPEC-LOTTO-066: 소수합 분포 분석 (`get_prime_sum_stats`, `/stats/prime-sum`, `GET /api/stats/prime-sum`)
+  - 회차별 소수(prime) 번호들의 합계 분포 분석, SPEC-058(소수 개수 분포)과 보완 관계
+  - +26 테스트 (1515→1541)
+
+---
+
 ## [1.26.0] - 2026-06-10
 
 ### Added
