@@ -952,6 +952,25 @@ async def stats_range_dist_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/consecutive-pairs")
+async def stats_consecutive_pairs_page(request: Request) -> TemplateResponse:
+    """연속번호 패턴(연속 쌍) 분석 페이지 (SPEC-LOTTO-069).
+
+    - 요약 카드: 분석 회차 / 평균 연속 쌍 / 최빈 버킷 / 연속 쌍 보유 비율
+    - 버킷 분포 테이블: 4개 고정 버킷("0","1","2","3+")의 count/pct
+    - SPEC-062(/stats/consecutive-pattern)와는 별개의 독립 페이지다.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_consecutive_pairs_stats(wd.get_draws())
+    return _render(request, "consecutive_pairs.html", {
+        "active_tab": "consecutive_pairs",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

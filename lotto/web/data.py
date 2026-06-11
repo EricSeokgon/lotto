@@ -152,6 +152,16 @@ _total_sum_cache: dict[str, Any] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _range_dist_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-069: 연속번호 패턴(연속 쌍) 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+# SPEC-062의 _consecutive_cache 와는 별개의 독립 네임스페이스다.
+_consecutive_pairs_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-069: 회차당 연속 쌍 개수를 분류하는 4개 고정 버킷.
+# "3+" 는 3개 이상을 모두 합치는 오버플로 버킷이다.
+_CONSECUTIVE_BUCKETS = ["0", "1", "2", "3+"]
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -174,6 +184,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-066: 신규 추첨 데이터 적재 시 소수합 분포 캐시도 무효화한다.
     SPEC-LOTTO-067: 신규 추첨 데이터 적재 시 번호 총합 분포 캐시도 무효화한다.
     SPEC-LOTTO-068: 신규 추첨 데이터 적재 시 번호 구간별 분포 캐시도 무효화한다.
+    SPEC-LOTTO-069: 신규 추첨 데이터 적재 시 연속 쌍 분석 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -195,6 +206,7 @@ def invalidate_cache() -> None:
     _prime_sum_cache.clear()
     _total_sum_cache.clear()
     _range_dist_cache.clear()
+    _consecutive_pairs_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -5138,4 +5150,106 @@ def get_range_dist_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "range_stats": range_stats,
     }
     _range_dist_cache[cache_key] = result
+    return result
+
+
+def count_consecutive_pairs(numbers: list[int]) -> int:
+    """본번호 목록에서 연속 쌍 (n, n+1) 의 개수를 센다 (SPEC-LOTTO-069).
+
+    같은 목록에 n 과 n+1 이 모두 존재하면 1개의 연속 쌍으로 센다. 입력은 정렬되어
+    있지 않아도 되며, 길이 k 의 연속 런은 k-1 개의 연속 쌍을 만든다
+    (예: 14,15,16 → (14,15),(15,16) 2개). wrap-around(45→1)는 세지 않는다.
+
+    Args:
+        numbers: 본번호 목록(보너스 제외). 호출 측에서 6개를 전달한다.
+
+    Returns:
+        연속 쌍의 개수(정수).
+    """
+    num_set = set(numbers)
+    return sum(1 for n in numbers if n + 1 in num_set)
+
+
+def _consecutive_bucket(count: int) -> str:
+    """연속 쌍 개수를 4개 고정 버킷("0","1","2","3+") 중 하나로 분류한다."""
+    if count == 0:
+        return "0"
+    if count == 1:
+        return "1"
+    if count == 2:
+        return "2"
+    return "3+"
+
+
+def get_consecutive_pairs_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 연속 쌍 개수의 4버킷 분포를 분석합니다 (SPEC-LOTTO-069).
+
+    각 회차의 본번호 6개(보너스 제외)에서 연속 쌍 (n, n+1) 개수를 센 뒤, 전체
+    회차를 4개 고정 버킷("0","1","2","3+")으로 분류한다. "3+" 는 3개 이상을
+    합치는 오버플로 버킷이다.
+
+    most_common_bucket 은 count 최댓값 버킷이며, 동률 시 _CONSECUTIVE_BUCKETS
+    정의 순서상 앞선 버킷이 이긴다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    SPEC-062(get_consecutive_pattern_stats, _consecutive_cache)와는 별개의 독립
+    기능이며 해당 코드를 수정/병합하지 않는다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               4개 버킷 전부 0, most_common_bucket="" 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_consecutive_pairs, most_common_bucket,
+        no_consecutive_pct, has_consecutive_pct, consecutive_distribution} 매핑.
+        consecutive_distribution 은 4개 버킷 키를 항상 정의 순서로 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _consecutive_pairs_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_consecutive_pairs": 0.0,
+            "most_common_bucket": "",
+            "no_consecutive_pct": 0.0,
+            "has_consecutive_pct": 0.0,
+            "consecutive_distribution": {
+                b: {"count": 0, "pct": 0.0} for b in _CONSECUTIVE_BUCKETS
+            },
+        }
+        _consecutive_pairs_cache[cache_key] = result
+        return result
+
+    n = len(draws)
+    counts = [count_consecutive_pairs(list(d.numbers())) for d in draws]
+
+    dist_counts: dict[str, int] = dict.fromkeys(_CONSECUTIVE_BUCKETS, 0)
+    for c in counts:
+        dist_counts[_consecutive_bucket(c)] += 1
+
+    total_pairs = sum(counts)
+    no_consec = dist_counts["0"]
+    # 동률 시 정의 순서상 앞선 버킷이 이기도록 _CONSECUTIVE_BUCKETS 순서대로 최댓값을 찾는다.
+    most_common = max(_CONSECUTIVE_BUCKETS, key=lambda b: dist_counts[b])
+
+    result = {
+        "total_draws": n,
+        "avg_consecutive_pairs": round(total_pairs / n, 2),
+        "most_common_bucket": most_common,
+        "no_consecutive_pct": round(no_consec / n * 100, 2),
+        "has_consecutive_pct": round((n - no_consec) / n * 100, 2),
+        "consecutive_distribution": {
+            b: {
+                "count": dist_counts[b],
+                "pct": round(dist_counts[b] / n * 100, 2),
+            }
+            for b in _CONSECUTIVE_BUCKETS
+        },
+    }
+    _consecutive_pairs_cache[cache_key] = result
     return result

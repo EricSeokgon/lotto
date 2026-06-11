@@ -845,6 +845,21 @@ async def get_range_dist_stats_route() -> dict[str, Any]:
     return wd.get_range_dist_stats(wd.get_draws())
 
 
+@router.get("/stats/consecutive-pairs")
+async def get_consecutive_pairs_stats_route() -> dict[str, Any]:
+    """본번호 6개의 연속 쌍 개수 4버킷 분포 통계를 반환합니다 (SPEC-LOTTO-069).
+
+    - 회차별 본번호 6개(보너스 제외)에서 연속 쌍 (n, n+1) 개수를 세고, 전체
+      회차를 4개 고정 버킷("0","1","2","3+")으로 분류한다.
+    - avg_consecutive_pairs / most_common_bucket / no_consecutive_pct /
+      has_consecutive_pct / consecutive_distribution 을 제공한다.
+    - consecutive_distribution 은 4개 버킷 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-062(/stats/consecutive-pattern)와는 별개의 독립 기능이다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_consecutive_pairs_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
