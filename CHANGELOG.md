@@ -6,6 +6,18 @@
 
 ---
 
+## [1.29.0] - 2026-06-11
+
+### Added
+- SPEC-LOTTO-068: 번호 구간별 분포 분석 (Number Range Distribution Analysis)
+  - `GET /api/stats/range_dist` — 5개 구간별 분포 통계 JSON API
+  - `GET /stats/range_dist` — 번호 구간별 분포 시각화 페이지
+  - `get_range_dist_stats()` 함수: 1-9, 10-19, 20-29, 30-39, 40-45 구간별 total_count, draw_count, avg_per_draw, pct_of_numbers, draw_pct 산출
+  - `_range_dist_cache` 캐시 (key: 회차 수 기준, `invalidate_cache()` 연동)
+  - `tests/test_range_dist_analysis.py` 29개 테스트 추가 (1569 → 1598)
+
+---
+
 ## [1.28.0] - 2026-06-11
 
 ### Added
