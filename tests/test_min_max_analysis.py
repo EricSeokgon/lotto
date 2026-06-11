@@ -25,7 +25,6 @@ from lotto.models import DrawResult
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
-
     from contextlib import AbstractContextManager  # noqa: F401
 
 

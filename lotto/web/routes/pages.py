@@ -889,6 +889,27 @@ async def stats_std_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-066 — 소수합 분포 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-066
+@router.get("/stats/prime_sum")
+async def stats_prime_sum_page(request: Request) -> TemplateResponse:
+    """소수합 분포 분석 페이지 (SPEC-LOTTO-066).
+
+    - 요약 카드: 분석 회차 / 평균·최소·최대 소수합
+    - 카테고리 테이블: low(<40)/mid([40,80])/high(>80) 회차 수·비율
+    - 분포 테이블: 6개 고정 bucket("0-30"~"150+") 회차 수·비율
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_prime_sum_stats(wd.get_draws())
+    return _render(request, "prime_sum.html", {
+        "active_tab": "prime_sum",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

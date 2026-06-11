@@ -137,6 +137,11 @@ _min_max_cache: dict[str, Any] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _std_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-066: 소수합 분포 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_prime_sum_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -156,6 +161,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-063: 신규 추첨 데이터 적재 시 끝자리 합계 분석 캐시도 무효화한다.
     SPEC-LOTTO-064: 신규 추첨 데이터 적재 시 최솟값·최댓값 분석 캐시도 무효화한다.
     SPEC-LOTTO-065: 신규 추첨 데이터 적재 시 표준편차 분석 캐시도 무효화한다.
+    SPEC-LOTTO-066: 신규 추첨 데이터 적재 시 소수합 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -174,6 +180,7 @@ def invalidate_cache() -> None:
     _last_digit_sum_cache.clear()
     _min_max_cache.clear()
     _std_cache.clear()
+    _prime_sum_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -4738,4 +4745,139 @@ def get_std_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "most_common_bucket": most_common_bucket,
     }
     _std_cache[cache_key] = result
+    return result
+
+
+# SPEC-LOTTO-066: 소수합 분포 bucket 정의 (라벨, 상한 배타).
+# 6개 고정 bucket 을 정의 순서대로 유지하며, 마지막 "150+" 는 상한이 없다(이론 최댓값 204).
+_PRIME_SUM_BUCKETS: list[str] = ["0-30", "30-60", "60-90", "90-120", "120-150", "150+"]
+# 소수합 3단계 분류 경계.
+_PRIME_SUM_LOW_MAX = 40   # prime_sum < 40 → low
+_PRIME_SUM_MID_MAX = 80   # 40 <= prime_sum <= 80 → mid, prime_sum > 80 → high
+
+
+def _prime_sum_bucket(s: int) -> str:
+    """소수합 정수값을 6개 고정 bucket 라벨로 분류합니다(상한 배타)."""
+    if s < 30:
+        return "0-30"
+    if s < 60:
+        return "30-60"
+    if s < 90:
+        return "60-90"
+    if s < 120:
+        return "90-120"
+    if s < 150:
+        return "120-150"
+    return "150+"
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-066 소수합 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-066
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_prime_sum_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개 중 소수 번호들의 합(소수합) 분포를 분석합니다 (SPEC-LOTTO-066).
+
+    각 회차의 본번호 6개(보너스 제외)에서 소수(_PRIMES_1_45)에 해당하는 값만 더한
+    소수합(prime_sum)을 구한다. 이론적 범위는 0(소수 없음)~204(43+41+37+31+29+23)이다.
+    SPEC-058 이 회차별 소수 *개수* 분포라면, 본 함수는 소수 번호들의 *합계* 분포를 다룬다.
+
+    소수합 크기로 3개 카테고리로 분류한다.
+        - low:  prime_sum < 40
+        - mid:  40 <= prime_sum <= 80
+        - high: prime_sum > 80
+
+    정의:
+        - avg_prime_sum: 모든 회차 per-draw 소수합의 평균 (소수 2자리).
+        - min_prime_sum/max_prime_sum: 관측된 per-draw 소수합의 최소/최대 (정수).
+        - low/mid/high_count: 각 카테고리 회차 수 (합은 total_draws).
+        - low/mid/high_pct:   count / total_draws * 100 (소수 2자리).
+        - prime_sum_distribution: bucket 라벨 → 회차 수. 6개 고정 키
+          ("0-30","30-60","60-90","90-120","120-150","150+")를 항상 정의 순서로
+          포함하며 미관측 bucket 도 0 으로 유지한다.
+        - most_common_bucket: 최다 count bucket 라벨. 동률 시 정의 순서상 앞선 라벨.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               모든 수치 0, prime_sum_distribution 6키 전부 0,
+               most_common_bucket="" 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_prime_sum, min_prime_sum, max_prime_sum,
+        most_common_bucket, prime_sum_distribution, low_count, mid_count,
+        high_count, low_pct, mid_pct, high_pct} 매핑.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _prime_sum_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_prime_sum": 0.0,
+            "min_prime_sum": 0,
+            "max_prime_sum": 0,
+            "most_common_bucket": "",
+            "prime_sum_distribution": dict.fromkeys(_PRIME_SUM_BUCKETS, 0),
+            "low_count": 0,
+            "mid_count": 0,
+            "high_count": 0,
+            "low_pct": 0.0,
+            "mid_pct": 0.0,
+            "high_pct": 0.0,
+        }
+        _prime_sum_cache[cache_key] = result
+        return result
+
+    distribution: dict[str, int] = dict.fromkeys(_PRIME_SUM_BUCKETS, 0)
+    sum_total = 0
+    min_ps: int | None = None
+    max_ps: int | None = None
+    low_count = 0
+    mid_count = 0
+    high_count = 0
+
+    for draw in draws:
+        prime_sum = sum(
+            n for n in draw.numbers() if n in _PRIMES_1_45
+        )  # 본번호 6개만 (보너스 제외)
+
+        sum_total += prime_sum
+        min_ps = prime_sum if min_ps is None else min(min_ps, prime_sum)
+        max_ps = prime_sum if max_ps is None else max(max_ps, prime_sum)
+
+        if prime_sum < _PRIME_SUM_LOW_MAX:
+            low_count += 1
+        elif prime_sum <= _PRIME_SUM_MID_MAX:
+            mid_count += 1
+        else:
+            high_count += 1
+
+        distribution[_prime_sum_bucket(prime_sum)] += 1
+
+    total = len(draws)
+    # 동률 시 정의 순서상 앞선 라벨이 이기도록 라벨 순서대로 최댓값을 찾는다.
+    most_common_bucket = max(
+        _PRIME_SUM_BUCKETS,
+        key=lambda label: distribution[label],
+    )
+
+    result = {
+        "total_draws": total,
+        "avg_prime_sum": round(sum_total / total, 2),
+        "min_prime_sum": min_ps if min_ps is not None else 0,
+        "max_prime_sum": max_ps if max_ps is not None else 0,
+        "most_common_bucket": most_common_bucket,
+        "prime_sum_distribution": distribution,
+        "low_count": low_count,
+        "mid_count": mid_count,
+        "high_count": high_count,
+        "low_pct": round(low_count / total * 100, 2),
+        "mid_pct": round(mid_count / total * 100, 2),
+        "high_pct": round(high_count / total * 100, 2),
+    }
+    _prime_sum_cache[cache_key] = result
     return result
