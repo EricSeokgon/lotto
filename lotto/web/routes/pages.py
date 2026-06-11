@@ -931,6 +931,27 @@ async def stats_total_sum_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-068 — 번호 구간별 분포 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-068
+@router.get("/stats/range_dist")
+async def stats_range_dist_page(request: Request) -> TemplateResponse:
+    """번호 구간별 분포 분석 페이지 (SPEC-LOTTO-068).
+
+    - 요약 카드: 분석 회차 / 최다 커버 구간(most_covered_range)
+    - 구간 분포 테이블: 5개 고정 구간("1-9"~"40-45")의
+      total_count/draw_count/avg_per_draw/pct_of_numbers/draw_pct
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_range_dist_stats(wd.get_draws())
+    return _render(request, "range_dist.html", {
+        "active_tab": "range_dist",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

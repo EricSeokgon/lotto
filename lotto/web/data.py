@@ -147,6 +147,11 @@ _prime_sum_cache: dict[str, Any] = {}
 # DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
 _total_sum_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-068: 번호 구간별 분포 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_range_dist_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -168,6 +173,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-065: 신규 추첨 데이터 적재 시 표준편차 분석 캐시도 무효화한다.
     SPEC-LOTTO-066: 신규 추첨 데이터 적재 시 소수합 분포 캐시도 무효화한다.
     SPEC-LOTTO-067: 신규 추첨 데이터 적재 시 번호 총합 분포 캐시도 무효화한다.
+    SPEC-LOTTO-068: 신규 추첨 데이터 적재 시 번호 구간별 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -188,6 +194,7 @@ def invalidate_cache() -> None:
     _std_cache.clear()
     _prime_sum_cache.clear()
     _total_sum_cache.clear()
+    _range_dist_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -5021,4 +5028,114 @@ def get_total_sum_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "high_pct": round(high_count / total * 100, 2),
     }
     _total_sum_cache[cache_key] = result
+    return result
+
+
+# SPEC-LOTTO-068: 5개 고정 숫자 구간 (정의 순서가 most_covered_range 동점 우선순위).
+_RANGES = ["1-9", "10-19", "20-29", "30-39", "40-45"]
+
+
+def _number_range(n: int) -> str:
+    """번호(1~45)를 5개 고정 구간 키 중 정확히 하나로 분류합니다."""
+    if n <= 9:
+        return "1-9"
+    if n <= 19:
+        return "10-19"
+    if n <= 29:
+        return "20-29"
+    if n <= 39:
+        return "30-39"
+    return "40-45"
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-068 번호 구간별 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-068
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_range_dist_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개의 구간별 분포를 분석합니다 (SPEC-LOTTO-068).
+
+    각 회차의 본번호 6개(보너스 제외)를 5개 고정 구간
+    ("1-9","10-19","20-29","30-39","40-45")으로 분류한다. 총합·소수합 분석과
+    달리 한 회차가 여러 구간에 동시에 기여하므로 응답은 중첩 딕셔너리
+    (range_stats)이다.
+
+    각 구간(5개)마다 다음 5개 지표를 산출한다.
+        - total_count:    모든 회차 전체에서 해당 구간에 속한 번호의 누적 개수.
+        - draw_count:     해당 구간 번호를 1개 이상 포함하는 회차 수.
+        - avg_per_draw:   total_count / total_draws (소수 2자리).
+        - pct_of_numbers: total_count / (total_draws * 6) * 100 (소수 2자리).
+        - draw_pct:       draw_count / total_draws * 100 (소수 2자리).
+
+    most_covered_range 는 draw_count 최댓값 구간이며, 동률 시 _RANGES 정의 순서상
+    앞선 구간이 이긴다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               5개 구간 전부 0, most_covered_range="" 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, most_covered_range, range_stats} 매핑.
+        range_stats 는 5개 구간 키를 항상 정의 순서로 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _range_dist_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result: dict[str, Any] = {
+            "total_draws": 0,
+            "most_covered_range": "",
+            "range_stats": {
+                r: {
+                    "total_count": 0,
+                    "draw_count": 0,
+                    "avg_per_draw": 0.0,
+                    "pct_of_numbers": 0.0,
+                    "draw_pct": 0.0,
+                }
+                for r in _RANGES
+            },
+        }
+        _range_dist_cache[cache_key] = result
+        return result
+
+    total_count: dict[str, int] = dict.fromkeys(_RANGES, 0)
+    draw_count: dict[str, int] = dict.fromkeys(_RANGES, 0)
+
+    for draw in draws:
+        seen_ranges: set[str] = set()
+        for num in draw.numbers():  # 본번호 6개만 (보너스 제외)
+            r = _number_range(num)
+            total_count[r] += 1
+            seen_ranges.add(r)
+        # 회차당 구간 중복 카운트 방지(draw_count 정확성).
+        for r in seen_ranges:
+            draw_count[r] += 1
+
+    total = len(draws)
+    total_numbers = total * 6
+    # 동률 시 정의 순서상 앞선 구간이 이기도록 _RANGES 순서대로 최댓값을 찾는다.
+    most_covered = max(_RANGES, key=lambda r: draw_count[r])
+
+    range_stats = {
+        r: {
+            "total_count": total_count[r],
+            "draw_count": draw_count[r],
+            "avg_per_draw": round(total_count[r] / total, 2),
+            "pct_of_numbers": round(total_count[r] / total_numbers * 100, 2),
+            "draw_pct": round(draw_count[r] / total * 100, 2),
+        }
+        for r in _RANGES
+    }
+
+    result = {
+        "total_draws": total,
+        "most_covered_range": most_covered,
+        "range_stats": range_stats,
+    }
+    _range_dist_cache[cache_key] = result
     return result
