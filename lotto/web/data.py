@@ -162,6 +162,18 @@ _consecutive_pairs_cache: dict[str, Any] = {}
 # "3+" 는 3개 이상을 모두 합치는 오버플로 버킷이다.
 _CONSECUTIVE_BUCKETS = ["0", "1", "2", "3+"]
 
+# SPEC-LOTTO-070: AC값(산술 복잡도) 분포 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_ac_value_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-070: AC값 분포 키. "0".."14" 15개 고정.
+# AC>=14 회차는 "14" 오버플로 버킷에 합산한다(min(ac, 14)).
+_AC_KEYS = [str(i) for i in range(15)]
+
+# SPEC-LOTTO-070: 고다양성(high diversity) 판정 임계값(AC>=9).
+_AC_DIVERSITY_THRESHOLD = 9
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -185,6 +197,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-067: 신규 추첨 데이터 적재 시 번호 총합 분포 캐시도 무효화한다.
     SPEC-LOTTO-068: 신규 추첨 데이터 적재 시 번호 구간별 분포 캐시도 무효화한다.
     SPEC-LOTTO-069: 신규 추첨 데이터 적재 시 연속 쌍 분석 캐시도 무효화한다.
+    SPEC-LOTTO-070: 신규 추첨 데이터 적재 시 AC값 분포 분석 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -207,6 +220,7 @@ def invalidate_cache() -> None:
     _total_sum_cache.clear()
     _range_dist_cache.clear()
     _consecutive_pairs_cache.clear()
+    _ac_value_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -5252,4 +5266,90 @@ def get_consecutive_pairs_stats(draws: list[DrawResult] | None) -> dict[str, Any
         },
     }
     _consecutive_pairs_cache[cache_key] = result
+    return result
+
+
+def compute_ac_value(numbers: list[int]) -> int:
+    """6개 번호의 모든 쌍에 대한 절대 차이 중 distinct 값의 개수를 반환합니다 (SPEC-LOTTO-070).
+
+    AC값(Arithmetic Complexity)은 한 회차 번호 조합이 얼마나 "다양한 간격"으로
+    구성되어 있는지를 나타내는 지표다. C(6,2)=15개 쌍의 절대 차이를 집합으로 모은 뒤
+    그 원소 개수를 센다. 정렬 여부·입력 순서와 무관하다.
+
+    예: [1,2,3,10,11,12] → distinct 차이 {1,2,7,8,9,10,11} → 7.
+
+    Args:
+        numbers: 본번호 리스트(보너스 제외). 일반적으로 6개.
+
+    Returns:
+        서로 다른 절대 차이의 개수(int). 1~45 범위 6개 조합에서 최대 15까지 가능.
+    """
+    nums = list(numbers)
+    diffs = {abs(a - b) for i, a in enumerate(nums) for b in nums[i + 1:]}
+    return len(diffs)
+
+
+def get_ac_value_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 AC값(산술 복잡도)의 0~14 전 구간 분포를 분석합니다 (SPEC-LOTTO-070).
+
+    각 회차의 본번호 6개(보너스 제외)에 대해 compute_ac_value로 AC값을 산출한 뒤,
+    전체 회차를 "0".."14" 15개 고정 키로 분류한다. AC값이 14 이상인 회차는 마지막
+    키 "14" 오버플로 버킷에 합산한다(min(ac, 14)). 단 avg_ac_value 와
+    high_diversity_pct(AC>=9 판정)는 clamp 이전 원본 AC값으로 계산한다.
+
+    most_common_ac 는 count 최댓값 AC값(정수)이며, 동률 시 _AC_KEYS 정의 순서상
+    앞선(=더 작은) AC값이 이긴다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               15개 키 전부 0, most_common_ac=0 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_ac_value, most_common_ac, high_diversity_pct,
+        ac_distribution} 매핑. ac_distribution 은 "0".."14" 15개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _ac_value_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_ac_value": 0.0,
+            "most_common_ac": 0,
+            "high_diversity_pct": 0.0,
+            "ac_distribution": {k: {"count": 0, "pct": 0.0} for k in _AC_KEYS},
+        }
+        _ac_value_cache[cache_key] = result
+        return result
+
+    n = len(draws)
+    ac_values = [compute_ac_value(list(d.numbers())) for d in draws]
+
+    dist_counts: dict[str, int] = dict.fromkeys(_AC_KEYS, 0)
+    for ac in ac_values:
+        # 오버플로 클램프: AC>=14 회차는 "14" 버킷에 합산한다(KeyError 방지).
+        dist_counts[str(min(ac, 14))] += 1
+
+    # avg / high-diversity 는 clamp 이전 원본 AC값을 사용한다(REQ-AC-007, REQ-AC-008).
+    total_ac = sum(ac_values)
+    high_diversity = sum(1 for ac in ac_values if ac >= _AC_DIVERSITY_THRESHOLD)
+    # 동률 시 정의 순서상 앞선(=더 작은) AC값이 이기도록 _AC_KEYS 순서대로 최댓값을 찾는다.
+    most_common = max(_AC_KEYS, key=lambda k: dist_counts[k])
+
+    result = {
+        "total_draws": n,
+        "avg_ac_value": round(total_ac / n, 2),
+        "most_common_ac": int(most_common),
+        "high_diversity_pct": round(high_diversity / n * 100, 2),
+        "ac_distribution": {
+            k: {"count": dist_counts[k], "pct": round(dist_counts[k] / n * 100, 2)}
+            for k in _AC_KEYS
+        },
+    }
+    _ac_value_cache[cache_key] = result
     return result

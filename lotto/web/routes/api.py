@@ -860,6 +860,20 @@ async def get_consecutive_pairs_stats_route() -> dict[str, Any]:
     return wd.get_consecutive_pairs_stats(wd.get_draws())
 
 
+@router.get("/stats/ac_value")
+async def get_ac_value_stats_route() -> dict[str, Any]:
+    """본번호 6개의 AC값(산술 복잡도) 0~14 분포 통계를 반환합니다 (SPEC-LOTTO-070).
+
+    - 회차별 본번호 6개(보너스 제외)의 C(6,2)=15개 쌍에 대한 절대 차이 중 distinct
+      값의 개수를 AC값으로 산출하고, 전체 회차를 "0".."14" 15개 키로 분류한다.
+    - AC>=14 회차는 "14" 오버플로 버킷에 합산한다(min(ac, 14)).
+    - avg_ac_value / most_common_ac / high_diversity_pct / ac_distribution 을 제공한다.
+    - ac_distribution 은 15개 키를 항상 포함한다(미관측 0 유지).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_ac_value_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
