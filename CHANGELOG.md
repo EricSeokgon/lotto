@@ -6,6 +6,19 @@
 
 ---
 
+## [1.30.0] - 2026-06-11
+
+### Added
+- SPEC-LOTTO-069: 연속번호 패턴 분석 (Consecutive Number Pattern Analysis)
+  - `GET /api/stats/consecutive-pairs` — 4버킷 연속 쌍 분포 JSON API
+  - `GET /stats/consecutive-pairs` — 연속번호 패턴 시각화 페이지
+  - `get_consecutive_pairs_stats()` 함수: 0·1·2·3+ 버킷별 count/pct, avg_consecutive_pairs, most_common_bucket 산출
+  - `count_consecutive_pairs()` 헬퍼 함수 (단독 테스트 가능)
+  - `_consecutive_pairs_cache` 캐시 (SPEC-062 `_consecutive_cache`와 별개 네임스페이스)
+  - `tests/test_consecutive_pairs_analysis.py` 31개 테스트 추가 (1598 → 1629)
+
+---
+
 ## [1.29.0] - 2026-06-11
 
 ### Added
