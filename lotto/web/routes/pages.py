@@ -990,6 +990,25 @@ async def stats_ac_value_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/median")
+async def stats_median_page(request: Request) -> TemplateResponse:
+    """번호 중앙값(median) 분포 분석 페이지 (SPEC-LOTTO-071).
+
+    - 요약 카드: 분석 회차 / 평균 중앙값 / 최다 구간 / 저중앙값 비율(< 23.0)
+    - 분포 테이블: 9개 고정 구간("1-5".."41-45")의 count/pct
+    - 경계값은 상위 버킷에 귀속한다(예: 5.5 → "6-10").
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_median_stats(wd.get_draws())
+    return _render(request, "median.html", {
+        "active_tab": "median",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

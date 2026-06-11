@@ -874,6 +874,20 @@ async def get_ac_value_stats_route() -> dict[str, Any]:
     return wd.get_ac_value_stats(wd.get_draws())
 
 
+@router.get("/stats/median")
+async def get_median_stats_route() -> dict[str, Any]:
+    """본번호 6개 중앙값(median)의 9개 구간 분포 통계를 반환합니다 (SPEC-LOTTO-071).
+
+    - 회차별 본번호 6개(보너스 제외)를 정렬한 [a,b,c,d,e,f]의 (c+d)/2.0 을 중앙값으로
+      산출하고, 전체 회차를 "1-5".."41-45" 9개 키로 분류한다(경계값은 상위 버킷 귀속).
+    - avg_median / most_common_range / low_median_pct(< 23.0 strict) / median_distribution
+      을 제공한다.
+    - median_distribution 은 9개 키를 항상 포함한다(미관측 0 유지).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_median_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
