@@ -214,6 +214,14 @@ _even_count_cache: dict[str, Any] = {}
 # 한 회차 본번호 6개 중 짝수(2의 배수) 개수(0~6)에 대응하며 미관측은 zero-fill.
 _EVEN_COUNT_KEYS = ["0", "1", "2", "3", "4", "5", "6"]
 
+# SPEC-LOTTO-075: 5의 배수 포함 개수 분포 캐시.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_mult5_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-075: 5의 배수 포함 개수 분포 키. "0".."6" 7개 고정.
+# 한 회차 본번호 6개 중 5의 배수(5,10,...,45) 개수(0~6)에 대응하며 미관측은 zero-fill.
+_MULT5_KEYS = ["0", "1", "2", "3", "4", "5", "6"]
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -242,6 +250,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-072: 신규 추첨 데이터 적재 시 끝자리 유니크 수 분포 캐시도 무효화한다.
     SPEC-LOTTO-073: 신규 추첨 데이터 적재 시 3의 배수 포함 개수 분포 캐시도 무효화한다.
     SPEC-LOTTO-074: 신규 추첨 데이터 적재 시 짝수 포함 개수 분포 캐시도 무효화한다.
+    SPEC-LOTTO-075: 신규 추첨 데이터 적재 시 5의 배수 포함 개수 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -269,6 +278,7 @@ def invalidate_cache() -> None:
     _last_digit_unique_cache.clear()
     _mult3_cache.clear()
     _even_count_cache.clear()
+    _mult5_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -5732,4 +5742,77 @@ def get_even_count_stats(
         },
     }
     _even_count_cache[cache_key] = result
+    return result
+
+
+def get_mult5_stats(
+    draws: list[DrawResult] | None,
+) -> dict[str, Any]:
+    """회차별 본번호 6개 중 5의 배수 포함 개수(0~6) 분포를 분석합니다 (SPEC-LOTTO-075).
+
+    각 회차의 본번호 6개(보너스 제외)에서 5로 나누어 떨어지는 번호의 개수를 센다.
+    1~45 중 5의 배수는 {5,10,...,45} 9개이며 회차별 개수의 범위는 0(없음)~6(전부)이다.
+    전체 회차를 "0".."6" 7개 고정 키로 분류한다.
+
+    avg_mult5_count 는 회차별 5배수 개수의 산술 평균(소수 2자리 반올림)이다.
+    most_common_count 는 count 최댓값 개수이며, 동률 시 _MULT5_KEYS 정의 순서상
+    앞선(=더 작은) 개수가 이긴다.
+    high_mult5_pct 는 5배수 개수가 3 이상인 회차 비율(%, 소수 2자리 반올림)이다.
+
+    SPEC-073(3의 배수 개수)·SPEC-074(짝수 개수)와는 계산 대상이 다른 별개 기능이다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               7개 키 전부 0, most_common_count=0 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_mult5_count, most_common_count, high_mult5_pct,
+        mult5_distribution} 매핑. mult5_distribution 은 7개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _mult5_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_mult5_count": 0.0,
+            "most_common_count": 0,
+            "high_mult5_pct": 0.0,
+            "mult5_distribution": {
+                k: {"count": 0, "pct": 0.0} for k in _MULT5_KEYS
+            },
+        }
+        _mult5_cache[cache_key] = empty_result
+        return empty_result
+
+    n = len(draws)
+    mult5_counts = [sum(1 for num in d.numbers() if num % 5 == 0) for d in draws]
+
+    dist_counts: dict[str, int] = dict.fromkeys(_MULT5_KEYS, 0)
+    for c in mult5_counts:
+        dist_counts[str(c)] += 1
+
+    high_count = sum(1 for c in mult5_counts if c >= 3)
+    # 동률 시 정의 순서상 앞선(=더 작은) 개수가 이기도록 _MULT5_KEYS 순서대로 찾는다.
+    most_common_key = max(_MULT5_KEYS, key=lambda k: dist_counts[k])
+
+    result = {
+        "total_draws": n,
+        "avg_mult5_count": round(sum(mult5_counts) / n, 2),
+        "most_common_count": int(most_common_key),
+        "high_mult5_pct": round(high_count / n * 100, 2),
+        "mult5_distribution": {
+            k: {
+                "count": dist_counts[k],
+                "pct": round(dist_counts[k] / n * 100, 2),
+            }
+            for k in _MULT5_KEYS
+        },
+    }
+    _mult5_cache[cache_key] = result
     return result
