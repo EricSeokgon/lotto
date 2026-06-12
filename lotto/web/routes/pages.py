@@ -1049,6 +1049,26 @@ async def stats_mult3_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/even-count")
+async def stats_even_count_page(request: Request) -> TemplateResponse:
+    """짝수 포함 개수 분포 분석 페이지 (SPEC-LOTTO-074).
+
+    - 요약 카드: 분석 회차 / 평균 개수 / 최빈 개수 / 3개 이상 비율(>=3)
+    - 분포 테이블: 7개 고정 개수("0".."6")의 count/pct
+    - 한 회차 본번호 6개(보너스 제외)의 짝수 개수(0~6)를 집계한다.
+    - SPEC-061(홀짝 비율; get_odd_even_stats)과 독립적인 별도 집계.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_even_count_stats(wd.get_draws())
+    return _render(request, "even_count.html", {
+        "active_tab": "even_count",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")
