@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-072
-version: 0.1.0
-status: Planned
+version: 1.0.0
+status: Completed
 created: 2026-06-12
 updated: 2026-06-12
 author: ircp
@@ -13,6 +13,7 @@ issue_number: 0
 
 ## HISTORY
 
+- 2026-06-12 (v1.0.0): 구현 완료. 30개 테스트 추가 (1702→1732).
 - 2026-06-12 (v0.1.0): 최초 작성 (Planned). 회차별 본번호 6개(보너스 제외)의
   **서로 다른 끝자리(units digit) 값의 개수**(1~6)를 산출하고, 전체 이력에 대해
   6개 구간(`"1"`~`"6"`)의 분포를 분석하는 읽기 전용 통계 기능으로 정의.

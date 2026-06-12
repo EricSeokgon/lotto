@@ -6,6 +6,19 @@
 
 ---
 
+## [1.33.0] - 2026-06-12
+
+### Added (SPEC-LOTTO-072)
+- 끝자리 유니크 수 분포 분석 기능 추가
+  - `get_last_digit_unique_stats()`: 회차별 6개 번호의 끝자리(일의 자리) 중 서로 다른 값이 몇 개인지 분포 통계
+  - 6개 구간("1"~"6") 분포, 평균 유니크 수, 전부 다른 회차 비율 제공
+  - `GET /api/stats/last_digit_unique` API 엔드포인트
+  - `GET /stats/last-digit-unique` 통계 페이지 (`last_digit_unique.html`)
+  - 네비게이션 "끝자리유니크" 링크 추가
+  - 테스트 30개 추가 (1702 → 1732)
+
+---
+
 ## [1.32.0] - 2026-06-12
 
 ### Added (SPEC-LOTTO-071)
