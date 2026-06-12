@@ -1009,6 +1009,26 @@ async def stats_median_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/last-digit-unique")
+async def stats_last_digit_unique_page(request: Request) -> TemplateResponse:
+    """끝자리 유니크 수 분포 분석 페이지 (SPEC-LOTTO-072).
+
+    - 요약 카드: 분석 회차 / 평균 유니크 개수 / 최다 개수 / 모두 다른 비율(==6)
+    - 분포 테이블: 6개 고정 개수("1".."6")의 count/pct
+    - 한 회차 본번호 6개(보너스 제외)의 서로 다른 끝자리 개수(1~6)를 집계한다.
+    - SPEC-055(끝자리별 분포)·SPEC-063(끝자리 합계)과 독립적인 별도 집계.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_last_digit_unique_stats(wd.get_draws())
+    return _render(request, "last_digit_unique.html", {
+        "active_tab": "last_digit_unique",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

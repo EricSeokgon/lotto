@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-072: 끝자리 유니크 수 분포 분석 — 회차별 유니크 끝자리 개수(1~6) 분포 (JS 없음) #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">끝자리 유니크 수 분포 분석</h2>
+    </div>
+
+    <p class="text-sm text-muted dark:text-gray-400">
+        회차별 본번호 6개(보너스 제외)의 끝자리(n % 10) 중 서로 다른 값이 몇 종류나
+        나타나는지(유니크 끝자리 개수)를 집계합니다.
+        예) [3,13,23,31,42,5] → 끝자리 {1,2,3,5} → 4종.
+        값의 범위는 1(여섯 끝자리가 모두 같음, 매우 희귀)부터 6(모두 다름)까지이며,
+        대부분의 회차는 5~6종에 분포합니다.
+        SPEC-055(끝자리별 출현 빈도)·SPEC-063(끝자리 합계)과는 다른 별개 지표입니다.
+        과거 통계일 뿐 미래 출현을 보장하지 않습니다.
+    </p>
+
+    {% if stats.total_draws == 0 %}
+    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+    </div>
+    {% else %}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">분석 회차</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.total_draws }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">평균 유니크 개수</p>
+            <p class="text-xl font-bold text-sky-600 dark:text-sky-400">{{ stats.avg_unique_count }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">최다 개수</p>
+            <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">{{ stats.most_common_count }}종</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">모두 다른 비율(6종)</p>
+            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{ stats.all_different_pct }}%</p>
+        </div>
+    </div>
+
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">유니크 끝자리 개수 분포</h3>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="py-2 pr-4">유니크 개수</th>
+                    <th class="py-2 pr-4 text-right">회차 수</th>
+                    <th class="py-2 pr-4 text-right">비율</th>
+                </tr>
+            </thead>
+            <tbody>
+                {# 6개 고정 키("1".."6")를 정의 순서대로 표시한다(미관측 키 0 포함) #}
+                {% for label, cell in stats.unique_distribution.items() %}
+                {% if label|int == stats.most_common_count %}
+                <tr class="border-b border-border dark:border-gray-700 bg-sky-50 dark:bg-sky-900/20">
+                {% else %}
+                <tr class="border-b border-border dark:border-gray-700">
+                {% endif %}
+                    <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">
+                        {{ label }}종{% if label|int == stats.most_common_count %} <span class="text-xs font-normal text-sky-600 dark:text-sky-400">(최다)</span>{% endif %}
+                    </td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ cell.count }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ cell.pct }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

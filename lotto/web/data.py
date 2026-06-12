@@ -189,6 +189,15 @@ _MEDIAN_KEYS = [
 # SPEC-LOTTO-071: 저중앙값(low median) 판정 임계값(median < 23.0 strict).
 _MEDIAN_CENTER = 23.0
 
+# SPEC-LOTTO-072: 끝자리 유니크 수 분포 분석 결과 메모리 캐시.
+# draws 길이(str)를 키로 결과를 보관하여 동일 입력의 재계산을 피한다.
+# DB/디스크 영속화 없이 프로세스 수명 동안만 유지하며, invalidate_cache로 무효화된다.
+_last_digit_unique_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-072: 유니크 끝자리 개수 분포 키. "1".."6" 6개 고정.
+# 한 회차 본번호 6개의 서로 다른 끝자리 개수(1~6)에 대응하며 미관측은 zero-fill.
+_UNIQUE_DIGIT_KEYS = ["1", "2", "3", "4", "5", "6"]
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -214,6 +223,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-069: 신규 추첨 데이터 적재 시 연속 쌍 분석 캐시도 무효화한다.
     SPEC-LOTTO-070: 신규 추첨 데이터 적재 시 AC값 분포 분석 캐시도 무효화한다.
     SPEC-LOTTO-071: 신규 추첨 데이터 적재 시 중앙값 분포 분석 캐시도 무효화한다.
+    SPEC-LOTTO-072: 신규 추첨 데이터 적재 시 끝자리 유니크 수 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -238,6 +248,7 @@ def invalidate_cache() -> None:
     _consecutive_pairs_cache.clear()
     _ac_value_cache.clear()
     _median_cache.clear()
+    _last_digit_unique_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -5481,4 +5492,77 @@ def get_median_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         },
     }
     _median_cache[cache_key] = result
+    return result
+
+
+def get_last_digit_unique_stats(
+    draws: list[DrawResult] | None,
+) -> dict[str, Any]:
+    """회차별 본번호 6개의 유니크 끝자리 개수(1~6) 분포를 분석합니다 (SPEC-LOTTO-072).
+
+    각 회차의 본번호 6개(보너스 제외)에서 서로 다른 끝자리(n % 10) 값이 몇 종류나
+    나타나는지를 센다(`len(set(n % 10 ...))`). 값의 범위는 1(모두 같은 끝자리)부터
+    6(모두 다른 끝자리)이며, 전체 회차를 "1".."6" 6개 고정 키로 분류한다.
+
+    avg_unique_count 는 회차별 유니크 개수의 산술 평균(소수 2자리 반올림)이다.
+    most_common_count 는 count 최댓값 개수이며, 동률 시 _UNIQUE_DIGIT_KEYS 정의
+    순서상 앞선(=더 작은) 개수가 이긴다.
+    all_different_pct 는 유니크 개수가 정확히 6인 회차 비율(%)이다.
+
+    SPEC-055(끝자리별 출현 빈도)·SPEC-063(끝자리 합계)과는 계산 대상이 다른 별개 기능.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               6개 키 전부 0, most_common_count=1 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_unique_count, most_common_count, all_different_pct,
+        unique_distribution} 매핑. unique_distribution 은 6개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _last_digit_unique_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_unique_count": 0.0,
+            "most_common_count": 1,
+            "all_different_pct": 0.0,
+            "unique_distribution": {
+                k: {"count": 0, "pct": 0.0} for k in _UNIQUE_DIGIT_KEYS
+            },
+        }
+        _last_digit_unique_cache[cache_key] = empty_result
+        return empty_result
+
+    n = len(draws)
+    unique_counts = [len({num % 10 for num in d.numbers()}) for d in draws]
+
+    dist_counts: dict[str, int] = dict.fromkeys(_UNIQUE_DIGIT_KEYS, 0)
+    for c in unique_counts:
+        dist_counts[str(c)] += 1
+
+    all_diff_count = sum(1 for c in unique_counts if c == 6)
+    # 동률 시 정의 순서상 앞선(=더 작은) 개수가 이기도록 _UNIQUE_DIGIT_KEYS 순서대로 찾는다.
+    most_common_key = max(_UNIQUE_DIGIT_KEYS, key=lambda k: dist_counts[k])
+
+    result = {
+        "total_draws": n,
+        "avg_unique_count": round(sum(unique_counts) / n, 2),
+        "most_common_count": int(most_common_key),
+        "all_different_pct": round(all_diff_count / n * 100, 2),
+        "unique_distribution": {
+            k: {
+                "count": dist_counts[k],
+                "pct": round(dist_counts[k] / n * 100, 2),
+            }
+            for k in _UNIQUE_DIGIT_KEYS
+        },
+    }
+    _last_digit_unique_cache[cache_key] = result
     return result
