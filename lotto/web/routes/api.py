@@ -964,6 +964,21 @@ async def get_mult4_stats_route() -> dict[str, Any]:
     return wd.get_mult4_stats(wd.get_draws())
 
 
+@router.get("/stats/single_digit")
+async def get_single_digit_stats_route() -> dict[str, Any]:
+    """본번호 6개 중 1자리 번호(1~9) 포함 개수(0~6) 분포 통계를 반환합니다 (SPEC-LOTTO-077).
+
+    - 회차별 본번호 6개(보너스 제외)에서 1자리 번호 개수를 산출하고,
+      전체 회차를 "0".."6" 7개 키로 분류한다.
+    - avg_single_count / most_common_count(동률 시 작은 값) / high_single_pct(>=3 비율)
+      / single_distribution 을 제공한다.
+    - single_distribution 은 7개 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-073~076(3·짝수·5·4의 배수)와 독립적인 별도 엔드포인트다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_single_digit_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
