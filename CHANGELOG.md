@@ -6,6 +6,18 @@
 
 ---
 
+## [1.35.0] - 2026-06-12
+
+### Added
+- SPEC-LOTTO-074: 짝수 포함 개수 분포 분석 기능 추가
+  - `get_even_count_stats()`: 회차별 짝수 개수(0~6) 분포 통계 산출
+  - `GET /api/stats/even_count`: JSON 통계 API 엔드포인트
+  - `GET /stats/even-count`: 짝수 개수 분포 분석 페이지 (`even_count.html`)
+  - 내비게이션 "짝수개수" 링크 추가
+  - 테스트 29개 추가 (1762→1791)
+
+---
+
 ## [1.34.0] - 2026-06-12
 
 ### Added
