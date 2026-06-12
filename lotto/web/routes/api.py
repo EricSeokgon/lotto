@@ -904,6 +904,21 @@ async def get_last_digit_unique_stats_route() -> dict[str, Any]:
     return wd.get_last_digit_unique_stats(wd.get_draws())
 
 
+@router.get("/stats/mult3")
+async def get_mult3_stats_route() -> dict[str, Any]:
+    """본번호 6개 중 3의 배수 포함 개수(0~6) 분포 통계를 반환합니다 (SPEC-LOTTO-073).
+
+    - 회차별 본번호 6개(보너스 제외)에서 3으로 나누어 떨어지는 번호 개수를 산출하고,
+      전체 회차를 "0".."6" 7개 키로 분류한다.
+    - avg_mult3_count / most_common_count(동률 시 작은 값) / high_mult3_pct(>=3 비율)
+      / mult3_distribution 을 제공한다.
+    - mult3_distribution 은 7개 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-058(소수/합성수 분포)·SPEC-066(소수합)과 독립적인 별도 엔드포인트다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_mult3_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
