@@ -1009,6 +1009,21 @@ async def get_digit_sum_dist_stats_route() -> dict[str, Any]:
     return wd.get_digit_sum_dist_stats(wd.get_draws())
 
 
+@router.get("/stats/max_gap_dist")
+async def get_max_gap_dist_stats_route() -> dict[str, Any]:
+    """본번호 6개 인접 간격 최댓값(max_gap)의 구간별 분포 통계를 반환합니다 (SPEC-LOTTO-080).
+
+    - 회차별 정렬 본번호 6개(보너스 제외)의 인접 차이 5개 중 최댓값을 산출하고,
+      6개 고정 구간("1-5","6-10","11-15","16-20","21-30","31+")으로 분류한다.
+    - avg_max_gap(평균) / most_common_range(동률 시 앞선 구간)
+      / high_gap_pct(max_gap>=21 비율) / max_gap_distribution 을 제공한다.
+    - max_gap_distribution 은 6개 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-056(get_gap_stats, small/medium/large)과는 출력 구조가 다른 별개 엔드포인트다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_max_gap_dist_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")

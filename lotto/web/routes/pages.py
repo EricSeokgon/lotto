@@ -1169,6 +1169,26 @@ async def stats_digit_sum_dist_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/max-gap-dist")
+async def stats_max_gap_dist_page(request: Request) -> TemplateResponse:
+    """번호 간격 최대값 분포 분석 페이지 (SPEC-LOTTO-080).
+
+    - 요약 카드: 분석 회차 / 평균 최대간격 / 최빈 구간 / 고간격 비율(max_gap>=21)
+    - 분포 테이블: 6개 고정 구간의 count/pct
+    - 한 회차 정렬 본번호 6개(보너스 제외)의 인접 차이 최댓값을 6개 구간으로 집계한다.
+    - SPEC-056(get_gap_stats, small/medium/large)과는 다른 별개 집계.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_max_gap_dist_stats(wd.get_draws())
+    return _render(request, "max_gap_dist.html", {
+        "active_tab": "max_gap_dist",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

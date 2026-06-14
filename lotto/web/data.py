@@ -254,6 +254,14 @@ _DIGIT_SUM_KEYS = ["0-9", "10-14", "15-19", "20-24", "25-29", "30+"]
 # SPEC-LOTTO-079: 끝자리 합계 구간 분포 캐시. invalidate_cache로 무효화.
 _digit_sum_dist_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-080: 번호 간격 최대값(max_gap) 구간 분포 키. 6개 고정 버킷.
+# 한 회차 정렬 본번호 6개의 인접 차이 5개 중 최댓값을 다음 6개 구간으로 분류하며
+# 미관측은 zero-fill.
+_MAX_GAP_KEYS = ["1-5", "6-10", "11-15", "16-20", "21-30", "31+"]
+
+# SPEC-LOTTO-080: 번호 간격 최대값 구간 분포 캐시. invalidate_cache로 무효화.
+_max_gap_dist_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -319,6 +327,7 @@ def invalidate_cache() -> None:
     _single_digit_cache.clear()
     _triple_run_cache.clear()
     _digit_sum_dist_cache.clear()
+    _max_gap_dist_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -6213,4 +6222,104 @@ def get_digit_sum_dist_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "digit_sum_distribution": dist,
     }
     _digit_sum_dist_cache[cache_key] = result
+    return result
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-080 — max_gap을 6개 고정 구간 버킷으로 분류
+# @MX:SPEC: SPEC-LOTTO-080 REQ-MGD-002
+def _max_gap_bucket(g: int) -> str:
+    """번호 간격 최대값 g를 6개 고정 구간 버킷 라벨로 변환한다 (SPEC-LOTTO-080).
+
+    경계: <=5→"1-5", <=10→"6-10", <=15→"11-15", <=20→"16-20",
+          <=30→"21-30", 그 외(>=31)→"31+".
+    """
+    if g <= 5:
+        return "1-5"
+    elif g <= 10:
+        return "6-10"
+    elif g <= 15:
+        return "11-15"
+    elif g <= 20:
+        return "16-20"
+    elif g <= 30:
+        return "21-30"
+    else:
+        return "31+"
+
+
+def get_max_gap_dist_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개의 인접 간격 최댓값(max_gap) 구간 분포를 분석합니다 (SPEC-LOTTO-080).
+
+    각 회차의 정렬된 본번호 6개(보너스 제외)에서 인접 차이 5개의 최댓값(max_gap)을
+    구한 뒤, 6개 고정 구간 버킷("1-5","6-10","11-15","16-20","21-30","31+")으로
+    분류한다.
+
+    정의:
+        - max_gap:           정렬 본번호 인접 차이 중 최댓값 (회차당 1개).
+        - avg_max_gap:       회차 평균 max_gap (소수 2자리).
+        - most_common_range: 최빈 구간. 동률 시 _MAX_GAP_KEYS 정의 순서상
+                             앞선(=더 작은) 구간을 선택한다.
+        - high_gap_pct:      max_gap이 21 이상인 회차 비율(%, 소수 2자리).
+        - max_gap_distribution: 6개 고정 키를 항상 포함(미관측 0 채움).
+
+    SPEC-LOTTO-056의 get_gap_stats(small/medium/large 분류 + avg_max_gap 단일 수치)와는
+    출력 구조가 완전히 다른 별개 기능이다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               6개 키 전부 0, most_common_range="1-5" 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_max_gap, most_common_range, high_gap_pct,
+        max_gap_distribution} 매핑. max_gap_distribution 은 6개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _max_gap_dist_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _MAX_GAP_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_max_gap": 0.0,
+            "most_common_range": "1-5",
+            "high_gap_pct": 0.0,
+            "max_gap_distribution": dist,
+        }
+        _max_gap_dist_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    max_gaps: list[int] = []
+    for draw in draws:
+        nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+        # 인접 쌍의 차이 5개 중 최댓값
+        g = max(b - a for a, b in zip(nums, nums[1:]))  # noqa: B905 — Python 3.9 호환
+        max_gaps.append(g)
+        dist[_max_gap_bucket(g)]["count"] += 1
+
+    for k in _MAX_GAP_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    avg = round(sum(max_gaps) / total, 2)
+    # 동률 시 정의 순서상 앞선(=더 작은) 구간이 이기도록 _MAX_GAP_KEYS 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _MAX_GAP_KEYS)
+    most_common = next(k for k in _MAX_GAP_KEYS if dist[k]["count"] == max_cnt)
+    high = sum(1 for g in max_gaps if g >= 21)
+
+    result = {
+        "total_draws": total,
+        "avg_max_gap": avg,
+        "most_common_range": most_common,
+        "high_gap_pct": round(high / total * 100, 2),
+        "max_gap_distribution": dist,
+    }
+    _max_gap_dist_cache[cache_key] = result
     return result
