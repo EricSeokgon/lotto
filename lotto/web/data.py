@@ -240,6 +240,13 @@ _SINGLE_DIGIT_KEYS = ["0", "1", "2", "3", "4", "5", "6"]
 # SPEC-LOTTO-077: 1자리 번호 집합. 1~45 중 1자리는 {1,2,3,4,5,6,7,8,9} 9개.
 _SINGLE_DIGIT_SET = {1, 2, 3, 4, 5, 6, 7, 8, 9}
 
+# SPEC-LOTTO-078: 3연속 이상 묶음 수 분포 키. "0","1","2" 3개 고정.
+# 한 회차 본번호 6개에서 3개 이상 연속한 묶음 수는 최대 2개(3+3=6)이며 미관측은 zero-fill.
+_TRIPLE_RUN_KEYS = ["0", "1", "2"]
+
+# SPEC-LOTTO-078: 3연속 묶음 분포 캐시. invalidate_cache로 무효화.
+_triple_run_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -271,6 +278,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-075: 신규 추첨 데이터 적재 시 5의 배수 포함 개수 분포 캐시도 무효화한다.
     SPEC-LOTTO-076: 신규 추첨 데이터 적재 시 4의 배수 포함 개수 분포 캐시도 무효화한다.
     SPEC-LOTTO-077: 신규 추첨 데이터 적재 시 1자리 포함 개수 분포 캐시도 무효화한다.
+    SPEC-LOTTO-078: 신규 추첨 데이터 적재 시 3연속 묶음 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -301,6 +309,7 @@ def invalidate_cache() -> None:
     _mult5_cache.clear()
     _mult4_cache.clear()
     _single_digit_cache.clear()
+    _triple_run_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -5986,4 +5995,117 @@ def get_single_digit_stats(
         },
     }
     _single_digit_cache[cache_key] = result
+    return result
+
+
+def _count_triple_runs(numbers: list) -> int:
+    """본번호에서 3개 이상 연속한 묶음(triple run)의 개수를 센다 (SPEC-LOTTO-078).
+
+    정렬 후 인접 값 차이가 1이면 연속으로 누적하고, 끊기는 시점에 누적 길이가
+    3 이상이면 묶음 1개로 계수한다. 마지막 묶음도 동일하게 처리한다.
+
+    예: [1,2,3,7,8,9] → {1,2,3},{7,8,9} 2개. [3,4,...] → {3,4}는 2연속이라 0개.
+    """
+    sorted_nums = sorted(numbers)
+    groups = 0
+    run_len = 1
+    for i in range(1, len(sorted_nums)):
+        if sorted_nums[i] == sorted_nums[i - 1] + 1:
+            run_len += 1
+        else:
+            if run_len >= 3:
+                groups += 1
+            run_len = 1
+    if run_len >= 3:
+        groups += 1
+    return groups
+
+
+def _max_run_length(numbers: list) -> int:
+    """본번호에서 가장 긴 연속 구간의 길이를 반환한다 (SPEC-LOTTO-078).
+
+    정렬 후 인접 값 차이가 1인 동안 길이를 누적하며 최댓값을 추적한다.
+    모두 고립이면 1을 반환한다(단일 번호도 길이 1로 간주).
+    """
+    sorted_nums = sorted(numbers)
+    max_run = 1
+    run = 1
+    for i in range(1, len(sorted_nums)):
+        if sorted_nums[i] == sorted_nums[i - 1] + 1:
+            run += 1
+            max_run = max(max_run, run)
+        else:
+            run = 1
+    return max_run
+
+
+def get_triple_run_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개 중 3연속 이상 묶음 수(0~2) 분포를 분석합니다 (SPEC-LOTTO-078).
+
+    각 회차의 본번호 6개(보너스 제외)에서 3개 이상 연속한 묶음(triple run) 수를 센다.
+    6개 번호이므로 묶음 수의 범위는 0~2(예: 3+3=6)이며, 전체 회차를 "0","1","2"
+    3개 고정 키로 분류한다.
+
+    has_triple_pct 는 묶음 수가 1 이상인 회차 비율(%, 소수 2자리 반올림)이다.
+    most_common_group_count 는 count 최댓값 묶음 수이며, 동률 시 _TRIPLE_RUN_KEYS
+    정의 순서상 앞선(=더 작은) 값이 이긴다.
+    avg_max_run 는 회차별 최대 연속 길이의 산술 평균(소수 2자리 반올림)이다.
+
+    SPEC-062(연속 패턴)·SPEC-069(연속 쌍)와는 계산 대상이 다른 별개 기능이다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               3개 키 전부 0, most_common_group_count=0 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, has_triple_pct, most_common_group_count, avg_max_run,
+        triple_distribution} 매핑. triple_distribution 은 3개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _triple_run_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "has_triple_pct": 0.0,
+            "most_common_group_count": 0,
+            "avg_max_run": 0.0,
+            "triple_distribution": {
+                k: {"count": 0, "pct": 0.0} for k in _TRIPLE_RUN_KEYS
+            },
+        }
+        _triple_run_cache[cache_key] = empty_result
+        return empty_result
+
+    n = len(draws)
+    group_counts = [_count_triple_runs(d.numbers()) for d in draws]
+    max_runs = [_max_run_length(d.numbers()) for d in draws]
+
+    dist_counts: dict[str, int] = dict.fromkeys(_TRIPLE_RUN_KEYS, 0)
+    for g in group_counts:
+        dist_counts[str(g)] += 1
+
+    has_triple = sum(1 for g in group_counts if g >= 1)
+    # 동률 시 정의 순서상 앞선(=더 작은) 묶음 수가 이기도록 _TRIPLE_RUN_KEYS 순서대로 찾는다.
+    most_common_key = max(_TRIPLE_RUN_KEYS, key=lambda k: dist_counts[k])
+
+    result = {
+        "total_draws": n,
+        "has_triple_pct": round(has_triple / n * 100, 2),
+        "most_common_group_count": int(most_common_key),
+        "avg_max_run": round(sum(max_runs) / n, 2),
+        "triple_distribution": {
+            k: {
+                "count": dist_counts[k],
+                "pct": round(dist_counts[k] / n * 100, 2),
+            }
+            for k in _TRIPLE_RUN_KEYS
+        },
+    }
+    _triple_run_cache[cache_key] = result
     return result

@@ -1129,6 +1129,26 @@ async def stats_single_digit_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/triple-run")
+async def stats_triple_run_page(request: Request) -> TemplateResponse:
+    """3연속 이상 번호 포함 분포 분석 페이지 (SPEC-LOTTO-078).
+
+    - 요약 카드: 분석 회차 / 3연속 포함 비율(>=1) / 최빈 묶음 수 / 평균 최대 연속 길이
+    - 분포 테이블: 3개 고정 묶음 수("0","1","2")의 count/pct
+    - 한 회차 본번호 6개(보너스 제외)에서 3개 이상 연속 묶음 수(0~2)를 집계한다.
+    - SPEC-062(연속 패턴)·SPEC-069(연속 쌍)와 독립적인 별도 집계.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_triple_run_stats(wd.get_draws())
+    return _render(request, "triple_run.html", {
+        "active_tab": "triple_run",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

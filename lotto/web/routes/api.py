@@ -979,6 +979,21 @@ async def get_single_digit_stats_route() -> dict[str, Any]:
     return wd.get_single_digit_stats(wd.get_draws())
 
 
+@router.get("/stats/triple_run")
+async def get_triple_run_stats_route() -> dict[str, Any]:
+    """본번호 6개 중 3연속 이상 묶음 수(0~2) 분포 통계를 반환합니다 (SPEC-LOTTO-078).
+
+    - 회차별 본번호 6개(보너스 제외)에서 3개 이상 연속한 묶음 수를 산출하고,
+      전체 회차를 "0","1","2" 3개 키로 분류한다.
+    - has_triple_pct(>=1 비율) / most_common_group_count(동률 시 작은 값)
+      / avg_max_run(회차별 최대 연속 길이 평균) / triple_distribution 을 제공한다.
+    - triple_distribution 은 3개 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-062(연속 패턴)·SPEC-069(연속 쌍)와 독립적인 별도 엔드포인트다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_triple_run_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
