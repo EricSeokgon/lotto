@@ -1189,6 +1189,26 @@ async def stats_max_gap_dist_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/even-run")
+async def stats_even_run_page(request: Request) -> TemplateResponse:
+    """짝수 연속 포함 분포 분석 페이지 (SPEC-LOTTO-081).
+
+    - 요약 카드: 분석 회차 / 짝수연속 포함 비율(>=1) / 최빈 그룹 수 / 평균 짝수연속 수
+    - 분포 테이블: 4개 고정 묶음 수("0","1","2","3")의 count/pct
+    - 한 회차 본번호 6개(보너스 제외) 중 간격 2 짝수 연속 묶음 수(0~3)를 집계한다.
+    - SPEC-074(짝수 개수)·SPEC-069(연속 쌍)와는 다른 별개 집계.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_even_run_stats(wd.get_draws())
+    return _render(request, "even_run.html", {
+        "active_tab": "even_run",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")
