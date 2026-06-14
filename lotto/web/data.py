@@ -247,6 +247,13 @@ _TRIPLE_RUN_KEYS = ["0", "1", "2"]
 # SPEC-LOTTO-078: 3연속 묶음 분포 캐시. invalidate_cache로 무효화.
 _triple_run_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-079: 끝자리(일의 자리) 합계 구간 분포 키. 6개 고정 버킷.
+# 한 회차 본번호 6개 끝자리 합(0~54)을 다음 6개 구간으로 분류하며 미관측은 zero-fill.
+_DIGIT_SUM_KEYS = ["0-9", "10-14", "15-19", "20-24", "25-29", "30+"]
+
+# SPEC-LOTTO-079: 끝자리 합계 구간 분포 캐시. invalidate_cache로 무효화.
+_digit_sum_dist_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -279,6 +286,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-076: 신규 추첨 데이터 적재 시 4의 배수 포함 개수 분포 캐시도 무효화한다.
     SPEC-LOTTO-077: 신규 추첨 데이터 적재 시 1자리 포함 개수 분포 캐시도 무효화한다.
     SPEC-LOTTO-078: 신규 추첨 데이터 적재 시 3연속 묶음 분포 캐시도 무효화한다.
+    SPEC-LOTTO-079: 신규 추첨 데이터 적재 시 끝자리 합계 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -310,6 +318,7 @@ def invalidate_cache() -> None:
     _mult4_cache.clear()
     _single_digit_cache.clear()
     _triple_run_cache.clear()
+    _digit_sum_dist_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -6108,4 +6117,100 @@ def get_triple_run_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         },
     }
     _triple_run_cache[cache_key] = result
+    return result
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-079 — 끝자리 합을 6개 고정 구간 버킷으로 분류
+# @MX:SPEC: SPEC-LOTTO-079 REQ-DSD-001
+def _digit_sum_bucket(s: int) -> str:
+    """끝자리 합 s를 6개 고정 구간 버킷 라벨로 변환한다 (SPEC-LOTTO-079).
+
+    경계: <=9→"0-9", <=14→"10-14", <=19→"15-19", <=24→"20-24",
+          <=29→"25-29", 그 외(>=30)→"30+".
+    """
+    if s <= 9:
+        return "0-9"
+    elif s <= 14:
+        return "10-14"
+    elif s <= 19:
+        return "15-19"
+    elif s <= 24:
+        return "20-24"
+    elif s <= 29:
+        return "25-29"
+    else:
+        return "30+"
+
+
+def get_digit_sum_dist_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개 끝자리 합계의 구간별 분포를 분석합니다 (SPEC-LOTTO-079).
+
+    각 회차의 본번호 6개(보너스 제외) 끝자리(n % 10) 합을 구한 뒤,
+    6개 고정 구간 버킷("0-9","10-14","15-19","20-24","25-29","30+")으로 분류한다.
+
+    정의:
+        - avg_digit_sum:    회차 평균 끝자리 합 (소수 2자리).
+        - most_common_range: 최빈 구간. 동률 시 _DIGIT_SUM_KEYS 정의 순서상
+                             앞선(=더 작은) 구간을 선택한다.
+        - high_digit_sum_pct: 끝자리 합이 25 이상인 회차 비율(%, 소수 2자리).
+        - digit_sum_distribution: 6개 고정 키를 항상 포함(미관측 0 채움).
+
+    SPEC-LOTTO-063의 get_last_digit_sum_stats(low/mid/high 3카테고리, 관측값 only)와는
+    출력 구조가 완전히 다른 별개 기능이다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               6개 키 전부 0, most_common_range="0-9" 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_digit_sum, most_common_range, high_digit_sum_pct,
+        digit_sum_distribution} 매핑. digit_sum_distribution 은 6개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _digit_sum_dist_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _DIGIT_SUM_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_digit_sum": 0.0,
+            "most_common_range": "0-9",
+            "high_digit_sum_pct": 0.0,
+            "digit_sum_distribution": dist,
+        }
+        _digit_sum_dist_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    digit_sums: list[int] = []
+    for draw in draws:
+        s = sum(n % 10 for n in draw.numbers())  # 본번호 6개 끝자리 합 (보너스 제외)
+        digit_sums.append(s)
+        dist[_digit_sum_bucket(s)]["count"] += 1
+
+    for k in _DIGIT_SUM_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    avg = round(sum(digit_sums) / total, 2)
+    # 동률 시 정의 순서상 앞선(=더 작은) 구간이 이기도록 _DIGIT_SUM_KEYS 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _DIGIT_SUM_KEYS)
+    most_common = next(k for k in _DIGIT_SUM_KEYS if dist[k]["count"] == max_cnt)
+    high = sum(1 for s in digit_sums if s >= 25)
+
+    result = {
+        "total_draws": total,
+        "avg_digit_sum": avg,
+        "most_common_range": most_common,
+        "high_digit_sum_pct": round(high / total * 100, 2),
+        "digit_sum_distribution": dist,
+    }
+    _digit_sum_dist_cache[cache_key] = result
     return result
