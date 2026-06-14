@@ -1,8 +1,8 @@
 ---
 id: SPEC-LOTTO-081
 title: 짝수 연속 포함 분포 분석
-status: Planned
-version: 0.1.0
+status: Completed
+version: 1.0.0
 created: 2026-06-15
 ---
 
