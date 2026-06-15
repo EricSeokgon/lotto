@@ -1055,6 +1055,22 @@ async def get_decade_diversity_stats_route() -> dict[str, Any]:
     return wd.get_decade_diversity_stats(wd.get_draws())
 
 
+@router.get("/stats/odd_run")
+async def get_odd_run_stats_route() -> dict[str, Any]:
+    """본번호 6개 홀수 연속 묶음(간격=2) 수(0~3)의 분포 통계를 반환합니다 (SPEC-LOTTO-083).
+
+    - 회차별 본번호 6개(보너스 제외) 중 홀수만 추출하여, 간격이 정확히 2인 연속
+      홀수 묶음(길이>=2)의 수를 산출하고, 4개 고정 키("0","1","2","3")로 분류한다.
+    - has_odd_run_pct(>=1 비율) / most_common_group_count(동률 시 작은 값)
+      / avg_odd_run_count(회차당 평균 묶음 수) / odd_run_distribution 을 제공한다.
+    - odd_run_distribution 은 4개 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-081(짝수 연속)의 홀수 대응이며, SPEC-060(홀짝 개수)·SPEC-069(연속 쌍,
+      간격1)와는 독립적인 별개 엔드포인트다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_odd_run_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")

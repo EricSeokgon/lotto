@@ -272,6 +272,13 @@ _even_run_cache: dict[str, Any] = {}
 # SPEC-LOTTO-082: 10단위 다양성 분포 캐시. invalidate_cache로 무효화.
 _decade_div_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-083: 홀수 연속 묶음(간격=2) 수 분포 키. 4개 고정.
+# 본번호 6개가 모두 홀수일 때 최대 묶음 수는 3개이므로 "0"~"3" 4개 키.
+_ODD_RUN_KEYS = ["0", "1", "2", "3"]
+
+# SPEC-LOTTO-083: 홀수 연속 포함 분포 캐시. invalidate_cache로 무효화.
+_odd_run_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -307,6 +314,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-079: 신규 추첨 데이터 적재 시 끝자리 합계 분포 캐시도 무효화한다.
     SPEC-LOTTO-081: 신규 추첨 데이터 적재 시 짝수 연속 포함 분포 캐시도 무효화한다.
     SPEC-LOTTO-082: 신규 추첨 데이터 적재 시 10단위 다양성 분포 캐시도 무효화한다.
+    SPEC-LOTTO-083: 신규 추첨 데이터 적재 시 홀수 연속 포함 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -342,6 +350,7 @@ def invalidate_cache() -> None:
     _max_gap_dist_cache.clear()
     _even_run_cache.clear()
     _decade_div_cache.clear()
+    _odd_run_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -6556,4 +6565,119 @@ def get_decade_diversity_stats(draws: list[DrawResult] | None) -> dict[str, Any]
         "decade_diversity_distribution": dist,
     }
     _decade_div_cache[cache_key] = result
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-083: 홀수 연속 포함 분포 분석 (odd consecutive run)
+# ---------------------------------------------------------------------------
+
+
+def _count_odd_runs(numbers: list[int]) -> int:
+    """본번호 중 간격이 정확히 2인 연속 홀수 묶음(길이>=2)의 수를 센다 (SPEC-LOTTO-083).
+
+    홀수만 추출해 정렬한 뒤, 인접 차이가 2인 구간(길이>=2)의 수를 산출한다.
+    예) [1,3,5,7,9,11] → {1,3,5,7,9,11} 1개, [1,3,9,11,...] → {1,3},{9,11} 2개.
+    간격이 4 이상인 홀수(예: 1,5)는 연속 홀수가 아니며, 단일 홀수(길이1)는 제외한다.
+    SPEC-081(짝수 연속)의 홀수 대응이며, 산출 묶음 수가 3을 넘으면 3으로 캡한다.
+
+    Args:
+        numbers: 한 회차 본번호 6개(보너스 제외). 정렬 여부 무관.
+
+    Returns:
+        간격 2 홀수 연속 묶음의 수(0~3).
+    """
+    odds = sorted(n for n in numbers if n % 2 == 1)
+    if len(odds) < 2:
+        return 0
+    groups = 0
+    run_len = 1
+    for i in range(1, len(odds)):
+        if odds[i] == odds[i - 1] + 2:
+            run_len += 1
+        else:
+            if run_len >= 2:
+                groups += 1
+            run_len = 1
+    if run_len >= 2:
+        groups += 1
+    return min(groups, 3)  # 3 이상은 3으로 캡
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-083 홀수 연속 포함 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-083
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_odd_run_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 홀수 연속 묶음(간격=2) 수의 분포를 분석합니다 (SPEC-LOTTO-083).
+
+    각 회차의 본번호 6개(보너스 제외) 중 홀수만 추출하여, 간격이 정확히 2인
+    연속 홀수 묶음(길이>=2)의 수를 산출한 뒤 4개 고정 키("0","1","2","3")로
+    분류한다. 6개 모두 홀수일 때 최대 묶음 수는 3개이며, 초과 시 3으로 캡한다.
+
+    정의:
+        - odd_run:                간격 2 홀수 연속 묶음(회차당 0~3개).
+        - has_odd_run_pct:        묶음>=1 회차 비율(%, 소수 2자리).
+        - most_common_group_count: 최빈 묶음 수. 동률 시 _ODD_RUN_KEYS
+                                   정의 순서상 앞선(=더 작은) 값을 선택한다.
+        - avg_odd_run_count:      회차당 평균 묶음 수(소수 2자리).
+        - odd_run_distribution:   4개 고정 키를 항상 포함(미관측 0 채움).
+
+    SPEC-081(짝수 연속)의 홀수 대응이며, SPEC-060(홀짝 개수)·SPEC-069(연속 쌍,
+    간격1)와는 출력 구조와 정의가 완전히 다른 별개 기능이다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               4개 키 전부 0, most_common_group_count=0 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, has_odd_run_pct, most_common_group_count,
+        avg_odd_run_count, odd_run_distribution} 매핑.
+        odd_run_distribution 은 4개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _odd_run_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _ODD_RUN_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "has_odd_run_pct": 0.0,
+            "most_common_group_count": 0,
+            "avg_odd_run_count": 0.0,
+            "odd_run_distribution": dist,
+        }
+        _odd_run_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    run_counts: list[int] = []
+    for draw in draws:
+        c = _count_odd_runs(draw.numbers())  # 본번호 6개 (보너스 제외)
+        run_counts.append(c)
+        dist[str(c)]["count"] += 1
+
+    for k in _ODD_RUN_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    has = sum(1 for c in run_counts if c >= 1)
+    # 동률 시 정의 순서상 앞선(=더 작은) 키가 이기도록 _ODD_RUN_KEYS 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _ODD_RUN_KEYS)
+    most_common = int(next(k for k in _ODD_RUN_KEYS if dist[k]["count"] == max_cnt))
+
+    result = {
+        "total_draws": total,
+        "has_odd_run_pct": round(has / total * 100, 2),
+        "most_common_group_count": most_common,
+        "avg_odd_run_count": round(sum(run_counts) / total, 2),
+        "odd_run_distribution": dist,
+    }
+    _odd_run_cache[cache_key] = result
     return result
