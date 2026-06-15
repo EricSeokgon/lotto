@@ -279,6 +279,13 @@ _ODD_RUN_KEYS = ["0", "1", "2", "3"]
 # SPEC-LOTTO-083: 홀수 연속 포함 분포 캐시. invalidate_cache로 무효화.
 _odd_run_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-084: 홀짝 전환 횟수 분포 키. 6개 고정.
+# 6개 번호는 인접 쌍 5개이므로 전환 횟수는 0~5 → "0"~"5" 6개 키.
+_PARITY_TRANS_KEYS = ["0", "1", "2", "3", "4", "5"]
+
+# SPEC-LOTTO-084: 홀짝 전환 횟수 분포 캐시. invalidate_cache로 무효화.
+_parity_trans_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -315,6 +322,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-081: 신규 추첨 데이터 적재 시 짝수 연속 포함 분포 캐시도 무효화한다.
     SPEC-LOTTO-082: 신규 추첨 데이터 적재 시 10단위 다양성 분포 캐시도 무효화한다.
     SPEC-LOTTO-083: 신규 추첨 데이터 적재 시 홀수 연속 포함 분포 캐시도 무효화한다.
+    SPEC-LOTTO-084: 신규 추첨 데이터 적재 시 홀짝 전환 횟수 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -351,6 +359,7 @@ def invalidate_cache() -> None:
     _even_run_cache.clear()
     _decade_div_cache.clear()
     _odd_run_cache.clear()
+    _parity_trans_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -6680,4 +6689,107 @@ def get_odd_run_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "odd_run_distribution": dist,
     }
     _odd_run_cache[cache_key] = result
+    return result
+
+
+def _count_parity_transitions(numbers: list[int]) -> int:
+    """본번호를 오름차순 정렬한 뒤 인접 쌍의 홀짝 전환 횟수를 센다 (SPEC-LOTTO-084).
+
+    정렬된 번호열에서 인접한 두 번호의 홀짝(n % 2)이 서로 다르면 전환 1회로
+    계산한다. 6개 번호는 인접 쌍 5개이므로 전환 횟수는 0~5 범위이다.
+    예) [1,2,3,4,5,6] → OEOEOE 완전 교차 → 5, [1,3,5,7,9,11] → 전부 홀수 → 0.
+
+    SPEC-060(홀짝 개수 비율)과는 다른 별개 지표로, 개수가 아니라 정렬된 번호열의
+    패리티 "전환 횟수"를 센다.
+
+    Args:
+        numbers: 한 회차 본번호 6개(보너스 제외). 정렬 여부 무관.
+
+    Returns:
+        홀짝 전환 횟수(0~5).
+    """
+    sorted_nums = sorted(numbers)
+    transitions = 0
+    for i in range(len(sorted_nums) - 1):
+        if (sorted_nums[i] % 2) != (sorted_nums[i + 1] % 2):
+            transitions += 1
+    return transitions
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-084 홀짝 전환 횟수 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-084
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_parity_transition_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 홀짝 전환 횟수(0~5)의 분포를 분석합니다 (SPEC-LOTTO-084).
+
+    각 회차의 본번호 6개(보너스 제외)를 오름차순 정렬한 뒤, 인접한 두 번호의
+    홀짝이 다른 횟수를 산출하여 6개 고정 키("0"~"5")로 분류한다.
+
+    정의:
+        - transitions:             정렬된 번호열의 홀짝 전환 횟수(회차당 0~5).
+        - avg_transitions:         회차당 평균 전환 횟수(소수 2자리).
+        - most_common_transitions: 최빈 전환 횟수. 동률 시 _PARITY_TRANS_KEYS
+                                   정의 순서상 앞선(=더 작은) 값을 선택한다.
+        - high_alternation_pct:    전환 횟수가 4 이상인 회차 비율(%, 소수 2자리).
+        - parity_transition_distribution: 6개 고정 키를 항상 포함(미관측 0 채움).
+
+    SPEC-060(홀짝 개수 비율)과는 출력 구조와 정의가 완전히 다른 별개 기능이다.
+    SPEC-060은 회차 내 홀수/짝수의 "개수"를 세지만, 본 기능은 정렬된 번호열에서
+    패리티가 "전환되는 횟수"를 센다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               6개 키 전부 0, most_common_transitions=0 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_transitions, most_common_transitions,
+        high_alternation_pct, parity_transition_distribution} 매핑.
+        parity_transition_distribution 은 6개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _parity_trans_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _PARITY_TRANS_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_transitions": 0.0,
+            "most_common_transitions": 0,
+            "high_alternation_pct": 0.0,
+            "parity_transition_distribution": dist,
+        }
+        _parity_trans_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    trans_counts: list[int] = []
+    for draw in draws:
+        c = _count_parity_transitions(draw.numbers())  # 본번호 6개 (보너스 제외)
+        trans_counts.append(c)
+        dist[str(c)]["count"] += 1
+
+    for k in _PARITY_TRANS_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    high = sum(1 for c in trans_counts if c >= 4)
+    # 동률 시 정의 순서상 앞선(=더 작은) 키가 이기도록 _PARITY_TRANS_KEYS 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _PARITY_TRANS_KEYS)
+    most_common = int(next(k for k in _PARITY_TRANS_KEYS if dist[k]["count"] == max_cnt))
+
+    result = {
+        "total_draws": total,
+        "avg_transitions": round(sum(trans_counts) / total, 2),
+        "most_common_transitions": most_common,
+        "high_alternation_pct": round(high / total * 100, 2),
+        "parity_transition_distribution": dist,
+    }
+    _parity_trans_cache[cache_key] = result
     return result

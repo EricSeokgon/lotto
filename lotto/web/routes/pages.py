@@ -1249,6 +1249,26 @@ async def stats_odd_run_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/parity-transition")
+async def stats_parity_transition_page(request: Request) -> TemplateResponse:
+    """홀짝 전환 횟수 분포 분석 페이지 (SPEC-LOTTO-084).
+
+    - 요약 카드: 분석 회차 / 평균 전환 횟수 / 최빈 전환 횟수 / 고빈도 교차(>=4) 비율
+    - 분포 테이블: 6개 고정 전환 횟수("0"~"5")의 count/pct
+    - 한 회차 본번호 6개(보너스 제외)를 정렬해 인접 쌍 홀짝 전환 횟수(0~5)를 집계한다.
+    - SPEC-060(홀짝 개수 비율)과는 정의·출력 구조가 다른 별개 집계.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_parity_transition_stats(wd.get_draws())
+    return _render(request, "parity_transition.html", {
+        "active_tab": "parity_transition",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")
