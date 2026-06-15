@@ -1421,6 +1421,26 @@ async def prime_neighbor_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/cluster-count")
+async def cluster_count_page(request: Request) -> TemplateResponse:
+    """번호 군집 수 분포 분석 페이지 (SPEC-LOTTO-092).
+
+    - 요약 카드: 총 회차 / 평균 군집 수 / 최빈 군집 수 / 군집 존재 비율(%)
+    - 분포 테이블: 4개 키("0"~"3")의 count/pct
+    - 정렬된 본번호 6개(보너스 제외)에서 간격 1인 연속 묶음(길이 2 이상) 개수로 분류.
+    - SPEC-069/062/078(연속 관련 지표)와는 출력 구조가 다른 별개 페이지.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_cluster_stats(wd.get_draws())
+    return _render(request, "cluster_count.html", {
+        "active_tab": "cluster_count",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

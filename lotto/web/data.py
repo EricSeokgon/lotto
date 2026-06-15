@@ -348,6 +348,12 @@ _PRIME_NEIGHBOR_SET = frozenset([
     22, 23, 24, 28, 29, 30, 31, 32, 36, 37, 38, 40, 41, 42, 43, 44,
 ])
 
+# SPEC-LOTTO-092: 군집 수 분포 캐시. invalidate_cache로 무효화.
+_cluster_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-092: 군집 수 4개 고정 키("0"~"3", "3"은 3개 이상; 정의 순서가 동률 시 우선순위).
+_CLUSTER_KEYS = ["0", "1", "2", "3"]
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -392,6 +398,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-089: 신규 추첨 데이터 적재 시 저·고 균형 조합 분포 캐시도 무효화한다.
     SPEC-LOTTO-090: 신규 추첨 데이터 적재 시 합계 일의 자리 분포 캐시도 무효화한다.
     SPEC-LOTTO-091: 신규 추첨 데이터 적재 시 소수 이웃 포함 개수 분포 캐시도 무효화한다.
+    SPEC-LOTTO-092: 신규 추첨 데이터 적재 시 군집 수 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -436,6 +443,7 @@ def invalidate_cache() -> None:
     _low_high_cache.clear()
     _sum_last_digit_cache.clear()
     _prime_neighbor_cache.clear()
+    _cluster_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -7561,4 +7569,106 @@ def get_prime_neighbor_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "prime_neighbor_distribution": dist,
     }
     _prime_neighbor_cache[cache_key] = result
+    return result
+
+
+def _count_clusters(numbers: list) -> int:
+    """본번호 리스트에서 간격이 1인 연속 정수 묶음(군집) 개수를 센다 (SPEC-LOTTO-092).
+
+    군집이란 정렬된 번호에서 인접 간격이 모두 1인 최대 연속 정수 묶음이며,
+    길이 2 이상이어야 인정한다(단일 고립 번호는 군집 아님). 결과는 0~3으로
+    캡(min(clusters, 3))한다.
+    """
+    sorted_nums = sorted(numbers)
+    clusters = 0
+    run_len = 1
+    for i in range(1, len(sorted_nums)):
+        if sorted_nums[i] == sorted_nums[i - 1] + 1:
+            run_len += 1
+        else:
+            if run_len >= 2:
+                clusters += 1
+            run_len = 1
+    if run_len >= 2:
+        clusters += 1
+    return min(clusters, 3)
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-092 군집 수(0~3) 분포 집계 공개 API
+# @MX:SPEC: SPEC-LOTTO-092
+# @MX:REASON: API/페이지 라우트 등 다수 호출자가 의존하는 분포 계약 — 4개 키 불변
+def get_cluster_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개 중 연속 정수 묶음(군집) 개수(0~3) 분포를 분석합니다 (SPEC-LOTTO-092).
+
+    각 회차 본번호 6개(보너스 제외)를 오름차순 정렬한 뒤, 간격이 1인 최대 연속
+    정수 묶음(길이 2 이상)을 군집으로 보고 그 개수를 센다. 군집 수는 0~3으로
+    캡(min(clusters, 3))하며 "0"~"3" 4개 키로 분류한다.
+
+    정의:
+        - avg_cluster_count: 회차 평균 군집 수 (소수 2자리).
+        - most_common_count: 최빈 군집 수 키. 동률 시 _CLUSTER_KEYS 정의 순서상
+                             가장 작은 키("0" < "1" < ...)를 선택한다.
+        - has_cluster_pct:   군집 수가 1 이상인 회차 비율(%, 소수 2자리).
+        - cluster_distribution: 군집 수 키 → {count, pct}. 4개 키를 항상 포함한다.
+
+    SPEC-069(연속 쌍 개수), SPEC-062(연속 패턴), SPEC-078(3연속 묶음)과는
+    정의·출력 구조가 다른 별개 지표다. 본 지표는 길이 2 이상 묶음의 개수를 센다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               avg_cluster_count=0.0, most_common_count="0", has_cluster_pct=0.0,
+               4개 키 전부 0의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_cluster_count, most_common_count, has_cluster_pct,
+        cluster_distribution} 매핑. distribution은 4개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _cluster_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _CLUSTER_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_cluster_count": 0.0,
+            "most_common_count": _CLUSTER_KEYS[0],
+            "has_cluster_pct": 0.0,
+            "cluster_distribution": dist,
+        }
+        _cluster_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    cluster_sum = 0
+    for draw in draws:
+        cnt = _count_clusters(draw.numbers())  # 본번호 6개 (보너스 제외)
+        cluster_sum += cnt
+        dist[str(cnt)]["count"] += 1
+
+    for k in _CLUSTER_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    # 동률 시 정의 순서상 앞선(=가장 작은) 키가 이기도록 _CLUSTER_KEYS 순서로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _CLUSTER_KEYS)
+    most_common = next(k for k in _CLUSTER_KEYS if dist[k]["count"] == max_cnt)
+
+    # 군집이 1개 이상 존재한 회차 비율("0" 제외).
+    has_cluster_count = total - dist["0"]["count"]
+
+    result = {
+        "total_draws": total,
+        "avg_cluster_count": round(cluster_sum / total, 2),
+        "most_common_count": most_common,
+        "has_cluster_pct": round(has_cluster_count / total * 100, 2),
+        "cluster_distribution": dist,
+    }
+    _cluster_cache[cache_key] = result
     return result

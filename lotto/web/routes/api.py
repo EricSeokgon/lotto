@@ -1196,6 +1196,20 @@ async def get_prime_neighbor_stats_endpoint() -> dict[str, Any]:
     return wd.get_prime_neighbor_stats(wd.get_draws())
 
 
+@router.get("/stats/cluster_count")
+async def get_cluster_stats_endpoint() -> dict[str, Any]:
+    """본번호 6개의 연속 정수 묶음(군집) 개수(0~3) 분포 통계를 반환합니다 (SPEC-LOTTO-092).
+
+    - 키: "0"~"3" (간격 1인 연속 묶음(길이 2 이상)의 개수, "3"은 3개 이상).
+    - avg_cluster_count / most_common_count(동률 시 가장 작은 키)
+      / has_cluster_pct(군집 1개 이상 비율) / cluster_distribution 을 제공한다.
+    - cluster_distribution 은 4개 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-069/062/078(연속 관련 지표)와는 출력 구조가 다른 별개 엔드포인트.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_cluster_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
