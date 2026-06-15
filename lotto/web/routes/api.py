@@ -1147,6 +1147,22 @@ async def get_gap_variance_stats_endpoint() -> dict[str, Any]:
     return wd.get_gap_variance_stats(wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-089 — 저·고 번호 균형 조합 분포 통계 API
+# @MX:SPEC: SPEC-LOTTO-089
+@router.get("/stats/low_high")
+async def get_low_high_stats_endpoint() -> dict[str, Any]:
+    """본번호 6개의 저(1~22)·고(23~45) 개수 조합 분포 통계를 반환합니다 (SPEC-LOTTO-089).
+
+    - 조합 키: "0저6고"~"6저0고" (저 개수 0~6 기준, high=6-low 파생).
+    - avg_low_count / most_common_combo(동률 시 앞선 조합) / balanced_pct("3저3고" 비율)
+      / low_high_distribution 을 제공한다.
+    - low_high_distribution 은 7개 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-061(고저 비율, 정수 키 분포)과는 출력 구조가 다른 별개 엔드포인트다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_low_high_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")

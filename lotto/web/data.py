@@ -312,6 +312,19 @@ _gap_var_cache: dict[str, Any] = {}
 # SPEC-LOTTO-088: 간격 분산 구간 5개 고정 키(정의 순서가 동률 시 우선순위).
 _GAP_VAR_KEYS = ["0-10", "10-30", "30-60", "60-100", "100+"]
 
+# SPEC-LOTTO-089: 저·고 번호 균형 조합 분포 캐시. invalidate_cache로 무효화.
+_low_high_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-089: 저/고 개수 조합 7개 고정 키(정의 순서가 동률 시 우선순위).
+_LOW_HIGH_KEYS = ["0저6고", "1저5고", "2저4고", "3저3고", "4저2고", "5저1고", "6저0고"]
+
+# SPEC-LOTTO-089: 저(low) 상한 — n <= 22 저, n >= 23 고.
+_LOW_HIGH_COMBO_BOUNDARY = 22
+
+# SPEC-LOTTO-089: 회차당 본번호 개수 / 균형(3저3고) 기준.
+_LOW_HIGH_COMBO_PICK = 6
+_LOW_HIGH_BALANCED_KEY = "3저3고"
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -353,6 +366,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-086: 신규 추첨 데이터 적재 시 합계 구간 세분화 분포 캐시도 무효화한다.
     SPEC-LOTTO-087: 신규 추첨 데이터 적재 시 중앙값 구간 분포 캐시도 무효화한다.
     SPEC-LOTTO-088: 신규 추첨 데이터 적재 시 간격 분산 구간 분포 캐시도 무효화한다.
+    SPEC-LOTTO-089: 신규 추첨 데이터 적재 시 저·고 균형 조합 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -394,6 +408,7 @@ def invalidate_cache() -> None:
     _sum_range_cache.clear()
     _median_range_cache.clear()
     _gap_var_cache.clear()
+    _low_high_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -7257,4 +7272,100 @@ def get_gap_variance_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "gap_variance_distribution": dist,
     }
     _gap_var_cache[cache_key] = result
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-089: 저·고 번호 균형 분포 분석 (low/high balance combo analysis)
+# ---------------------------------------------------------------------------
+
+
+def _low_high_combo(numbers: list[int]) -> str:
+    """본번호 리스트의 저(n<=22)/고(n>=23) 개수 조합 키를 반환합니다 (SPEC-LOTTO-089).
+
+    high_count는 6 - low_count로 파생하여 합 불변식을 보장한다.
+    예) [1,2,3,4,5,6] → "6저0고" / [1,22,23,24,25,45] → "2저4고".
+    """
+    low_count = sum(1 for n in numbers if n <= _LOW_HIGH_COMBO_BOUNDARY)
+    high_count = _LOW_HIGH_COMBO_PICK - low_count
+    return f"{low_count}저{high_count}고"
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-089 저·고 균형 조합 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-089
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수 (fan_in >= 3)
+def get_low_high_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 저·고 번호 개수 조합("{low}저{high}고") 분포를 분석합니다 (SPEC-LOTTO-089).
+
+    각 회차 본번호 6개(보너스 제외)에서 저(n<=22) 개수(low_count, 0~6)를 세고
+    high_count = 6 - low_count로 파생하여 조합 문자열로 분류한다. 전체 회차에 걸친
+    평균 저번호 수/조합 분포/최빈 조합/균형(3저3고) 비율을 집계한다.
+
+    분류:
+        - 저(low):  1~22 (n <= 22, 경계 22는 저).
+        - 고(high): 23~45 (n >= 23, 경계 23은 고).
+
+    정의:
+        - avg_low_count:      회차 평균 저번호 수 (소수 2자리).
+        - most_common_combo:  최빈 조합. 동률 시 _LOW_HIGH_KEYS 정의 순서상
+                              앞선(=더 작은) 조합을 선택한다.
+        - balanced_pct:       "3저3고"(균형) 회차 비율(%, 소수 2자리).
+        - low_high_distribution: 조합 키 → {count, pct}. 7개 키를 항상 포함한다.
+
+    SPEC-061(고저 비율, 정수 키 분포)과는 출력 구조가 다른 별개 지표다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               avg_low_count=0.0, most_common_combo="0저6고", balanced_pct=0.0,
+               7개 키 전부 0의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_low_count, most_common_combo, balanced_pct,
+        low_high_distribution} 매핑. low_high_distribution은 7개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _low_high_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _LOW_HIGH_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_low_count": 0.0,
+            "most_common_combo": _LOW_HIGH_KEYS[0],
+            "balanced_pct": 0.0,
+            "low_high_distribution": dist,
+        }
+        _low_high_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    low_sum = 0
+    for draw in draws:
+        nums = list(draw.numbers())  # 본번호 6개 (보너스 제외)
+        low_sum += sum(1 for n in nums if n <= _LOW_HIGH_COMBO_BOUNDARY)
+        dist[_low_high_combo(nums)]["count"] += 1
+
+    for k in _LOW_HIGH_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    # 동률 시 정의 순서상 앞선(=더 작은) 조합이 이기도록 _LOW_HIGH_KEYS 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _LOW_HIGH_KEYS)
+    most_common = next(k for k in _LOW_HIGH_KEYS if dist[k]["count"] == max_cnt)
+
+    result = {
+        "total_draws": total,
+        "avg_low_count": round(low_sum / total, 2),
+        "most_common_combo": most_common,
+        "balanced_pct": dist[_LOW_HIGH_BALANCED_KEY]["pct"],
+        "low_high_distribution": dist,
+    }
+    _low_high_cache[cache_key] = result
     return result

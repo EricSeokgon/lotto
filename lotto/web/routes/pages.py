@@ -1355,6 +1355,28 @@ async def gap_variance_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-089 — 저·고 번호 균형 조합 분포 페이지
+# @MX:SPEC: SPEC-LOTTO-089
+@router.get("/stats/low-high")
+async def low_high_page(request: Request) -> TemplateResponse:
+    """저·고 번호 균형 조합 분포 분석 페이지 (SPEC-LOTTO-089).
+
+    - 요약 카드: 총 회차 / 평균 저번호 수 / 최빈 조합 / 균형(3저3고) 비율(%)
+    - 분포 테이블: 7개 조합("0저6고"~"6저0고")의 count/pct
+    - 한 회차 본번호 6개(보너스 제외)를 저(1~22)/고(23~45)로 나눈 개수 조합.
+    - SPEC-061(고저 비율, 정수 키 분포)과는 출력 구조가 다른 별개 페이지.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_low_high_stats(wd.get_draws())
+    return _render(request, "low_high.html", {
+        "active_tab": "low_high_combo",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")
