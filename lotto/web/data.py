@@ -286,6 +286,13 @@ _PARITY_TRANS_KEYS = ["0", "1", "2", "3", "4", "5"]
 # SPEC-LOTTO-084: 홀짝 전환 횟수 분포 캐시. invalidate_cache로 무효화.
 _parity_trans_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-085: 일의 자리 중복 분포 키. 4개 고정.
+# 6개 번호와 10개 일의 자리상 2개 이상 공유 그룹 수의 현실적 최댓값은 3 → "0"~"3".
+_LAST_DIGIT_PAIR_KEYS = ["0", "1", "2", "3"]
+
+# SPEC-LOTTO-085: 일의 자리 중복 분포 캐시. invalidate_cache로 무효화.
+_last_digit_pair_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -323,6 +330,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-082: 신규 추첨 데이터 적재 시 10단위 다양성 분포 캐시도 무효화한다.
     SPEC-LOTTO-083: 신규 추첨 데이터 적재 시 홀수 연속 포함 분포 캐시도 무효화한다.
     SPEC-LOTTO-084: 신규 추첨 데이터 적재 시 홀짝 전환 횟수 분포 캐시도 무효화한다.
+    SPEC-LOTTO-085: 신규 추첨 데이터 적재 시 일의 자리 중복 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -360,6 +368,7 @@ def invalidate_cache() -> None:
     _decade_div_cache.clear()
     _odd_run_cache.clear()
     _parity_trans_cache.clear()
+    _last_digit_pair_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -6792,4 +6801,107 @@ def get_parity_transition_stats(draws: list[DrawResult] | None) -> dict[str, Any
         "parity_transition_distribution": dist,
     }
     _parity_trans_cache[cache_key] = result
+    return result
+
+
+def _count_last_digit_pairs(numbers: list[int]) -> int:
+    """본번호의 일의 자리를 그룹화하여 2개 이상 공유 그룹 수를 센다 (SPEC-LOTTO-085).
+
+    각 번호의 일의 자리(n % 10)별로 묶은 뒤, 같은 일의 자리를 2개 이상 가진
+    서로 다른 일의 자리 값의 개수를 반환한다. "쌍의 개수"가 아니라 "2개 이상을
+    가진 그룹의 수"이며, 3을 초과하면 3으로 상한 처리한다.
+    예) [1,11,2,12,3,13] → 일의 자리 1·2·3 각 2개 → 3, [1,2,3,4,5,6] → 0.
+
+    SPEC-063/079(끝자리 합계 분포), SPEC-055(끝자리별 누적 빈도)와는 다른 별개
+    지표로, 합계나 빈도가 아니라 같은 일의 자리를 공유하는 그룹의 수를 센다.
+
+    Args:
+        numbers: 한 회차 본번호(보너스 제외). 정렬 여부 무관.
+
+    Returns:
+        2개 이상 공유 일의 자리 그룹 수(0~3, 3 초과는 3으로 상한).
+    """
+    digit_groups: dict[int, int] = {}
+    for n in numbers:
+        d = n % 10
+        digit_groups[d] = digit_groups.get(d, 0) + 1
+    return min(sum(1 for cnt in digit_groups.values() if cnt >= 2), 3)
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-085 일의 자리 중복 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-085
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_last_digit_pair_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 일의 자리 중복 그룹 수(0~3)의 분포를 분석합니다 (SPEC-LOTTO-085).
+
+    각 회차의 본번호 6개(보너스 제외)를 일의 자리(n % 10)별로 묶어, 같은 일의
+    자리를 2개 이상 가진 그룹의 수를 산출하고 4개 고정 키("0"~"3")로 분류한다.
+
+    정의:
+        - pair_count:             회차당 2개 이상 공유 일의 자리 그룹 수(0~3).
+        - avg_pair_count:         회차당 평균 그룹 수(소수 2자리).
+        - most_common_pair_count: 최빈 그룹 수. 동률 시 _LAST_DIGIT_PAIR_KEYS
+                                  정의 순서상 앞선(=더 작은) 값을 선택한다.
+        - has_pair_pct:           그룹 수가 1 이상인 회차 비율(%, 소수 2자리).
+        - last_digit_pair_distribution: 4개 고정 키를 항상 포함(미관측 0 채움).
+
+    SPEC-063/079(끝자리 합계 분포), SPEC-055(끝자리별 누적 빈도)와는 출력 구조와
+    정의가 완전히 다른 별개 기능이다. 본 기능은 같은 일의 자리를 공유하는 그룹의
+    수를 센다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               4개 키 전부 0, most_common_pair_count=0 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, has_pair_pct, most_common_pair_count, avg_pair_count,
+        last_digit_pair_distribution} 매핑.
+        last_digit_pair_distribution 은 4개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _last_digit_pair_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _LAST_DIGIT_PAIR_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "has_pair_pct": 0.0,
+            "most_common_pair_count": 0,
+            "avg_pair_count": 0.0,
+            "last_digit_pair_distribution": dist,
+        }
+        _last_digit_pair_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    pair_counts: list[int] = []
+    for draw in draws:
+        c = _count_last_digit_pairs(draw.numbers())  # 본번호 6개 (보너스 제외)
+        pair_counts.append(c)
+        dist[str(c)]["count"] += 1
+
+    for k in _LAST_DIGIT_PAIR_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    has_pair = sum(1 for c in pair_counts if c >= 1)
+    # 동률 시 정의 순서상 앞선(=더 작은) 키가 이기도록 _LAST_DIGIT_PAIR_KEYS 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _LAST_DIGIT_PAIR_KEYS)
+    most_common = int(next(k for k in _LAST_DIGIT_PAIR_KEYS if dist[k]["count"] == max_cnt))
+
+    result = {
+        "total_draws": total,
+        "has_pair_pct": round(has_pair / total * 100, 2),
+        "most_common_pair_count": most_common,
+        "avg_pair_count": round(sum(pair_counts) / total, 2),
+        "last_digit_pair_distribution": dist,
+    }
+    _last_digit_pair_cache[cache_key] = result
     return result

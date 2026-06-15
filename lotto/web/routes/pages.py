@@ -1269,6 +1269,26 @@ async def stats_parity_transition_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/last-digit-pair")
+async def stats_last_digit_pair_page(request: Request) -> TemplateResponse:
+    """일의 자리 중복 분포 분석 페이지 (SPEC-LOTTO-085).
+
+    - 요약 카드: 분석 회차 / 중복쌍 포함 비율 / 최빈 그룹 수 / 평균 그룹 수
+    - 분포 테이블: 4개 고정 그룹 수("0"~"3")의 count/pct
+    - 한 회차 본번호 6개(보너스 제외)를 일의 자리별로 묶어 2개 이상 공유 그룹 수(0~3)를 집계한다.
+    - SPEC-063/079(끝자리 합계 분포)와는 정의·출력 구조가 다른 별개 집계.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_last_digit_pair_stats(wd.get_draws())
+    return _render(request, "last_digit_pair.html", {
+        "active_tab": "last_digit_pair",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")
