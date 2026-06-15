@@ -6,6 +6,17 @@
 
 ---
 
+## [1.45.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-084: 홀짝 전환 횟수 분포 분석
+  - 정렬된 번호 인접 쌍 홀↔짝 전환 횟수(0~5) 분포 통계
+  - GET /api/stats/parity_transition API 엔드포인트
+  - GET /stats/parity-transition 웹 페이지
+  - 테스트 30개 추가 (2087 → 2117)
+
+---
+
 ## [1.44.0] - 2026-06-15
 
 ### Added
