@@ -325,6 +325,15 @@ _LOW_HIGH_COMBO_BOUNDARY = 22
 _LOW_HIGH_COMBO_PICK = 6
 _LOW_HIGH_BALANCED_KEY = "3저3고"
 
+# SPEC-LOTTO-090: 합계 일의 자리 분포 캐시. invalidate_cache로 무효화.
+_sum_last_digit_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-090: 합계 일의 자리 10개 고정 키("0"~"9", 정의 순서가 동률 시 우선순위).
+_SUM_LAST_DIGIT_KEYS = [str(d) for d in range(10)]
+
+# SPEC-LOTTO-090: 짝수 끝자리 집합(even_digit_pct 산출 기준).
+_SUM_LAST_DIGIT_EVEN_KEYS = ["0", "2", "4", "6", "8"]
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -409,6 +418,7 @@ def invalidate_cache() -> None:
     _median_range_cache.clear()
     _gap_var_cache.clear()
     _low_high_cache.clear()
+    _sum_last_digit_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -7368,4 +7378,83 @@ def get_low_high_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "low_high_distribution": dist,
     }
     _low_high_cache[cache_key] = result
+    return result
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-090 합계 일의 자리 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-090
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수 (fan_in >= 3)
+def get_sum_last_digit_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개 합계의 일의 자리(0~9) 분포를 분석합니다 (SPEC-LOTTO-090).
+
+    각 회차 본번호 6개(보너스 제외)의 합계 total_sum을 구하고 그 일의 자리
+    last_digit = total_sum % 10 을 기준으로 회차를 분류한다. 전체 회차에 걸친
+    평균 합계 / 분포 / 최빈 끝자리 / 짝수 끝자리 비율을 집계한다.
+
+    정의:
+        - avg_sum:           회차 평균 합계 (소수 2자리).
+        - most_common_digit: 최빈 끝자리. 동률 시 _SUM_LAST_DIGIT_KEYS 정의 순서상
+                             가장 작은 키("0" < "1" < ...)를 선택한다.
+        - even_digit_pct:    끝자리가 짝수(0,2,4,6,8)인 회차 비율(%, 소수 2자리).
+        - sum_last_digit_distribution: 끝자리 키 → {count, pct}. 10개 키를 항상 포함한다.
+
+    SPEC-063(개별 번호 끝자리 합, low/mid/high 3구간 관측값)·SPEC-079(끝자리합 6키)와는
+    정의·출력 구조가 다른 별개 지표다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0, avg_sum=0.0,
+               most_common_digit="0", even_digit_pct=0.0, 10개 키 전부 0의 일관된
+               빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_sum, most_common_digit, even_digit_pct,
+        sum_last_digit_distribution} 매핑. distribution은 10개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _sum_last_digit_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _SUM_LAST_DIGIT_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_sum": 0.0,
+            "most_common_digit": _SUM_LAST_DIGIT_KEYS[0],
+            "even_digit_pct": 0.0,
+            "sum_last_digit_distribution": dist,
+        }
+        _sum_last_digit_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    total_sum_all = 0
+    for draw in draws:
+        s = sum(draw.numbers())  # 본번호 6개 합 (보너스 제외)
+        total_sum_all += s
+        dist[str(s % 10)]["count"] += 1
+
+    for k in _SUM_LAST_DIGIT_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    # 동률 시 정의 순서상 앞선(=가장 작은) 키가 이기도록 _SUM_LAST_DIGIT_KEYS 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _SUM_LAST_DIGIT_KEYS)
+    most_common = next(k for k in _SUM_LAST_DIGIT_KEYS if dist[k]["count"] == max_cnt)
+
+    even_count = sum(dist[k]["count"] for k in _SUM_LAST_DIGIT_EVEN_KEYS)
+
+    result = {
+        "total_draws": total,
+        "avg_sum": round(total_sum_all / total, 2),
+        "most_common_digit": most_common,
+        "even_digit_pct": round(even_count / total * 100, 2),
+        "sum_last_digit_distribution": dist,
+    }
+    _sum_last_digit_cache[cache_key] = result
     return result
