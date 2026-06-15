@@ -306,6 +306,12 @@ _median_range_cache: dict[str, Any] = {}
 # SPEC-LOTTO-087: 중앙값 구간 5개 고정 키(정의 순서가 동률 시 우선순위).
 _MEDIAN_RANGE_KEYS = ["1-9", "10-19", "20-29", "30-39", "40-45"]
 
+# SPEC-LOTTO-088: 번호 간격 분산(균등도) 구간 분포 캐시. invalidate_cache로 무효화.
+_gap_var_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-088: 간격 분산 구간 5개 고정 키(정의 순서가 동률 시 우선순위).
+_GAP_VAR_KEYS = ["0-10", "10-30", "30-60", "60-100", "100+"]
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -346,6 +352,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-085: 신규 추첨 데이터 적재 시 일의 자리 중복 분포 캐시도 무효화한다.
     SPEC-LOTTO-086: 신규 추첨 데이터 적재 시 합계 구간 세분화 분포 캐시도 무효화한다.
     SPEC-LOTTO-087: 신규 추첨 데이터 적재 시 중앙값 구간 분포 캐시도 무효화한다.
+    SPEC-LOTTO-088: 신규 추첨 데이터 적재 시 간격 분산 구간 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -386,6 +393,7 @@ def invalidate_cache() -> None:
     _last_digit_pair_cache.clear()
     _sum_range_cache.clear()
     _median_range_cache.clear()
+    _gap_var_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -7121,4 +7129,132 @@ def get_median_range_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "median_range_distribution": dist,
     }
     _median_range_cache[cache_key] = result
+    return result
+
+
+def _compute_gap_variance(numbers: list[int]) -> float:
+    """정렬된 6개 번호의 인접 간격 5개에 대한 모분산을 산출합니다 (SPEC-LOTTO-088).
+
+    간격은 정렬된 [a,b,c,d,e,f]에서 [b-a, c-b, d-c, e-d, f-e] 5개이며,
+    모분산 = sum((g - mean)**2) / 5, mean = sum(gaps)/5 로 계산한다(표본분산 아님).
+
+    Args:
+        numbers: 회차 본번호 6개(보너스 제외).
+
+    Returns:
+        5개 간격의 모분산(float).
+    """
+    sorted_nums = sorted(numbers)
+    gaps = [sorted_nums[i + 1] - sorted_nums[i] for i in range(5)]
+    mean = sum(gaps) / 5
+    return sum((g - mean) ** 2 for g in gaps) / 5
+
+
+def _gap_variance_bucket_from_variance(variance: float) -> str:
+    """간격 분산값이 속하는 5단계 구간 키를 반환합니다 (SPEC-LOTTO-088).
+
+    경계는 하위 구간의 상한 미만으로 판정한다(예: 10.0 → "10-30", 100.0 → "100+").
+
+    Args:
+        variance: 간격 모분산값.
+
+    Returns:
+        "0-10","10-30","30-60","60-100","100+" 5개 키 중 해당 구간.
+    """
+    if variance < 10:
+        return "0-10"
+    if variance < 30:
+        return "10-30"
+    if variance < 60:
+        return "30-60"
+    if variance < 100:
+        return "60-100"
+    return "100+"
+
+
+def _gap_variance_bucket(numbers: list[int]) -> str:
+    """본번호 6개의 간격 분산이 속하는 5단계 구간 키를 반환합니다 (SPEC-LOTTO-088).
+
+    Args:
+        numbers: 회차 본번호 6개(보너스 제외).
+
+    Returns:
+        "0-10","10-30","30-60","60-100","100+" 5개 키 중 해당 구간.
+    """
+    return _gap_variance_bucket_from_variance(_compute_gap_variance(numbers))
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-088 — 간격 분산 구간 분포 집계 (API/페이지 라우트가 호출)
+# @MX:SPEC: SPEC-LOTTO-088
+# @MX:REASON: API 엔드포인트·페이지 라우트·테스트에서 호출되는 공개 통계 진입점(fan_in>=3)
+def get_gap_variance_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 간격 분산(균등도)이 속하는 5개 구간 분포를 분석합니다 (SPEC-LOTTO-088).
+
+    각 회차 본번호 6개(보너스 제외)를 정렬한 [a,b,c,d,e,f]의 인접 간격 5개
+    [b-a,c-b,d-c,e-d,f-e]에 대한 모분산을 산출한 뒤, 전체 회차를
+    "0-10"(<10),"10-30"(<30),"30-60"(<60),"60-100"(<100),"100+"(>=100)
+    5개 고정 키로 분류한다. 분산이 작을수록 번호가 등간격에 가깝다(균등 분포).
+
+    정의:
+        - avg_variance:        회차 간격 분산 평균(소수 2자리). 데이터 없으면 0.0.
+        - most_common_range:   count 최대 구간. 동률 시 _GAP_VAR_KEYS 정의 순서상
+                               앞선(=더 작은) 구간을 선택한다. 데이터 없으면 "0-10".
+        - uniform_gap_pct:     분산 < 10("0-10", 균등 간격) 회차 비율(%, 소수 2자리).
+
+    SPEC-056(간격 패턴 min/max)·SPEC-079(최대 간격 분포)와는 산출 대상이 다른 별개 지표다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               5개 키 전부 0, most_common_range="0-10"의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_variance, most_common_range, uniform_gap_pct,
+        gap_variance_distribution} 매핑. gap_variance_distribution은 5개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _gap_var_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _GAP_VAR_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_variance": 0.0,
+            "most_common_range": "0-10",
+            "uniform_gap_pct": 0.0,
+            "gap_variance_distribution": dist,
+        }
+        _gap_var_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    variances: list[float] = []
+    for draw in draws:
+        nums = list(draw.numbers())  # 본번호 6개 (보너스 제외)
+        variance = _compute_gap_variance(nums)
+        variances.append(variance)
+        dist[_gap_variance_bucket_from_variance(variance)]["count"] += 1
+
+    for k in _GAP_VAR_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    # 동률 시 정의 순서상 앞선(=더 작은) 구간이 이기도록 _GAP_VAR_KEYS 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _GAP_VAR_KEYS)
+    most_common = next(k for k in _GAP_VAR_KEYS if dist[k]["count"] == max_cnt)
+
+    result = {
+        "total_draws": total,
+        "avg_variance": round(sum(variances) / total, 2),
+        "most_common_range": most_common,
+        "uniform_gap_pct": dist["0-10"]["pct"],
+        "gap_variance_distribution": dist,
+    }
+    _gap_var_cache[cache_key] = result
     return result

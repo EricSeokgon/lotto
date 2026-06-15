@@ -1333,6 +1333,28 @@ async def median_range_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-088 — 번호 간격 분산(균등도) 구간 분포 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-088
+@router.get("/stats/gap-variance")
+async def gap_variance_page(request: Request) -> TemplateResponse:
+    """번호 간격 분산 구간 분포 분석 페이지 (SPEC-LOTTO-088).
+
+    - 요약 카드: 총 회차 / 평균 분산 / 최빈 구간 / 균등 간격(분산<10) 비율(%)
+    - 분포 테이블: 5개 구간("0-10"~"100+")의 count/pct
+    - 한 회차 본번호 6개(보너스 제외)를 정렬한 인접 간격 5개의 모분산(균등도) 구간.
+    - SPEC-056(간격 패턴)·SPEC-079(최대 간격 분포)와는 산출 대상이 다른 별개 페이지.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_gap_variance_stats(wd.get_draws())
+    return _render(request, "gap_variance.html", {
+        "active_tab": "gap_variance",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")
