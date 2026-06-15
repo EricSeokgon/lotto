@@ -6,6 +6,17 @@
 
 ---
 
+## [1.43.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-082: 10단위 다양성 분포 분석
+  - 6개 번호가 커버하는 10단위 그룹 수(1~5개) 분포 통계
+  - GET /api/stats/decade_diversity API 엔드포인트
+  - GET /stats/decade-diversity 웹 페이지
+  - 테스트 33개 추가 (2019 → 2052)
+
+---
+
 ## [1.42.0] - 2026-06-15
 
 ### Added
