@@ -293,6 +293,13 @@ _LAST_DIGIT_PAIR_KEYS = ["0", "1", "2", "3"]
 # SPEC-LOTTO-085: 일의 자리 중복 분포 캐시. invalidate_cache로 무효화.
 _last_digit_pair_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-086: 번호 합계 10단위 세분화 구간 키. 6개 고정(비균등).
+# 중앙 구간(101-160)을 130/131에서 분할하여 정상 분포 중심을 포착한다.
+_SUM_RANGE_KEYS = ["21-60", "61-100", "101-130", "131-160", "161-200", "201-255"]
+
+# SPEC-LOTTO-086: 합계 구간 세분화 분포 캐시. invalidate_cache로 무효화.
+_sum_range_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -331,6 +338,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-083: 신규 추첨 데이터 적재 시 홀수 연속 포함 분포 캐시도 무효화한다.
     SPEC-LOTTO-084: 신규 추첨 데이터 적재 시 홀짝 전환 횟수 분포 캐시도 무효화한다.
     SPEC-LOTTO-085: 신규 추첨 데이터 적재 시 일의 자리 중복 분포 캐시도 무효화한다.
+    SPEC-LOTTO-086: 신규 추첨 데이터 적재 시 합계 구간 세분화 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -369,6 +377,7 @@ def invalidate_cache() -> None:
     _odd_run_cache.clear()
     _parity_trans_cache.clear()
     _last_digit_pair_cache.clear()
+    _sum_range_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -6904,4 +6913,105 @@ def get_last_digit_pair_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "last_digit_pair_distribution": dist,
     }
     _last_digit_pair_cache[cache_key] = result
+    return result
+
+
+# ─── SPEC-LOTTO-086: 번호 합계 구간 세분화 분포 분석 ──────────────────────────
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-086 — 합계 비균등 10단위 세분화 버킷 분류
+# @MX:SPEC: SPEC-LOTTO-086
+def _sum_range_bucket(s: int) -> str:
+    """본번호 6개 합계 s를 6개 비균등 구간 중 하나로 분류한다 (SPEC-LOTTO-086).
+
+    중앙 구간(101-160)은 130/131에서 분할하여 정상 분포 중심을 포착한다.
+    합계 가능 범위는 21~255이지만, 경계 밖 값도 가장 가까운 끝 구간으로 흡수한다.
+    """
+    if s <= 60:
+        return "21-60"
+    elif s <= 100:
+        return "61-100"
+    elif s <= 130:
+        return "101-130"
+    elif s <= 160:
+        return "131-160"
+    elif s <= 200:
+        return "161-200"
+    else:
+        return "201-255"
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-086 합계 구간 세분화 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-086
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_sum_range_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개 합계를 비균등 10단위 세분화 6구간으로 분류해 분석한다 (SPEC-LOTTO-086).
+
+    각 회차 본번호 6개(보너스 제외)의 합계를 구간("21-60","61-100","101-130",
+    "131-160","161-200","201-255")으로 분류한다. 중앙 구간을 130/131에서 분할해
+    정상 분포 중심을 포착한다.
+
+    정의:
+        - avg_sum:           회차 합계 평균(소수 2자리). 데이터 없으면 0.0.
+        - most_common_range: count 최대 구간. 동률 시 _SUM_RANGE_KEYS 정의 순서상
+                             앞선(=더 작은) 구간을 선택한다. 데이터 없으면 "21-60".
+        - middle_range_pct:  "101-130"+"131-160" 합산 비율(%, 소수 2자리).
+
+    SPEC-049(sum_range_analysis, 폭 20 버킷 + 공통 영역)와는 버킷 정의·출력 구조가
+    완전히 다른 별개 지표다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               6개 키 전부 0, most_common_range="21-60"의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_sum, most_common_range, middle_range_pct,
+        sum_range_distribution} 매핑. sum_range_distribution은 6개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _sum_range_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _SUM_RANGE_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_sum": 0.0,
+            "most_common_range": "21-60",
+            "middle_range_pct": 0.0,
+            "sum_range_distribution": dist,
+        }
+        _sum_range_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    sums: list[int] = []
+    for draw in draws:
+        s = sum(draw.numbers())  # 본번호 6개 (보너스 제외)
+        sums.append(s)
+        dist[_sum_range_bucket(s)]["count"] += 1
+
+    for k in _SUM_RANGE_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    # 동률 시 정의 순서상 앞선(=더 작은) 구간이 이기도록 _SUM_RANGE_KEYS 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _SUM_RANGE_KEYS)
+    most_common = next(k for k in _SUM_RANGE_KEYS if dist[k]["count"] == max_cnt)
+    middle_cnt = dist["101-130"]["count"] + dist["131-160"]["count"]
+
+    result = {
+        "total_draws": total,
+        "avg_sum": round(sum(sums) / total, 2),
+        "most_common_range": most_common,
+        "middle_range_pct": round(middle_cnt / total * 100, 2),
+        "sum_range_distribution": dist,
+    }
+    _sum_range_cache[cache_key] = result
     return result

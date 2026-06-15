@@ -1101,6 +1101,20 @@ async def get_last_digit_pair_stats_route() -> dict[str, Any]:
     return wd.get_last_digit_pair_stats(wd.get_draws())
 
 
+@router.get("/stats/sum_range")
+async def get_sum_range_stats_route() -> dict[str, Any]:
+    """본번호 6개 합계의 10단위 세분화 6구간 분포 통계를 반환합니다 (SPEC-LOTTO-086).
+
+    - 구간: "21-60","61-100","101-130","131-160","161-200","201-255" (비균등).
+    - avg_sum / most_common_range(동률 시 앞선 구간) / middle_range_pct(101-160 합산)
+      / sum_range_distribution 을 제공한다.
+    - sum_range_distribution 은 6개 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-049(/api/stats/sum-range, 폭 20 버킷 + 공통 영역)와는 별개 엔드포인트다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_sum_range_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
