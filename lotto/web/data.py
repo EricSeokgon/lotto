@@ -300,6 +300,12 @@ _SUM_RANGE_KEYS = ["21-60", "61-100", "101-130", "131-160", "161-200", "201-255"
 # SPEC-LOTTO-086: 합계 구간 세분화 분포 캐시. invalidate_cache로 무효화.
 _sum_range_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-087: 번호 중앙값(3·4번째 평균) 10단위 구간 분포 캐시. invalidate_cache로 무효화.
+_median_range_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-087: 중앙값 구간 5개 고정 키(정의 순서가 동률 시 우선순위).
+_MEDIAN_RANGE_KEYS = ["1-9", "10-19", "20-29", "30-39", "40-45"]
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -339,6 +345,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-084: 신규 추첨 데이터 적재 시 홀짝 전환 횟수 분포 캐시도 무효화한다.
     SPEC-LOTTO-085: 신규 추첨 데이터 적재 시 일의 자리 중복 분포 캐시도 무효화한다.
     SPEC-LOTTO-086: 신규 추첨 데이터 적재 시 합계 구간 세분화 분포 캐시도 무효화한다.
+    SPEC-LOTTO-087: 신규 추첨 데이터 적재 시 중앙값 구간 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -378,6 +385,7 @@ def invalidate_cache() -> None:
     _parity_trans_cache.clear()
     _last_digit_pair_cache.clear()
     _sum_range_cache.clear()
+    _median_range_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -7014,4 +7022,103 @@ def get_sum_range_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "sum_range_distribution": dist,
     }
     _sum_range_cache[cache_key] = result
+    return result
+
+
+def _median_range_bucket(numbers: list[int]) -> str:
+    """본번호 6개의 중앙값이 속하는 10단위 구간 키를 반환합니다 (SPEC-LOTTO-087).
+
+    중앙값은 정렬된 6개 본번호의 3·4번째(0-indexed 2,3) 평균 (sorted[2]+sorted[3])/2 이다.
+    경계는 하위 구간의 상한 미만으로 판정한다(예: 10.0 → "10-19", 40.0 → "40-45").
+
+    SPEC-071의 `_median_bucket`(중앙값 9구간)과는 버킷 정의가 다른 별개 헬퍼다.
+
+    Args:
+        numbers: 회차 본번호 6개(보너스 제외).
+
+    Returns:
+        "1-9","10-19","20-29","30-39","40-45" 5개 키 중 해당 구간.
+    """
+    sorted_nums = sorted(numbers)
+    median = (sorted_nums[2] + sorted_nums[3]) / 2
+    if median < 10:
+        return "1-9"
+    if median < 20:
+        return "10-19"
+    if median < 30:
+        return "20-29"
+    if median < 40:
+        return "30-39"
+    return "40-45"
+
+
+def get_median_range_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 중앙값이 속하는 10단위 구간(5개) 분포를 분석합니다 (SPEC-LOTTO-087).
+
+    각 회차 본번호 6개(보너스 제외)를 정렬한 [a,b,c,d,e,f]의 (c+d)/2 를 중앙값으로
+    산출한 뒤, 전체 회차를 "1-9","10-19","20-29","30-39","40-45" 5개 고정 키로 분류한다.
+    경계는 하위 구간의 상한 미만으로 판정한다(예: 10.0 → "10-19").
+
+    정의:
+        - avg_median:          회차 중앙값 평균(소수 2자리). 데이터 없으면 0.0.
+        - most_common_range:   count 최대 구간. 동률 시 _MEDIAN_RANGE_KEYS 정의 순서상
+                               앞선(=더 작은) 구간을 선택한다. 데이터 없으면 "1-9".
+        - central_median_pct:  중앙값이 "20-29"(균형 구간)인 회차 비율(%, 소수 2자리).
+
+    SPEC-071(중앙값 9구간 "1-5".."41-45")과는 버킷 정의·출력 구조가 다른 별개 지표다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               5개 키 전부 0, most_common_range="1-9"의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_median, most_common_range, central_median_pct,
+        median_range_distribution} 매핑. median_range_distribution은 5개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _median_range_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _MEDIAN_RANGE_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_median": 0.0,
+            "most_common_range": "1-9",
+            "central_median_pct": 0.0,
+            "median_range_distribution": dist,
+        }
+        _median_range_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    medians: list[float] = []
+    for draw in draws:
+        nums = list(draw.numbers())  # 본번호 6개 (보너스 제외)
+        sorted_nums = sorted(nums)
+        medians.append((sorted_nums[2] + sorted_nums[3]) / 2)
+        dist[_median_range_bucket(nums)]["count"] += 1
+
+    for k in _MEDIAN_RANGE_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    # 동률 시 정의 순서상 앞선(=더 작은) 구간이 이기도록 _MEDIAN_RANGE_KEYS 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _MEDIAN_RANGE_KEYS)
+    most_common = next(k for k in _MEDIAN_RANGE_KEYS if dist[k]["count"] == max_cnt)
+
+    result = {
+        "total_draws": total,
+        "avg_median": round(sum(medians) / total, 2),
+        "most_common_range": most_common,
+        "central_median_pct": dist["20-29"]["pct"],
+        "median_range_distribution": dist,
+    }
+    _median_range_cache[cache_key] = result
     return result
