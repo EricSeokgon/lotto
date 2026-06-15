@@ -334,6 +334,20 @@ _SUM_LAST_DIGIT_KEYS = [str(d) for d in range(10)]
 # SPEC-LOTTO-090: 짝수 끝자리 집합(even_digit_pct 산출 기준).
 _SUM_LAST_DIGIT_EVEN_KEYS = ["0", "2", "4", "6", "8"]
 
+# SPEC-LOTTO-091: 소수 이웃 포함 개수 분포 캐시. invalidate_cache로 무효화.
+_prime_neighbor_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-091: 소수 이웃 개수 7개 고정 키("0"~"6", 정의 순서가 동률 시 우선순위).
+_PRIME_NEIGHBOR_KEYS = [str(i) for i in range(7)]
+
+# SPEC-LOTTO-091: 소수 이웃 집합(1~45). n이 소수이거나 소수±1(1~45)이면 이웃이다.
+# 1~45 소수: 2,3,5,7,11,13,17,19,23,29,31,37,41,43.
+# 비이웃(11개): 9,15,21,25,26,27,33,34,35,39,45.
+_PRIME_NEIGHBOR_SET = frozenset([
+    1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 16, 17, 18, 19, 20,
+    22, 23, 24, 28, 29, 30, 31, 32, 36, 37, 38, 40, 41, 42, 43, 44,
+])
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -376,6 +390,8 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-087: 신규 추첨 데이터 적재 시 중앙값 구간 분포 캐시도 무효화한다.
     SPEC-LOTTO-088: 신규 추첨 데이터 적재 시 간격 분산 구간 분포 캐시도 무효화한다.
     SPEC-LOTTO-089: 신규 추첨 데이터 적재 시 저·고 균형 조합 분포 캐시도 무효화한다.
+    SPEC-LOTTO-090: 신규 추첨 데이터 적재 시 합계 일의 자리 분포 캐시도 무효화한다.
+    SPEC-LOTTO-091: 신규 추첨 데이터 적재 시 소수 이웃 포함 개수 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -419,6 +435,7 @@ def invalidate_cache() -> None:
     _gap_var_cache.clear()
     _low_high_cache.clear()
     _sum_last_digit_cache.clear()
+    _prime_neighbor_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -7457,4 +7474,91 @@ def get_sum_last_digit_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "sum_last_digit_distribution": dist,
     }
     _sum_last_digit_cache[cache_key] = result
+    return result
+
+
+def _count_prime_neighbors(numbers: list) -> int:
+    """본번호 리스트 중 소수 이웃 집합에 포함된 번호 개수를 센다 (SPEC-LOTTO-091).
+
+    소수 이웃이란 1~45에서 자기 자신이 소수이거나 소수와 인접(소수±1)한 번호이다.
+    """
+    return sum(1 for n in numbers if n in _PRIME_NEIGHBOR_SET)
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-091 소수 이웃 포함 개수(0~6) 분포 집계 공개 API
+# @MX:SPEC: SPEC-LOTTO-091
+# @MX:REASON: API/페이지 라우트 등 다수 호출자가 의존하는 분포 계약 — 7개 키 불변
+def get_prime_neighbor_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개 중 소수 이웃 포함 개수(0~6) 분포를 분석합니다 (SPEC-LOTTO-091).
+
+    각 회차 본번호 6개(보너스 제외) 중 소수 이웃 집합(_PRIME_NEIGHBOR_SET)에 포함된
+    번호 개수를 세어 0~6 키로 분류한다. 소수 이웃이란 1~45에서 자기 자신이 소수이거나
+    소수와 인접(소수±1)한 번호이다.
+
+    정의:
+        - avg_neighbor_count: 회차 평균 소수 이웃 개수 (소수 2자리).
+        - most_common_count:  최빈 개수 키. 동률 시 _PRIME_NEIGHBOR_KEYS 정의 순서상
+                              가장 작은 키("0" < "1" < ...)를 선택한다.
+        - high_neighbor_pct:  소수 이웃 개수가 5 이상(5,6)인 회차 비율(%, 소수 2자리).
+        - prime_neighbor_distribution: 개수 키 → {count, pct}. 7개 키를 항상 포함한다.
+
+    SPEC-058(소수 개수만 세는 get_prime_stats)와는 정의·출력 구조가 다른 별개 지표다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               avg_neighbor_count=0.0, most_common_count="0", high_neighbor_pct=0.0,
+               7개 키 전부 0의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_neighbor_count, most_common_count, high_neighbor_pct,
+        prime_neighbor_distribution} 매핑. distribution은 7개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _prime_neighbor_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _PRIME_NEIGHBOR_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_neighbor_count": 0.0,
+            "most_common_count": _PRIME_NEIGHBOR_KEYS[0],
+            "high_neighbor_pct": 0.0,
+            "prime_neighbor_distribution": dist,
+        }
+        _prime_neighbor_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    neighbor_sum = 0
+    for draw in draws:
+        cnt = _count_prime_neighbors(draw.numbers())  # 본번호 6개 (보너스 제외)
+        neighbor_sum += cnt
+        dist[str(cnt)]["count"] += 1
+
+    for k in _PRIME_NEIGHBOR_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    # 동률 시 정의 순서상 앞선(=가장 작은) 키가 이기도록 _PRIME_NEIGHBOR_KEYS 순서로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _PRIME_NEIGHBOR_KEYS)
+    most_common = next(k for k in _PRIME_NEIGHBOR_KEYS if dist[k]["count"] == max_cnt)
+
+    # 고밀도(소수 이웃 5개 이상) 회차 비율.
+    high_count = dist["5"]["count"] + dist["6"]["count"]
+
+    result = {
+        "total_draws": total,
+        "avg_neighbor_count": round(neighbor_sum / total, 2),
+        "most_common_count": most_common,
+        "high_neighbor_pct": round(high_count / total * 100, 2),
+        "prime_neighbor_distribution": dist,
+    }
+    _prime_neighbor_cache[cache_key] = result
     return result

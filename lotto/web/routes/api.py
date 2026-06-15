@@ -1179,6 +1179,23 @@ async def get_sum_last_digit_stats_endpoint() -> dict[str, Any]:
     return wd.get_sum_last_digit_stats(wd.get_draws())
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-091 — 소수 이웃 포함 개수 분포 통계 API
+# @MX:SPEC: SPEC-LOTTO-091
+@router.get("/stats/prime_neighbor")
+async def get_prime_neighbor_stats_endpoint() -> dict[str, Any]:
+    """본번호 6개 중 소수 이웃 포함 개수(0~6) 분포 통계를 반환합니다 (SPEC-LOTTO-091).
+
+    - 키: "0"~"6" (소수 이웃 집합에 포함된 번호 개수 기준).
+    - 소수 이웃이란 1~45에서 자기 자신이 소수이거나 소수와 인접(소수±1)한 번호이다.
+    - avg_neighbor_count / most_common_count(동률 시 가장 작은 키)
+      / high_neighbor_pct(개수 5 이상 비율) / prime_neighbor_distribution 을 제공한다.
+    - prime_neighbor_distribution 은 7개 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-058(소수 개수만 세는 지표)와는 출력 구조가 다른 별개 엔드포인트.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_prime_neighbor_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
