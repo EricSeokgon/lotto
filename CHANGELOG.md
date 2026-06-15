@@ -6,6 +6,17 @@
 
 ---
 
+## [1.52.0] - 2026-06-16
+
+### Added
+- SPEC-LOTTO-091: 소수 이웃 번호 포함 분포 분석
+  - 소수(prime) 또는 소수±1에 해당하는 번호 포함 개수(0~6) 분포 통계
+  - GET /api/stats/prime_neighbor API 엔드포인트
+  - GET /stats/prime-neighbor 웹 페이지
+  - 테스트 28개 추가 (2293 → 2321)
+
+---
+
 ## [1.51.0] - 2026-06-15
 
 ### Added
