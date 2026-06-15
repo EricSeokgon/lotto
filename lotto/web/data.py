@@ -269,6 +269,9 @@ _EVEN_RUN_KEYS = ["0", "1", "2", "3"]
 # SPEC-LOTTO-081: 짝수 연속 포함 분포 캐시. invalidate_cache로 무효화.
 _even_run_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-082: 10단위 다양성 분포 캐시. invalidate_cache로 무효화.
+_decade_div_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -303,6 +306,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-078: 신규 추첨 데이터 적재 시 3연속 묶음 분포 캐시도 무효화한다.
     SPEC-LOTTO-079: 신규 추첨 데이터 적재 시 끝자리 합계 분포 캐시도 무효화한다.
     SPEC-LOTTO-081: 신규 추첨 데이터 적재 시 짝수 연속 포함 분포 캐시도 무효화한다.
+    SPEC-LOTTO-082: 신규 추첨 데이터 적재 시 10단위 다양성 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -337,6 +341,7 @@ def invalidate_cache() -> None:
     _digit_sum_dist_cache.clear()
     _max_gap_dist_cache.clear()
     _even_run_cache.clear()
+    _decade_div_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -6437,4 +6442,118 @@ def get_even_run_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "even_run_distribution": dist,
     }
     _even_run_cache[cache_key] = result
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-082: 10단위 다양성 분포 분석 (decade diversity)
+# ---------------------------------------------------------------------------
+
+# 10단위 그룹 다양성 분포의 고정 키. 한 회차가 커버하는 서로 다른 구간 수(1~5).
+_DECADE_DIV_KEYS = ["1", "2", "3", "4", "5"]
+
+
+# SPEC-082: 번호를 5개 10단위 그룹(1~5)으로 매핑한다.
+# 명시적 범위 비교로 분류한다. n // 10 사용 시 1~9가 0으로,
+# 40~45가 4로 흩어져 5개 그룹 정의와 어긋나므로 사용하지 않는다.
+def _decade_of(n: int) -> int:
+    """번호 n을 10단위 그룹 번호(1~5)로 변환합니다 (SPEC-LOTTO-082).
+
+    - 1~9   → 1 (1자리)
+    - 10~19 → 2
+    - 20~29 → 3
+    - 30~39 → 4
+    - 40~45 → 5
+    """
+    if n <= 9:
+        return 1
+    elif n <= 19:
+        return 2
+    elif n <= 29:
+        return 3
+    elif n <= 39:
+        return 4
+    else:
+        return 5
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-082 10단위 다양성 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-082
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_decade_diversity_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개가 커버하는 서로 다른 10단위 그룹 수의 분포를 분석합니다 (SPEC-LOTTO-082).
+
+    각 회차의 본번호 6개(보너스 제외)를 5개 10단위 그룹(1~9, 10~19, 20~29,
+    30~39, 40~45)으로 매핑한 뒤, 커버하는 서로 다른 그룹의 수(decade_count, 1~5)를
+    산출한다. 그룹 매핑은 _decade_of(n)으로 수행한다.
+
+    회차별 decade_count(1~5)를 5개 고정 키("1".."5")로 분류(zero-fill)하고,
+    회차당 평균 커버 수, 최빈 커버 수(동률 시 작은 키), 전 구간 커버 비율
+    (decade_count==5 비율)을 집계한다.
+
+    SPEC-059(get_decade_stats)는 각 구간별로 6개 중 몇 개가 들어가는지
+    (구간당 출현 개수 0~6)를 집계하는 별개 함수이며 본 함수와 정의가 다르다.
+
+    회차별 분류를 1회 집계한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               avg_decade_count=0.0, most_common_count=1, full_coverage_pct=0.0,
+               5개 키가 모두 0인 분포를 반환한다.
+
+    Returns:
+        {total_draws, avg_decade_count, most_common_count, full_coverage_pct,
+        decade_diversity_distribution} 매핑.
+        decade_diversity_distribution 은 5개 키("1".."5")를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _decade_div_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _DECADE_DIV_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_decade_count": 0.0,
+            "most_common_count": 1,
+            "full_coverage_pct": 0.0,
+            "decade_diversity_distribution": dist,
+        }
+        _decade_div_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    decade_counts: list[int] = []
+    for draw in draws:
+        dc = len({_decade_of(n) for n in draw.numbers()})  # 본번호 6개 (보너스 제외)
+        decade_counts.append(dc)
+        dist[str(dc)]["count"] += 1
+
+    for k in _DECADE_DIV_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    avg = round(sum(decade_counts) / total, 2)
+
+    # 최빈 커버 수 — count 최대, 동률 시 작은 키(_DECADE_DIV_KEYS 정의 순서) 우선.
+    max_cnt = max(dist[k]["count"] for k in _DECADE_DIV_KEYS)
+    most_common = int(
+        next(k for k in _DECADE_DIV_KEYS if dist[k]["count"] == max_cnt)
+    )
+
+    full = sum(1 for c in decade_counts if c == 5)
+    full_pct = round(full / total * 100, 2)
+
+    result: dict[str, Any] = {
+        "total_draws": total,
+        "avg_decade_count": avg,
+        "most_common_count": most_common,
+        "full_coverage_pct": full_pct,
+        "decade_diversity_distribution": dist,
+    }
+    _decade_div_cache[cache_key] = result
     return result

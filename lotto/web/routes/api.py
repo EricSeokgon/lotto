@@ -1039,6 +1039,22 @@ async def get_even_run_stats_route() -> dict[str, Any]:
     return wd.get_even_run_stats(wd.get_draws())
 
 
+@router.get("/stats/decade_diversity")
+async def get_decade_diversity_stats_route() -> dict[str, Any]:
+    """본번호 6개가 커버하는 서로 다른 10단위 그룹 수(1~5) 분포 통계를 반환합니다 (SPEC-LOTTO-082).
+
+    - 회차별 본번호 6개(보너스 제외)를 5개 10단위 그룹(1~9, 10~19, 20~29, 30~39,
+      40~45)으로 매핑하여, 커버하는 서로 다른 그룹의 수(1~5)를 산출하고 5개 고정
+      키("1".."5")로 분류한다.
+    - avg_decade_count(회차당 평균 커버 수) / most_common_count(동률 시 작은 값)
+      / full_coverage_pct(decade_count==5 비율) / decade_diversity_distribution 제공.
+    - decade_diversity_distribution 은 5개 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-059(get_decade_stats, 구간당 출현 개수 0~6)와는 정의·출력이 다른 별개 엔드포인트다.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_decade_diversity_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
