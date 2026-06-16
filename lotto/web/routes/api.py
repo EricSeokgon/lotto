@@ -1240,6 +1240,22 @@ async def get_alternation_stats_endpoint() -> dict[str, Any]:
     return wd.get_alternation_stats(wd.get_draws())
 
 
+@router.get("/stats/span")
+async def get_span_stats_endpoint() -> dict[str, Any]:
+    """본번호 6개의 스팬(max-min) 7개 버킷("10 이하"~"41 이상") 분포를 반환합니다 (SPEC-LOTTO-095).
+
+    - 키: "10 이하"/"11-20"/"21-25"/"26-30"/"31-35"/"36-40"/"41 이상"
+      (경계값은 구간 상한에 포함; 예 span=20 → "11-20").
+    - avg_span(평균 스팬) / most_common_range(동률 시 키 순서상 앞선 것)
+      / narrow_pct(스팬≤20 비율) / wide_pct(스팬≥36 비율) / span_distribution 을 제공한다.
+    - span_distribution 은 7개 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-064(get_min_max_stats: 최솟값·최댓값 값/범위)와는 출력 구조가
+      다른 별개 엔드포인트.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_span_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")

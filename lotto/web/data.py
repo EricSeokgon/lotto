@@ -363,6 +363,20 @@ _alternation_cache: dict[str, Any] = {}
 # SPEC-LOTTO-094: 교차 단계 6개 고정 키("교차0"~"교차5"; 정의 순서가 동률 시 우선순위).
 _ALTERNATION_KEYS = ["교차0", "교차1", "교차2", "교차3", "교차4", "교차5"]
 
+# SPEC-LOTTO-095: 번호 스팬(max-min) 분포 캐시. invalidate_cache로 무효화.
+_span_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-095: 스팬 버킷 7개 고정 키(정의 순서가 동률 시 우선순위).
+_SPAN_KEYS = [
+    "10 이하",
+    "11-20",
+    "21-25",
+    "26-30",
+    "31-35",
+    "36-40",
+    "41 이상",
+]
+
 # SPEC-LOTTO-093: 첫·마지막 구간 조합 6개 고정 키(min ≤ max → BA/CA/CB 불가능;
 # 정의 순서가 동률 시 우선순위).
 _FIRST_LAST_ZONE_KEYS = ["AA", "AB", "AC", "BB", "BC", "CC"]
@@ -413,6 +427,8 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-091: 신규 추첨 데이터 적재 시 소수 이웃 포함 개수 분포 캐시도 무효화한다.
     SPEC-LOTTO-092: 신규 추첨 데이터 적재 시 군집 수 분포 캐시도 무효화한다.
     SPEC-LOTTO-093: 신규 추첨 데이터 적재 시 첫·마지막 구간 조합 분포 캐시도 무효화한다.
+    SPEC-LOTTO-094: 신규 추첨 데이터 적재 시 홀짝 교차 패턴 분포 캐시도 무효화한다.
+    SPEC-LOTTO-095: 신규 추첨 데이터 적재 시 번호 스팬 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -460,6 +476,7 @@ def invalidate_cache() -> None:
     _cluster_cache.clear()
     _first_last_zone_cache.clear()
     _alternation_cache.clear()
+    _span_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -7881,4 +7898,115 @@ def get_alternation_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "alternation_distribution": dist,
     }
     _alternation_cache[cache_key] = result
+    return result
+
+
+def _span_bucket(span: int) -> str:
+    """스팬 값(max-min)을 7개 고정 버킷 중 하나로 분류한다 (SPEC-LOTTO-095).
+
+    경계값은 구간의 상한에 포함된다(예: span=20 → "11-20", span=21 → "21-25").
+
+    Args:
+        span: 한 회차 본번호 6개의 최댓값 - 최솟값(0 이상).
+
+    Returns:
+        "10 이하" / "11-20" / "21-25" / "26-30" / "31-35" / "36-40" / "41 이상".
+    """
+    if span <= 10:
+        return "10 이하"
+    if span <= 20:
+        return "11-20"
+    if span <= 25:
+        return "21-25"
+    if span <= 30:
+        return "26-30"
+    if span <= 35:
+        return "31-35"
+    if span <= 40:
+        return "36-40"
+    return "41 이상"
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-095 번호 스팬 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-095
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_span_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 번호 스팬(max-min)의 7개 버킷 분포를 분석합니다 (SPEC-LOTTO-095).
+
+    각 회차의 본번호 6개(보너스 제외)에서 최댓값 - 최솟값을 산출하여 7개 고정
+    버킷("10 이하"~"41 이상")으로 분류한다.
+
+    정의:
+        - avg_span:          회차당 평균 스팬(소수 2자리).
+        - most_common_range: 최빈 버킷. 동률 시 _SPAN_KEYS 정의 순서상 앞선
+                             버킷을 선택한다.
+        - narrow_pct:        스팬 ≤ 20 회차 비율(%, 소수 2자리, 경계 20 포함).
+        - wide_pct:          스팬 ≥ 36 회차 비율(%, 소수 2자리, 경계 36 포함).
+        - span_distribution: 7개 고정 키를 항상 포함(미관측 0 채움).
+
+    SPEC-064(get_min_max_stats: 최솟값·최댓값 값/범위)와 동일한 스팬 개념을 쓰지만,
+    출력 구조(7개 버킷 키, narrow_pct/wide_pct 요약)가 완전히 다른 별개 기능이다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               7개 키 전부 0, most_common_range="10 이하" 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_span, most_common_range, narrow_pct, wide_pct,
+        span_distribution} 매핑. span_distribution 은 7개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _span_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _SPAN_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_span": 0.0,
+            "most_common_range": "10 이하",
+            "narrow_pct": 0.0,
+            "wide_pct": 0.0,
+            "span_distribution": dist,
+        }
+        _span_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    total_span = 0
+    narrow_cnt = 0  # 스팬 ≤ 20
+    wide_cnt = 0  # 스팬 ≥ 36
+    for draw in draws:
+        nums = draw.numbers()  # 본번호 6개 (보너스 제외)
+        span = max(nums) - min(nums)
+        total_span += span
+        dist[_span_bucket(span)]["count"] += 1
+        if span <= 20:
+            narrow_cnt += 1
+        if span >= 36:
+            wide_cnt += 1
+
+    for k in _SPAN_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    # 동률 시 정의 순서상 앞선 버킷이 이기도록 _SPAN_KEYS 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _SPAN_KEYS)
+    most_common = next(k for k in _SPAN_KEYS if dist[k]["count"] == max_cnt)
+
+    result = {
+        "total_draws": total,
+        "avg_span": round(total_span / total, 2),
+        "most_common_range": most_common,
+        "narrow_pct": round(narrow_cnt / total * 100, 2),
+        "wide_pct": round(wide_cnt / total * 100, 2),
+        "span_distribution": dist,
+    }
+    _span_cache[cache_key] = result
     return result

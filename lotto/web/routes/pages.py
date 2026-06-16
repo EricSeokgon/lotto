@@ -1481,6 +1481,26 @@ async def alternation_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/span")
+async def span_page(request: Request) -> TemplateResponse:
+    """번호 스팬(max-min) 분포 분석 페이지 (SPEC-LOTTO-095).
+
+    - 요약 카드: 총 회차 / 평균 스팬 / 최빈 버킷 / 좁은(≤20)·넓은(≥36) 비율(%)
+    - 분포 테이블: 7개 버킷 키("10 이하"~"41 이상")의 count/pct
+    - 본번호 6개의 최댓값-최솟값을 7개 고정 버킷으로 분류.
+    - SPEC-064(최솟값·최댓값 값/범위)와는 출력 구조가 다른 별개 페이지.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_span_stats(wd.get_draws())
+    return _render(request, "span.html", {
+        "active_tab": "span",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")
