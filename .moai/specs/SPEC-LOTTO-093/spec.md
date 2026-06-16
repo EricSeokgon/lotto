@@ -1,8 +1,8 @@
 ---
 id: SPEC-LOTTO-093
 title: 첫·마지막 번호 구간 조합 분포 분석
-status: Planned
-version: 0.1.0
+status: Completed
+version: 1.0.0
 created: 2026-06-16
 ---
 
