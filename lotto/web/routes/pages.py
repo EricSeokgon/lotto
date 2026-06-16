@@ -1461,6 +1461,26 @@ async def first_last_zone_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/alternation")
+async def alternation_page(request: Request) -> TemplateResponse:
+    """홀짝 교차 패턴 분포 분석 페이지 (SPEC-LOTTO-094).
+
+    - 요약 카드: 총 회차 / 평균 교차수 / 최빈 교차단계 / 완전교차(교차5) 비율(%)
+    - 분포 테이블: 6개 단계 키("교차0"~"교차5")의 count/pct
+    - 본번호 6개를 정렬한 뒤 인접 쌍의 홀짝 교차 횟수(0~5)로 분류.
+    - SPEC-084(홀짝 전환 횟수 + 고빈도 비율)와는 출력 구조가 다른 별개 페이지.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_alternation_stats(wd.get_draws())
+    return _render(request, "alternation.html", {
+        "active_tab": "alternation",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

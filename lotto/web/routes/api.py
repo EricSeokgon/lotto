@@ -1225,6 +1225,21 @@ async def get_first_last_zone_stats_endpoint() -> dict[str, Any]:
     return wd.get_first_last_zone_stats(wd.get_draws())
 
 
+@router.get("/stats/alternation")
+async def get_alternation_stats_endpoint() -> dict[str, Any]:
+    """정렬된 본번호 인접 쌍의 홀짝 교차 단계("교차0"~"교차5") 분포를 반환합니다 (SPEC-LOTTO-094).
+
+    - 키: "교차0"~"교차5" (정렬된 번호열의 홀짝 교차 횟수 0~5).
+    - avg_alternation(평균 교차 횟수) / most_common_level(동률 시 키 순서상 앞선 것)
+      / full_alternation_pct("교차5" 비율) / alternation_distribution 을 제공한다.
+    - alternation_distribution 은 6개 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-084(get_parity_transition_stats: 정수 키 + 전환>=4 비율)와는 출력 구조가
+      다른 별개 엔드포인트.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_alternation_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")
