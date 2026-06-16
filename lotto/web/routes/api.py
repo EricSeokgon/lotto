@@ -1262,7 +1262,8 @@ async def get_min_gap_dist_stats_route() -> dict[str, Any]:
 
     - 키: "1"/"2"/"3"/"4-5"/"6-10"/"11+"
     - avg_min_gap(평균 min_gap) / most_common_range(동률 시 키 순서상 앞선 것)
-      / min1_pct(min_gap=1 비율) / large_gap_pct(min_gap>=6 비율) / min_gap_distribution 을 제공한다.
+      / min1_pct(min_gap=1 비율) / large_gap_pct(min_gap>=6 비율)
+      / min_gap_distribution 을 제공한다.
     - min_gap_distribution 은 6개 키를 항상 포함한다(미관측 0 유지).
     - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
     """
@@ -1286,6 +1287,25 @@ async def get_gap_median_dist_stats_route(
     if limit is not None and draws:
         draws = draws[-limit:]
     return wd.get_gap_median_dist_stats(draws)
+
+
+@router.get("/stats/zone_coverage")
+async def get_zone_coverage_stats_route(
+    limit: Optional[int] = Query(None, description="최근 N 회차만 분석 (미지정 시 전체)")  # noqa: UP045
+) -> dict[str, Any]:
+    """본번호 6개의 커버 구간 수 분포를 반환합니다 (SPEC-LOTTO-098).
+
+    - 키: "1"/"2"/"3"/"4"/"5"/"6"
+    - avg_zones_covered(평균 커버 구간 수) / most_common_zones(동률 시 키 순서상 앞선 것)
+      / full_spread_pct(zones_covered==6 비율) / concentrated_pct(zones_covered<=3 비율)
+      / zone_coverage_distribution 을 제공한다.
+    - zone_coverage_distribution 은 6개 키를 항상 포함한다(미관측 0 유지).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    draws = wd.get_draws()
+    if limit is not None and draws:
+        draws = draws[-limit:]
+    return wd.get_zone_coverage_stats(draws)
 
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API

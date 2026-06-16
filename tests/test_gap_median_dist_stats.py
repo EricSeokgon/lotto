@@ -20,7 +20,6 @@ from fastapi.testclient import TestClient
 from lotto.models import DrawResult
 from lotto.web import data as wd
 
-
 _GAP_MEDIAN_KEYS = ["1-2", "3-4", "5-6", "7-8", "9-10", "11+"]
 
 
@@ -220,7 +219,10 @@ def test_single_draw_median_9() -> None:
 
 
 def test_single_draw_median_10() -> None:
-    """AC-13: [1,11,21,31,41,43]: gaps=[10,10,10,10,2], sorted=[2,10,10,10,10], median=10 → '9-10'."""
+    """AC-13: [1,11,21,31,41,43]: gaps=[10,10,10,10,2], sorted=[2,10,10,10,10], median=10.
+
+    기대값: gap_median_distribution["9-10"]["count"] == 1
+    """
     wd.invalidate_cache()
     draws = [_mk(1, [1, 11, 21, 31, 41, 43])]
     result = wd.get_gap_median_dist_stats(draws)

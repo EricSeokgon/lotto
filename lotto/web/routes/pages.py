@@ -1539,6 +1539,26 @@ async def gap_median_dist_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/zone-coverage")
+async def zone_coverage_page(request: Request) -> TemplateResponse:
+    """구간별 번호 선택 분포 분석 페이지 (SPEC-LOTTO-098).
+
+    - 요약 카드: 총 회차 / 평균 커버 구간 수 / 최빈 커버 구간
+      / 완전분산(6구간) 비율 / 집중(3구간 이하) 비율
+    - 분포 테이블: 6개 버킷 키("1"~"6")의 count/pct
+    - 1-45 번호를 9개 구간(각 5개)으로 나누어 커버 구간 수를 분류.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_zone_coverage_stats(wd.get_draws())
+    return _render(request, "zone_coverage.html", {
+        "active_tab": "zone_coverage",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

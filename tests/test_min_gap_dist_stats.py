@@ -23,7 +23,6 @@ from fastapi.testclient import TestClient
 from lotto.models import DrawResult
 from lotto.web import data as wd
 
-
 _MIN_GAP_KEYS = ["1", "2", "3", "4-5", "6-10", "11+"]
 
 

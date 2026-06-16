@@ -393,6 +393,12 @@ _gap_median_dist_cache: dict[str, Any] = {}
 # SPEC-LOTTO-097: 간격 중앙값 버킷 6개 고정 키(정의 순서가 동률 시 우선순위).
 _GAP_MEDIAN_KEYS = ["1-2", "3-4", "5-6", "7-8", "9-10", "11+"]
 
+# SPEC-LOTTO-098: 구간별 번호 선택 분포 캐시. invalidate_cache로 무효화.
+_zone_coverage_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-098: 커버 구간 수 버킷 6개 고정 키(정의 순서가 동률 시 우선순위).
+_ZONE_COV_KEYS = ["1", "2", "3", "4", "5", "6"]
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -443,6 +449,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-095: 신규 추첨 데이터 적재 시 번호 스팬 분포 캐시도 무효화한다.
     SPEC-LOTTO-096: 신규 추첨 데이터 적재 시 최소 간격 구간 분포 캐시도 무효화한다.
     SPEC-LOTTO-097: 신규 추첨 데이터 적재 시 간격 중앙값 구간 분포 캐시도 무효화한다.
+    SPEC-LOTTO-098: 신규 추첨 데이터 적재 시 구간별 번호 선택 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -493,6 +500,7 @@ def invalidate_cache() -> None:
     _span_cache.clear()
     _min_gap_dist_cache.clear()
     _gap_median_dist_cache.clear()
+    _zone_coverage_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -8232,4 +8240,89 @@ def get_gap_median_dist_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "gap_median_distribution": dist,
     }
     _gap_median_dist_cache[cache_key] = result
+    return result
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-098 구간별 번호 선택 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-098
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_zone_coverage_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개가 커버하는 구간 수(zones_covered) 분포를 분석합니다 (SPEC-LOTTO-098).
+
+    1-45 번호를 9개 구간(각 5개 번호)으로 나누어 각 회차의 본번호 6개가 몇 개의
+    서로 다른 구간을 점유하는지 계산하고 6개 고정 버킷("1"~"6")으로 집계한다.
+
+    zone_idx 공식: (num - 1) // 5  (결과: 0~8)
+    zones_covered: len(set(zone_idx for num in numbers))
+
+    정의:
+        - avg_zones_covered:  회차 평균 커버 구간 수 (소수 2자리).
+        - most_common_zones:  최빈 커버 구간 수 라벨. 동률 시 _ZONE_COV_KEYS
+                              정의 순서상 앞선(=더 작은) 값을 선택한다.
+        - full_spread_pct:    zones_covered==6인 회차 비율(%, 소수 2자리).
+        - concentrated_pct:   zones_covered<=3인 회차 비율(%, 소수 2자리).
+        - zone_coverage_distribution: 6개 고정 버킷 {count, pct} 형태.
+
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               6개 키 전부 {"count":0,"pct":0.0}, most_common_zones="1" 반환.
+
+    Returns:
+        {total_draws, avg_zones_covered, most_common_zones, full_spread_pct,
+        concentrated_pct, zone_coverage_distribution} 매핑.
+        zone_coverage_distribution 은 6개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _zone_coverage_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _ZONE_COV_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_zones_covered": 0.0,
+            "most_common_zones": "1",
+            "full_spread_pct": 0.0,
+            "concentrated_pct": 0.0,
+            "zone_coverage_distribution": dist,
+        }
+        _zone_coverage_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    zones_list: list[int] = []
+    for draw in draws:
+        nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+        zones = len({(n - 1) // 5 for n in nums})
+        key = str(min(zones, 6))
+        dist[key]["count"] += 1
+        zones_list.append(zones)
+
+    for k in _ZONE_COV_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    avg = round(sum(zones_list) / total, 2)
+    # 동률 시 _ZONE_COV_KEYS 정의 순서상 앞선(=더 작은) 값이 이기도록 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _ZONE_COV_KEYS)
+    most_common = next(k for k in _ZONE_COV_KEYS if dist[k]["count"] == max_cnt)
+    full_spread = round(dist["6"]["count"] / total * 100, 2)
+    concentrated = round(
+        (dist["1"]["count"] + dist["2"]["count"] + dist["3"]["count"]) / total * 100, 2
+    )
+
+    result: dict[str, Any] = {
+        "total_draws": total,
+        "avg_zones_covered": avg,
+        "most_common_zones": most_common,
+        "full_spread_pct": full_spread,
+        "concentrated_pct": concentrated,
+        "zone_coverage_distribution": dist,
+    }
+    _zone_coverage_cache[cache_key] = result
     return result
