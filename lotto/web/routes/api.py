@@ -1269,6 +1269,25 @@ async def get_min_gap_dist_stats_route() -> dict[str, Any]:
     return wd.get_min_gap_dist_stats(wd.get_draws())
 
 
+@router.get("/stats/gap_median_dist")
+async def get_gap_median_dist_stats_route(
+    limit: Optional[int] = Query(None, description="최근 N 회차만 분석 (미지정 시 전체)")  # noqa: UP045
+) -> dict[str, Any]:
+    """본번호 6개의 gap_median(인접 간격 중앙값) 6개 버킷 분포를 반환합니다 (SPEC-LOTTO-097).
+
+    - 키: "1-2"/"3-4"/"5-6"/"7-8"/"9-10"/"11+"
+    - avg_gap_median(평균 gap_median) / most_common_range(동률 시 키 순서상 앞선 것)
+      / low_median_pct(gap_median<=4 비율) / high_median_pct(gap_median>=9 비율)
+      / gap_median_distribution 을 제공한다.
+    - gap_median_distribution 은 6개 키를 항상 포함한다(미관측 0 유지).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    draws = wd.get_draws()
+    if limit is not None and draws:
+        draws = draws[-limit:]
+    return wd.get_gap_median_dist_stats(draws)
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")

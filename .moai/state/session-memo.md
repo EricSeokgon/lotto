@@ -2,7 +2,7 @@
 
 ## P1: Session Context
 
-session_id: 51204d19-287a-454d-97a5-05019a8061e4
+session_id: a92103c8-62dd-4891-bc3a-eb292e2700bc
 cwd: /home/sklee/moai/lotto
 event: PreCompact
 

@@ -387,6 +387,12 @@ _min_gap_dist_cache: dict[str, Any] = {}
 # SPEC-LOTTO-096: 최솟값 간격 버킷 6개 고정 키(정의 순서가 동률 시 우선순위).
 _MIN_GAP_KEYS = ["1", "2", "3", "4-5", "6-10", "11+"]
 
+# SPEC-LOTTO-097: 번호 간격 중앙값 구간 분포 캐시. invalidate_cache로 무효화.
+_gap_median_dist_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-097: 간격 중앙값 버킷 6개 고정 키(정의 순서가 동률 시 우선순위).
+_GAP_MEDIAN_KEYS = ["1-2", "3-4", "5-6", "7-8", "9-10", "11+"]
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -436,6 +442,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-094: 신규 추첨 데이터 적재 시 홀짝 교차 패턴 분포 캐시도 무효화한다.
     SPEC-LOTTO-095: 신규 추첨 데이터 적재 시 번호 스팬 분포 캐시도 무효화한다.
     SPEC-LOTTO-096: 신규 추첨 데이터 적재 시 최소 간격 구간 분포 캐시도 무효화한다.
+    SPEC-LOTTO-097: 신규 추첨 데이터 적재 시 간격 중앙값 구간 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -485,6 +492,7 @@ def invalidate_cache() -> None:
     _alternation_cache.clear()
     _span_cache.clear()
     _min_gap_dist_cache.clear()
+    _gap_median_dist_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -8117,4 +8125,111 @@ def get_min_gap_dist_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "min_gap_distribution": dist,
     }
     _min_gap_dist_cache[cache_key] = result
+    return result
+
+
+def _gap_median_bucket(g: int) -> str:
+    """간격 중앙값을 6개 고정 구간 버킷 키로 변환한다 (SPEC-LOTTO-097).
+
+    Args:
+        g: 정수형 간격 중앙값(gap_median).
+
+    Returns:
+        "1-2" / "3-4" / "5-6" / "7-8" / "9-10" / "11+" 중 하나.
+    """
+    if g <= 2:
+        return "1-2"
+    elif g <= 4:
+        return "3-4"
+    elif g <= 6:
+        return "5-6"
+    elif g <= 8:
+        return "7-8"
+    elif g <= 10:
+        return "9-10"
+    else:
+        return "11+"
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-097 간격 중앙값 구간 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-097
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_gap_median_dist_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개의 인접 간격 중앙값(gap_median) 구간 분포를 분석합니다 (SPEC-LOTTO-097).
+
+    각 회차의 정렬된 본번호 6개(보너스 제외)에서 인접 차이 5개를 구한 뒤
+    정렬하여 3번째(인덱스 2) 값을 중앙값으로 삼고,
+    6개 고정 구간 버킷("1-2","3-4","5-6","7-8","9-10","11+")으로 분류한다.
+
+    정의:
+        - gap_median:         정렬 본번호 인접 차이 5개의 중앙값 (회차당 1개).
+        - avg_gap_median:     회차 평균 gap_median (소수 2자리).
+        - most_common_range:  최빈 구간. 동률 시 _GAP_MEDIAN_KEYS 정의 순서상
+                              앞선(=더 작은) 구간을 선택한다.
+        - low_median_pct:     gap_median <= 4인 회차(조밀한 간격) 비율(%, 소수 2자리).
+        - high_median_pct:    gap_median >= 9인 회차(넓은 간격) 비율(%, 소수 2자리).
+        - gap_median_distribution: 6개 고정 키를 항상 포함(미관측 0 채움).
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               6개 키 전부 0, most_common_range="1-2" 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_gap_median, most_common_range, low_median_pct,
+        high_median_pct, gap_median_distribution} 매핑.
+        gap_median_distribution 은 6개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _gap_median_dist_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _GAP_MEDIAN_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_gap_median": 0.0,
+            "most_common_range": "1-2",
+            "low_median_pct": 0.0,
+            "high_median_pct": 0.0,
+            "gap_median_distribution": dist,
+        }
+        _gap_median_dist_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    gap_medians: list[int] = []
+    for draw in draws:
+        nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+        # 인접 쌍의 차이 5개를 정렬하여 중앙값(인덱스 2) 추출
+        gaps = sorted(b - a for a, b in zip(nums, nums[1:]))  # noqa: B905 — Python 3.9 호환
+        gap_median = gaps[2]  # 5개 중 3번째 = 중앙값
+        gap_medians.append(gap_median)
+        dist[_gap_median_bucket(gap_median)]["count"] += 1
+
+    for k in _GAP_MEDIAN_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    avg = round(sum(gap_medians) / total, 2)
+    # 동률 시 정의 순서상 앞선(=더 작은) 구간이 이기도록 _GAP_MEDIAN_KEYS 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _GAP_MEDIAN_KEYS)
+    most_common = next(k for k in _GAP_MEDIAN_KEYS if dist[k]["count"] == max_cnt)
+    low = sum(1 for g in gap_medians if g <= 4)
+    high = sum(1 for g in gap_medians if g >= 9)
+
+    result: dict[str, Any] = {
+        "total_draws": total,
+        "avg_gap_median": avg,
+        "most_common_range": most_common,
+        "low_median_pct": round(low / total * 100, 2),
+        "high_median_pct": round(high / total * 100, 2),
+        "gap_median_distribution": dist,
+    }
+    _gap_median_dist_cache[cache_key] = result
     return result
