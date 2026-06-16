@@ -1501,6 +1501,25 @@ async def span_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/min-gap-dist")
+async def min_gap_dist_page(request: Request) -> TemplateResponse:
+    """최소 간격 구간 분포 분석 페이지 (SPEC-LOTTO-096).
+
+    - 요약 카드: 총 회차 / 평균 min_gap / 최빈 구간 / 연속번호(≥1) 비율 / 대형 간격(≥6) 비율(%)
+    - 분포 테이블: 6개 버킷 키("1"~"11+")의 count/pct
+    - 본번호 6개의 인접 차이 최솟값을 6개 고정 버킷으로 분류.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_min_gap_dist_stats(wd.get_draws())
+    return _render(request, "min_gap_dist.html", {
+        "active_tab": "min_gap_dist",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")

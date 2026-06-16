@@ -1256,6 +1256,19 @@ async def get_span_stats_endpoint() -> dict[str, Any]:
     return wd.get_span_stats(wd.get_draws())
 
 
+@router.get("/stats/min_gap_dist")
+async def get_min_gap_dist_stats_route() -> dict[str, Any]:
+    """본번호 6개의 min_gap(인접 간격 최솟값) 6개 버킷 분포를 반환합니다 (SPEC-LOTTO-096).
+
+    - 키: "1"/"2"/"3"/"4-5"/"6-10"/"11+"
+    - avg_min_gap(평균 min_gap) / most_common_range(동률 시 키 순서상 앞선 것)
+      / min1_pct(min_gap=1 비율) / large_gap_pct(min_gap>=6 비율) / min_gap_distribution 을 제공한다.
+    - min_gap_distribution 은 6개 키를 항상 포함한다(미관측 0 유지).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_min_gap_dist_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")

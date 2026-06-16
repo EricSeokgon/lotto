@@ -381,6 +381,12 @@ _SPAN_KEYS = [
 # 정의 순서가 동률 시 우선순위).
 _FIRST_LAST_ZONE_KEYS = ["AA", "AB", "AC", "BB", "BC", "CC"]
 
+# SPEC-LOTTO-096: 번호 간격 최솟값 구간 분포 캐시. invalidate_cache로 무효화.
+_min_gap_dist_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-096: 최솟값 간격 버킷 6개 고정 키(정의 순서가 동률 시 우선순위).
+_MIN_GAP_KEYS = ["1", "2", "3", "4-5", "6-10", "11+"]
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -429,6 +435,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-093: 신규 추첨 데이터 적재 시 첫·마지막 구간 조합 분포 캐시도 무효화한다.
     SPEC-LOTTO-094: 신규 추첨 데이터 적재 시 홀짝 교차 패턴 분포 캐시도 무효화한다.
     SPEC-LOTTO-095: 신규 추첨 데이터 적재 시 번호 스팬 분포 캐시도 무효화한다.
+    SPEC-LOTTO-096: 신규 추첨 데이터 적재 시 최소 간격 구간 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -477,6 +484,7 @@ def invalidate_cache() -> None:
     _first_last_zone_cache.clear()
     _alternation_cache.clear()
     _span_cache.clear()
+    _min_gap_dist_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -8009,4 +8017,104 @@ def get_span_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "span_distribution": dist,
     }
     _span_cache[cache_key] = result
+    return result
+
+
+def _min_gap_bucket(g: int) -> str:
+    """번호 간격 최솟값 g를 6개 고정 구간 버킷 라벨로 변환한다 (SPEC-LOTTO-096).
+
+    경계: ==1→"1", ==2→"2", ==3→"3", <=5→"4-5", <=10→"6-10", 그 외(>=11)→"11+".
+    """
+    if g == 1:
+        return "1"
+    elif g == 2:
+        return "2"
+    elif g == 3:
+        return "3"
+    elif g <= 5:
+        return "4-5"
+    elif g <= 10:
+        return "6-10"
+    else:
+        return "11+"
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-096 최소 간격 구간 분포 집계 진입점
+# @MX:SPEC: SPEC-LOTTO-096
+# @MX:REASON: 페이지/API 라우트 및 테스트에서 호출하는 단일 집계 함수
+def get_min_gap_dist_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개의 인접 간격 최솟값(min_gap) 구간 분포를 분석합니다 (SPEC-LOTTO-096).
+
+    각 회차의 정렬된 본번호 6개(보너스 제외)에서 인접 차이 5개의 최솟값(min_gap)을
+    구한 뒤, 6개 고정 구간 버킷("1","2","3","4-5","6-10","11+")으로 분류한다.
+
+    정의:
+        - min_gap:           정렬 본번호 인접 차이 중 최솟값 (회차당 1개).
+        - avg_min_gap:       회차 평균 min_gap (소수 2자리).
+        - most_common_range: 최빈 구간. 동률 시 _MIN_GAP_KEYS 정의 순서상
+                             앞선(=더 작은) 구간을 선택한다.
+        - min1_pct:          min_gap=1인 회차(연속번호 포함 회차) 비율(%, 소수 2자리).
+        - large_gap_pct:     min_gap>=6인 회차 비율(%, 소수 2자리).
+        - min_gap_distribution: 6개 고정 키를 항상 포함(미관측 0 채움).
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               6개 키 전부 0, most_common_range="1" 의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_min_gap, most_common_range, min1_pct, large_gap_pct,
+        min_gap_distribution} 매핑. min_gap_distribution 은 6개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _min_gap_dist_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _MIN_GAP_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_min_gap": 0.0,
+            "most_common_range": "1",
+            "min1_pct": 0.0,
+            "large_gap_pct": 0.0,
+            "min_gap_distribution": dist,
+        }
+        _min_gap_dist_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    min_gaps: list[int] = []
+    for draw in draws:
+        nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+        # 인접 쌍의 차이 5개 중 최솟값
+        g = min(b - a for a, b in zip(nums, nums[1:]))  # noqa: B905 — Python 3.9 호환
+        min_gaps.append(g)
+        dist[_min_gap_bucket(g)]["count"] += 1
+
+    for k in _MIN_GAP_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    avg = round(sum(min_gaps) / total, 2)
+    # 동률 시 정의 순서상 앞선(=더 작은) 구간이 이기도록 _MIN_GAP_KEYS 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _MIN_GAP_KEYS)
+    most_common = next(k for k in _MIN_GAP_KEYS if dist[k]["count"] == max_cnt)
+    min1 = sum(1 for g in min_gaps if g == 1)
+    large = sum(1 for g in min_gaps if g >= 6)
+
+    result: dict[str, Any] = {
+        "total_draws": total,
+        "avg_min_gap": avg,
+        "most_common_range": most_common,
+        "min1_pct": round(min1 / total * 100, 2),
+        "large_gap_pct": round(large / total * 100, 2),
+        "min_gap_distribution": dist,
+    }
+    _min_gap_dist_cache[cache_key] = result
     return result
