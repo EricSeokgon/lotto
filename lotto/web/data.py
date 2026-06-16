@@ -354,6 +354,13 @@ _cluster_cache: dict[str, Any] = {}
 # SPEC-LOTTO-092: 군집 수 4개 고정 키("0"~"3", "3"은 3개 이상; 정의 순서가 동률 시 우선순위).
 _CLUSTER_KEYS = ["0", "1", "2", "3"]
 
+# SPEC-LOTTO-093: 첫·마지막 번호 구간 조합 분포 캐시. invalidate_cache로 무효화.
+_first_last_zone_cache: dict[str, Any] = {}
+
+# SPEC-LOTTO-093: 첫·마지막 구간 조합 6개 고정 키(min ≤ max → BA/CA/CB 불가능;
+# 정의 순서가 동률 시 우선순위).
+_FIRST_LAST_ZONE_KEYS = ["AA", "AB", "AC", "BB", "BC", "CC"]
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -399,6 +406,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-090: 신규 추첨 데이터 적재 시 합계 일의 자리 분포 캐시도 무효화한다.
     SPEC-LOTTO-091: 신규 추첨 데이터 적재 시 소수 이웃 포함 개수 분포 캐시도 무효화한다.
     SPEC-LOTTO-092: 신규 추첨 데이터 적재 시 군집 수 분포 캐시도 무효화한다.
+    SPEC-LOTTO-093: 신규 추첨 데이터 적재 시 첫·마지막 구간 조합 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -444,6 +452,7 @@ def invalidate_cache() -> None:
     _sum_last_digit_cache.clear()
     _prime_neighbor_cache.clear()
     _cluster_cache.clear()
+    _first_last_zone_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -7671,4 +7680,96 @@ def get_cluster_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "cluster_distribution": dist,
     }
     _cluster_cache[cache_key] = result
+    return result
+
+
+def _first_last_zone(n: int) -> str:
+    """번호 n이 속한 3구간 밴드를 반환한다 (SPEC-LOTTO-093).
+
+    A: 1~15, B: 16~30, C: 31~45.
+    """
+    if n <= 15:
+        return "A"
+    if n <= 30:
+        return "B"
+    return "C"
+
+
+def get_first_last_zone_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개의 최솟값·최댓값 소속 구간 조합(AA~CC) 분포를 분석합니다 (SPEC-LOTTO-093).
+
+    각 회차 본번호 6개(보너스 제외)에서 최솟값(첫 번호)과 최댓값(마지막 번호)이
+    각각 어느 3구간 밴드(A:1-15 / B:16-30 / C:31-45)에 속하는지 판정한 뒤
+    조합 키 f"{min_zone}{max_zone}"로 분류한다. min ≤ max 이므로 가능한 조합은
+    AA, AB, AC, BB, BC, CC 6가지뿐이며 BA/CA/CB는 나타나지 않는다.
+
+    정의:
+        - avg_span: 회차별 (max - min) 평균 (소수 2자리).
+        - most_common_combo: 최빈 조합. 동률 시 _FIRST_LAST_ZONE_KEYS 정의 순서상
+                             앞선 키("AA" < "AB" < ... < "CC")를 선택한다.
+        - wide_span_pct: 조합이 "AC"(가능한 최대 폭)인 회차 비율(%, 소수 2자리).
+        - first_last_zone_distribution: 조합 키 → {count, pct}. 6개 키를 항상 포함한다.
+
+    SPEC-064(get_min_max_stats: 최솟값·최댓값 값/범위 통계)와는 정의·출력 구조가
+    다른 별개 지표다. 본 지표는 구간 밴드 조합 분포를 다룬다.
+
+    회차별 집계를 1회 수행한 뒤 캐시에 보관하여 반복 요청 시 재계산을 피한다.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. 빈 리스트/None이면 total_draws=0,
+               avg_span=0.0, most_common_combo="AA", wide_span_pct=0.0,
+               6개 키 전부 0의 일관된 빈 구조를 반환한다.
+
+    Returns:
+        {total_draws, avg_span, most_common_combo, wide_span_pct,
+        first_last_zone_distribution} 매핑. distribution은 6개 키를 항상 포함한다.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _first_last_zone_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    dist: dict[str, dict[str, Any]] = {
+        k: {"count": 0, "pct": 0.0} for k in _FIRST_LAST_ZONE_KEYS
+    }
+
+    if not draws:
+        empty_result: dict[str, Any] = {
+            "total_draws": 0,
+            "avg_span": 0.0,
+            "most_common_combo": _FIRST_LAST_ZONE_KEYS[0],
+            "wide_span_pct": 0.0,
+            "first_last_zone_distribution": dist,
+        }
+        _first_last_zone_cache[cache_key] = empty_result
+        return empty_result
+
+    total = len(draws)
+    total_span = 0
+    for draw in draws:
+        nums = draw.numbers()  # 본번호 6개 (보너스 제외)
+        mn = min(nums)
+        mx = max(nums)
+        total_span += mx - mn
+        combo = _first_last_zone(mn) + _first_last_zone(mx)
+        dist[combo]["count"] += 1
+
+    for k in _FIRST_LAST_ZONE_KEYS:
+        dist[k]["pct"] = round(dist[k]["count"] / total * 100, 2)
+
+    # 동률 시 정의 순서상 앞선(=키 순서상 작은) 조합이 이기도록 순서대로 찾는다.
+    max_cnt = max(dist[k]["count"] for k in _FIRST_LAST_ZONE_KEYS)
+    most_common = next(
+        k for k in _FIRST_LAST_ZONE_KEYS if dist[k]["count"] == max_cnt
+    )
+
+    result = {
+        "total_draws": total,
+        "avg_span": round(total_span / total, 2),
+        "most_common_combo": most_common,
+        "wide_span_pct": round(dist["AC"]["count"] / total * 100, 2),
+        "first_last_zone_distribution": dist,
+    }
+    _first_last_zone_cache[cache_key] = result
     return result

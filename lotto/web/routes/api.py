@@ -1210,6 +1210,21 @@ async def get_cluster_stats_endpoint() -> dict[str, Any]:
     return wd.get_cluster_stats(wd.get_draws())
 
 
+@router.get("/stats/first_last_zone")
+async def get_first_last_zone_stats_endpoint() -> dict[str, Any]:
+    """본번호 6개의 최솟값·최댓값 소속 구간 조합(AA~CC) 분포 통계를 반환합니다 (SPEC-LOTTO-093).
+
+    - 키: "AA"~"CC" (최솟값 구간 + 최댓값 구간; A:1-15 / B:16-30 / C:31-45).
+      min ≤ max 이므로 BA/CA/CB 조합은 나타나지 않는다.
+    - avg_span(평균 max-min) / most_common_combo(동률 시 키 순서상 앞선 것)
+      / wide_span_pct("AC" 조합 비율) / first_last_zone_distribution 을 제공한다.
+    - first_last_zone_distribution 은 6개 키를 항상 포함한다(미관측 0 유지).
+    - SPEC-064(get_min_max_stats: 값/범위)와는 출력 구조가 다른 별개 엔드포인트.
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0).
+    """
+    return wd.get_first_last_zone_stats(wd.get_draws())
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-049 — 임의 조합 합계의 공통 영역 진입 여부 평가 API
 # @MX:SPEC: SPEC-LOTTO-049
 @router.get("/stats/sum-range/evaluate")

@@ -1441,6 +1441,26 @@ async def cluster_count_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/first-last-zone")
+async def first_last_zone_page(request: Request) -> TemplateResponse:
+    """첫·마지막 번호 구간 조합 분포 분석 페이지 (SPEC-LOTTO-093).
+
+    - 요약 카드: 총 회차 / 평균 범위(max-min) / 최빈 조합 / 광범위(AC) 비율(%)
+    - 분포 테이블: 6개 조합 키("AA"~"CC")의 count/pct
+    - 본번호 6개 최솟값·최댓값 소속 구간(A:1-15/B:16-30/C:31-45) 조합으로 분류.
+    - SPEC-064(최솟값·최댓값 값/범위)와는 출력 구조가 다른 별개 페이지.
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    stats = wd.get_first_last_zone_stats(wd.get_draws())
+    return _render(request, "first_last_zone.html", {
+        "active_tab": "first_last_zone",
+        "stats": stats,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-046 — 당첨금 연도별 비교 페이지
 # @MX:SPEC: SPEC-LOTTO-046
 @router.get("/stats/yearly-prize")
