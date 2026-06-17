@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{# @MX:NOTE: SPEC-LOTTO-042 — 번호 추이 트래커 페이지 #}
+{% block content %}
+<section class="space-y-6">
+  <div>
+    <h2 class="text-2xl font-bold text-ink dark:text-gray-100">번호 추이</h2>
+    <p class="text-sm text-muted dark:text-gray-400 mt-1">
+      최대 3개 번호를 선택하면 최근 N회차 출현 타임라인과 출현 간격(gap) 분석을 보여줍니다.
+    </p>
+  </div>
+
+  <!-- 입력 폼 -->
+  <form method="get" action="/numbers/trend"
+        class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4 flex flex-wrap items-end gap-3">
+    {% for i in range(3) %}
+    <div>
+      <label for="n{{ i }}" class="block text-xs text-muted dark:text-gray-400 mb-1">번호 {{ i + 1 }}</label>
+      <input type="number" id="n{{ i }}" name="n" min="1" max="45"
+             value="{% if selected and selected|length > i %}{{ selected[i] }}{% endif %}"
+             class="w-24 px-3 py-2 rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100">
+    </div>
+    {% endfor %}
+    <div>
+      <label for="recent_n" class="block text-xs text-muted dark:text-gray-400 mb-1">분석 회차 수</label>
+      <input type="number" id="recent_n" name="recent_n" min="10" max="500"
+             value="{{ recent_n }}"
+             class="w-28 px-3 py-2 rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100">
+    </div>
+    <button type="submit"
+            class="px-4 py-2 rounded bg-data-blue text-white text-sm font-medium hover:bg-blue-600 transition-colors">
+      추이 조회
+    </button>
+  </form>
+
+  {% if error_message %}
+  <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4 text-sm text-red-700 dark:text-red-300">
+    {{ error_message }}
+  </div>
+  {% elif trend is not none %}
+  <!-- 결과 영역 -->
+  <div class="space-y-6">
+    <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4">
+      <p class="text-xs text-muted dark:text-gray-400">분석 범위</p>
+      <p class="text-lg font-bold text-ink dark:text-gray-100">최근 {{ trend.draws_analyzed }}회차 (요청 {{ trend.recent_n }})</p>
+    </div>
+
+    {% if trend.draws_analyzed == 0 %}
+    <p class="text-sm text-muted dark:text-gray-400">분석할 회차 데이터가 없습니다.</p>
+    {% else %}
+    {% for entry in trend.numbers %}
+    <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4 space-y-3">
+      <!-- 번호 헤더 + 요약 통계 -->
+      <div class="flex flex-wrap items-center gap-4">
+        <span class="inline-flex items-center justify-center w-10 h-10 rounded-full text-sm font-bold text-white"
+              style="background-color: {{ entry.number | ball_color }}">{{ entry.number }}</span>
+        <div class="text-sm text-muted dark:text-gray-300 flex flex-wrap gap-x-6 gap-y-1">
+          <span>출현 횟수: <strong class="text-ink dark:text-gray-100">{{ entry.total_appearances }}회</strong></span>
+          <span>평균 간격:
+            <strong class="text-ink dark:text-gray-100">{% if entry.avg_gap is not none %}{{ entry.avg_gap }}{% else %}-{% endif %}</strong>
+          </span>
+          <span>현재 간격: <strong class="text-ink dark:text-gray-100">{{ entry.current_gap }}회</strong></span>
+          <span>마지막 출현:
+            <strong class="text-ink dark:text-gray-100">{% if entry.last_appeared_drwNo is not none %}{{ entry.last_appeared_drwNo }}회{% else %}없음{% endif %}</strong>
+          </span>
+        </div>
+      </div>
+
+      <!-- 타임라인 (●=출현, ○=미출현) -->
+      <div class="flex flex-wrap gap-1">
+        {% for t in entry.timeline %}
+        <span title="{{ t.drwNo }}회 ({{ t.date }})"
+              class="inline-block w-3 h-3 rounded-full {% if t.appeared %}bg-data-blue{% else %}bg-border dark:bg-gray-600{% endif %}"></span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

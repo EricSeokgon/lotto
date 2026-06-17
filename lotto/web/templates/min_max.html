@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-064: 최솟값·최댓값 분포 분석 — 최솟값/최댓값/범위 분포·카테고리 분류 (JS 없음) #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">최솟값·최댓값 분포 분석</h2>
+    </div>
+
+    <p class="text-sm text-muted dark:text-gray-400">
+        당첨 본번호 6개(보너스 제외)의 최솟값·최댓값과 그 범위(최댓값-최솟값)를 집계합니다.
+        범위를 small(30 미만)·large(30 이상)으로 분류합니다.
+        예) [3,11,18,25,33,40]은 최솟값 3, 최댓값 40, 범위 37(large)입니다.
+        과거 통계일 뿐 미래 출현을 보장하지 않습니다.
+    </p>
+
+    {% if stats.total_draws == 0 %}
+    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+    </div>
+    {% else %}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">분석 회차</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.total_draws }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">평균 최솟값</p>
+            <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">{{ stats.avg_min }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">평균 최댓값</p>
+            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{ stats.avg_max }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">평균 범위</p>
+            <p class="text-xl font-bold text-sky-600 dark:text-sky-400">{{ stats.avg_range }}</p>
+        </div>
+    </div>
+
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">범위 카테고리 분류</h3>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="py-2 pr-4">카테고리</th>
+                    <th class="py-2 pr-4 text-right">회차 수</th>
+                    <th class="py-2 pr-4 text-right">비율</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="border-b border-border dark:border-gray-700">
+                    <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">small (30 미만)</td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ stats.small_range_count }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ stats.small_range_pct }}%</td>
+                </tr>
+                <tr class="border-b border-border dark:border-gray-700">
+                    <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">large (30 이상)</td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ stats.large_range_count }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ stats.large_range_pct }}%</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">최솟값 분포 (상위 15)</h3>
+            <p class="text-xs text-muted dark:text-gray-400 mb-3">
+                최빈 최솟값: <span class="font-semibold text-ink dark:text-gray-100">{{ stats.most_common_min }}</span>
+            </p>
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                        <th class="py-2 pr-4">최솟값</th>
+                        <th class="py-2 pr-4 text-right">회차 수</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {# 회차 수 내림차순, 동률 시 값 오름차순으로 상위 15개만 표시 #}
+                    {% for v, cnt in stats.min_distribution.items() | sort(attribute='0') | sort(attribute='1', reverse=True) %}
+                    {% if loop.index <= 15 %}
+                    {% if v == stats.most_common_min %}
+                    <tr class="border-b border-border dark:border-gray-700 bg-emerald-50 dark:bg-emerald-900/20">
+                    {% else %}
+                    <tr class="border-b border-border dark:border-gray-700">
+                    {% endif %}
+                        <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">
+                            {{ v }}{% if v == stats.most_common_min %} <span class="text-xs font-normal text-emerald-600 dark:text-emerald-400">(최빈)</span>{% endif %}
+                        </td>
+                        <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ cnt }}</td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">최댓값 분포 (상위 15)</h3>
+            <p class="text-xs text-muted dark:text-gray-400 mb-3">
+                최빈 최댓값: <span class="font-semibold text-ink dark:text-gray-100">{{ stats.most_common_max }}</span>
+            </p>
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                        <th class="py-2 pr-4">최댓값</th>
+                        <th class="py-2 pr-4 text-right">회차 수</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {# 회차 수 내림차순, 동률 시 값 오름차순으로 상위 15개만 표시 #}
+                    {% for v, cnt in stats.max_distribution.items() | sort(attribute='0') | sort(attribute='1', reverse=True) %}
+                    {% if loop.index <= 15 %}
+                    {% if v == stats.most_common_max %}
+                    <tr class="border-b border-border dark:border-gray-700 bg-rose-50 dark:bg-rose-900/20">
+                    {% else %}
+                    <tr class="border-b border-border dark:border-gray-700">
+                    {% endif %}
+                        <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">
+                            {{ v }}{% if v == stats.most_common_max %} <span class="text-xs font-normal text-rose-600 dark:text-rose-400">(최빈)</span>{% endif %}
+                        </td>
+                        <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ cnt }}</td>
+                    </tr>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

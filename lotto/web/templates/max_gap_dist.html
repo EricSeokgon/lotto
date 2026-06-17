@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-080: 번호 간격 최대값 분포 분석 — 회차별 정렬 본번호 인접 간격 최댓값의 구간별 분포 (JS 없음) #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">번호 간격 최대값 분포 분석</h2>
+    </div>
+
+    <p class="text-sm text-muted dark:text-gray-400">
+        정렬된 6개 당첨번호 간 최대 간격 분포를 집계합니다.
+        각 회차 본번호 6개(보너스 제외)를 정렬한 뒤 인접한 번호 차이 5개 중
+        최댓값(max_gap)을 구해 6개 구간("1-5","6-10","11-15","16-20","21-30","31+")으로
+        분류합니다.
+        예) [1,2,3,40,41,42] → 간격 [1,1,37,1,1] → 최대 37 → "31+" 구간.
+        최대 간격은 이론상 1~44 범위이며, 보너스 번호는 계산에 포함하지 않습니다.
+        SPEC-056(간격 분석, small/medium/large)과는 다른 별개 지표입니다.
+        과거 통계일 뿐 미래 출현을 보장하지 않습니다.
+    </p>
+
+    {% if stats.total_draws == 0 %}
+    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+    </div>
+    {% else %}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">분석 회차</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.total_draws }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">평균 최대간격</p>
+            <p class="text-xl font-bold text-sky-600 dark:text-sky-400">{{ stats.avg_max_gap }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">최빈 구간</p>
+            <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">{{ stats.most_common_range }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">고간격 비율(&ge;21)</p>
+            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{ stats.high_gap_pct }}%</p>
+        </div>
+    </div>
+
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">최대 간격 구간 분포</h3>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="py-2 pr-4">간격 구간</th>
+                    <th class="py-2 pr-4 text-right">회차 수</th>
+                    <th class="py-2 pr-4 text-right">비율</th>
+                    <th class="py-2 pl-4 w-1/2">분포</th>
+                </tr>
+            </thead>
+            <tbody>
+                {# 6개 고정 구간을 정의 순서대로 표시한다(미관측 구간 0 포함) #}
+                {% for label, cell in stats.max_gap_distribution.items() %}
+                {% if label == stats.most_common_range %}
+                <tr class="border-b border-border dark:border-gray-700 bg-sky-50 dark:bg-sky-900/20">
+                {% else %}
+                <tr class="border-b border-border dark:border-gray-700">
+                {% endif %}
+                    <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">
+                        {{ label }}{% if label == stats.most_common_range %} <span class="text-xs font-normal text-sky-600 dark:text-sky-400">(최빈)</span>{% endif %}
+                    </td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ cell.count }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ cell.pct }}%</td>
+                    <td class="py-2 pl-4">
+                        <div class="w-full bg-gray-100 dark:bg-gray-700 rounded h-2.5">
+                            <div class="bg-sky-500 dark:bg-sky-400 h-2.5 rounded" style="width: {{ cell.pct }}%"></div>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

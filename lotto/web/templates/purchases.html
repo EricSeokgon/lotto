@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- 페이지 타이틀 -->
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">구매 이력</h2>
+        <span class="text-sm text-muted dark:text-gray-400">총 {{ purchases|length }}건</span>
+    </div>
+
+    <!-- 구매 추가 폼 -->
+    <div class="bg-card rounded-xl border border-border dark:bg-gray-800 dark:border-gray-700 p-5">
+        <h3 class="text-lg font-semibold text-ink mb-4">구매 번호 등록</h3>
+        <form id="purchase-form" class="space-y-4">
+            <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+                <div>
+                    <label class="block text-sm font-medium text-ink mb-1">회차 번호</label>
+                    <input type="number" id="drwNo" name="drwNo" min="1" placeholder="예: 1123"
+                           class="w-full border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-data-blue">
+                </div>
+                <div class="col-span-2 md:col-span-3">
+                    <label class="block text-sm font-medium text-ink mb-1">번호 6개 (쉼표 또는 공백으로 구분)</label>
+                    <input type="text" id="numbers" name="numbers" placeholder="예: 1, 5, 12, 23, 34, 45"
+                           class="w-full border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-data-blue">
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <button type="submit"
+                        class="px-4 py-2 bg-data-blue text-white text-sm font-medium rounded-md hover:bg-blue-600 transition-colors">
+                    등록
+                </button>
+                <span id="form-msg" class="text-sm text-muted"></span>
+            </div>
+        </form>
+    </div>
+
+    <!-- 통계 요약 -->
+    {% if purchases %}
+    <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+        {% set stats = namespace(total=purchases|length, pending=0, prize=0, none=0) %}
+        {% for p in purchases %}
+            {% if p.prize_rank == 'pending' %}{% set stats.pending = stats.pending + 1 %}
+            {% elif p.prize_rank == 'none' %}{% set stats.none = stats.none + 1 %}
+            {% else %}{% set stats.prize = stats.prize + 1 %}{% endif %}
+        {% endfor %}
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
+            <p class="text-xs text-muted mb-1">총 구매</p>
+            <p class="text-2xl font-bold text-ink">{{ stats.total }}</p>
+        </div>
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
+            <p class="text-xs text-muted mb-1">당첨</p>
+            <p class="text-2xl font-bold text-amber">{{ stats.prize }}</p>
+        </div>
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
+            <p class="text-xs text-muted mb-1">낙첨</p>
+            <p class="text-2xl font-bold text-muted">{{ stats.none }}</p>
+        </div>
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
+            <p class="text-xs text-muted mb-1">미추첨</p>
+            <p class="text-2xl font-bold text-slate-blue">{{ stats.pending }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    {# SPEC-LOTTO-015 REQ-PRIZE-003: ROI 요약 카드 4종 (총 매수/투자/당첨금/ROI%) #}
+    {% if roi_summary %}
+    <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
+            <p class="text-xs text-muted mb-1">총 매수</p>
+            <p class="text-2xl font-bold text-ink">{{ roi_summary.total_tickets }}<span class="text-sm text-muted ml-1">매</span></p>
+        </div>
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
+            <p class="text-xs text-muted mb-1">총 투자</p>
+            <p class="text-2xl font-bold text-ink">{{ "{:,}".format(roi_summary.total_invested) }}<span class="text-sm text-muted ml-1">원</span></p>
+        </div>
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
+            <p class="text-xs text-muted mb-1">총 당첨금</p>
+            <p class="text-2xl font-bold text-amber">{{ "{:,}".format(roi_summary.total_won) }}<span class="text-sm text-muted ml-1">원</span></p>
+        </div>
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4">
+            <p class="text-xs text-muted mb-1">ROI</p>
+            <p class="text-2xl font-bold {% if roi_summary.roi_pct > 0 %}text-green-600{% elif roi_summary.roi_pct < 0 %}text-red-500{% else %}text-muted{% endif %}">
+                {% if roi_summary.roi_pct > 0 %}+{% endif %}{{ "%.1f"|format(roi_summary.roi_pct) }}<span class="text-sm ml-0.5">%</span>
+            </p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- 구매 이력 테이블 -->
+    <div class="bg-card rounded-xl border border-border dark:bg-gray-800 dark:border-gray-700 overflow-hidden">
+        {% if purchases %}
+        <table class="w-full text-sm">
+            <thead class="bg-surface border-b border-border">
+                <tr>
+                    <th class="px-4 py-3 text-left font-medium text-muted">회차</th>
+                    <th class="px-4 py-3 text-left font-medium text-muted">번호</th>
+                    <th class="px-4 py-3 text-left font-medium text-muted">등수</th>
+                    <th class="px-4 py-3 text-left font-medium text-muted">당첨금</th>
+                    <th class="px-4 py-3 text-left font-medium text-muted">구매일</th>
+                    <th class="px-4 py-3 text-center font-medium text-muted">삭제</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-border">
+                {% for p in purchases %}
+                {% set rank_label = {'1st': '1등', '2nd': '2등', '3rd': '3등', '4th': '4등', '5th': '5등', 'none': '낙첨', 'pending': '미추첨'} %}
+                <tr class="hover:bg-surface transition-colors">
+                    <td class="px-4 py-3 font-medium">{{ p.drwNo }}회</td>
+                    <td class="px-4 py-3">
+                        <div class="flex gap-1 flex-wrap">
+                            {% for n in p.numbers %}
+                            <span class="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                                  style="background-color: {{ n | ball_color }}">{{ n }}</span>
+                            {% endfor %}
+                        </div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-0.5 rounded-full text-xs font-medium {{ rank_label.get(p.prize_rank, p.prize_rank) | prize_class }}">
+                            {{ rank_label.get(p.prize_rank, p.prize_rank) }}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 text-muted">
+                        {% if p.prize_amount > 0 %}
+                        <span class="font-medium text-amber">{{ "{:,}".format(p.prize_amount) }}원</span>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td class="px-4 py-3 text-muted text-xs">{{ p.purchased_at[:10] }}</td>
+                    <td class="px-4 py-3 text-center">
+                        <button onclick="deletePurchase({{ p.id }})"
+                                class="text-red-400 hover:text-red-600 transition-colors text-xs">삭제</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="py-12 text-center text-muted">
+            <p>등록된 구매 이력이 없습니다.</p>
+            <p class="text-xs mt-1">위 폼에서 구매 번호를 등록하세요.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('purchase-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const msgEl = document.getElementById('form-msg');
+    const drwNo = parseInt(document.getElementById('drwNo').value);
+    const numbersRaw = document.getElementById('numbers').value;
+    const numbers = numbersRaw.split(/[\s,]+/).map(Number).filter(Boolean);
+
+    msgEl.textContent = '등록 중...';
+    msgEl.className = 'text-sm text-muted';
+
+    try {
+        const res = await fetch('/api/purchases', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({drwNo, numbers})
+        });
+        if (res.ok) {
+            msgEl.textContent = '등록되었습니다.';
+            msgEl.className = 'text-sm text-green-600';
+            setTimeout(() => location.reload(), 800);
+        } else {
+            const err = await res.json();
+            msgEl.textContent = err.detail || '등록 실패';
+            msgEl.className = 'text-sm text-red-500';
+        }
+    } catch {
+        msgEl.textContent = '네트워크 오류';
+        msgEl.className = 'text-sm text-red-500';
+    }
+});
+
+async function deletePurchase(id) {
+    if (!confirm('삭제하시겠습니까?')) return;
+    const res = await fetch('/api/purchases/' + id, {method: 'DELETE'});
+    if (res.status === 204) {
+        location.reload();
+    } else {
+        alert('삭제 실패');
+    }
+}
+</script>
+{% endblock %}

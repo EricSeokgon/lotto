@@ -11,7 +11,9 @@ from __future__ import annotations
 import datetime
 from typing import TYPE_CHECKING, Any
 
-from fpdf import FPDF
+# SPEC-LOTTO-045: fpdf2는 py.typed 미제공(types-fpdf2 스텁 별도). ignore_missing_imports로
+# 억제되지 않는 import-untyped를 라인 단위로 무시한다 (런타임 동작 무관).
+from fpdf import FPDF  # type: ignore[import-untyped]
 
 if TYPE_CHECKING:  # pragma: no cover
     from lotto.models import Recommendation, SimulationResult, Statistics

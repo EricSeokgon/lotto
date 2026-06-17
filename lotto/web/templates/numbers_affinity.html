@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{# @MX:NOTE: SPEC-LOTTO-044 — 번호 궁합 추천기 페이지 #}
+{% block content %}
+<section class="space-y-6">
+  <div>
+    <h2 class="text-2xl font-bold text-ink dark:text-gray-100">번호 궁합</h2>
+    <p class="text-sm text-muted dark:text-gray-400 mt-1">
+      한 번호를 선택하면 역대 추첨에서 가장 자주 함께 나온 번호(궁합 파트너)와
+      이를 바탕으로 한 추천 조합을 보여줍니다.
+    </p>
+  </div>
+
+  <!-- 입력 폼 -->
+  <form method="get" action="/numbers/affinity"
+        class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4 flex flex-wrap items-end gap-3">
+    <div>
+      <label for="target" class="block text-xs text-muted dark:text-gray-400 mb-1">대상 번호 (1~45)</label>
+      <input type="number" id="target" name="target" min="1" max="45"
+             value="{% if target is not none %}{{ target }}{% endif %}"
+             class="w-28 px-3 py-2 rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100">
+    </div>
+    <button type="submit"
+            class="px-4 py-2 rounded bg-data-blue text-white text-sm font-medium hover:bg-blue-600 transition-colors">
+      궁합 조회
+    </button>
+  </form>
+
+  {% if error_message %}
+  <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4 text-sm text-red-700 dark:text-red-300">
+    {{ error_message }}
+  </div>
+  {% elif affinity is not none %}
+  <!-- 결과 영역 -->
+  <div class="space-y-6">
+    <!-- 요약 카드 -->
+    <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4 flex flex-wrap items-center gap-6">
+      <div class="flex items-center gap-3">
+        <span class="inline-flex items-center justify-center w-12 h-12 rounded-full text-base font-bold text-white"
+              style="background-color: {{ affinity.target | ball_color }}">{{ affinity.target }}</span>
+        <div>
+          <p class="text-xs text-muted dark:text-gray-400">대상 번호</p>
+          <p class="text-lg font-bold text-ink dark:text-gray-100">{{ affinity.target }}번</p>
+        </div>
+      </div>
+      <div>
+        <p class="text-xs text-muted dark:text-gray-400">등장 회차</p>
+        <p class="text-lg font-bold text-ink dark:text-gray-100">{{ affinity.target_appearances }}회 / 전체 {{ affinity.total_draws }}회</p>
+      </div>
+    </div>
+
+    {% if affinity.target_appearances == 0 %}
+    <p class="text-sm text-muted dark:text-gray-400">
+      대상 번호가 등장한 회차가 없어 궁합을 분석할 수 없습니다.
+    </p>
+    {% else %}
+    <!-- 추천 조합 -->
+    <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4 space-y-3">
+      <p class="text-sm font-medium text-ink dark:text-gray-100">추천 조합</p>
+      <div class="flex flex-wrap gap-2">
+        {% for n in affinity.recommended_combination %}
+        <span class="inline-flex items-center justify-center w-10 h-10 rounded-full text-sm font-bold text-white"
+              style="background-color: {{ n | ball_color }}">{{ n }}</span>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- 파트너 테이블 -->
+    <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4">
+      <p class="text-sm font-medium text-ink dark:text-gray-100 mb-3">궁합 파트너 (동반 출현 상위)</p>
+      {% if affinity.partners %}
+      <div class="space-y-2">
+        {% for p in affinity.partners %}
+        <div class="flex items-center gap-3">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold text-white shrink-0"
+                style="background-color: {{ p.number | ball_color }}">{{ p.number }}</span>
+          <div class="flex-1 min-w-0">
+            <div class="h-3 rounded bg-border dark:bg-gray-700 overflow-hidden">
+              <div class="h-3 rounded bg-data-blue"
+                   style="width: {{ (p.rate * 100) | round(1) }}%"></div>
+            </div>
+          </div>
+          <span class="text-sm text-muted dark:text-gray-300 shrink-0 w-32 text-right">
+            <strong class="text-ink dark:text-gray-100">{{ p.count }}회</strong>
+            ({{ (p.rate * 100) | round(1) }}%)
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="text-sm text-muted dark:text-gray-400">동반 출현한 파트너가 없습니다.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

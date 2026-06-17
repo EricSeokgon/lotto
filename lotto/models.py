@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import datetime  # noqa: TC003
-from typing import Any
+from typing import Any, Optional  # noqa: UP035 — Python 3.9 호환
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -22,6 +22,9 @@ class DrawResult(BaseModel):
     n5: int = Field(..., ge=1, le=45)
     n6: int = Field(..., ge=1, le=45)
     bonus: int = Field(..., ge=1, le=45)
+    # SPEC-LOTTO-017 REQ-PRIZE-D-001: 1등 당첨금 / 당첨자 수 (기존 데이터 하위 호환 위해 Optional)
+    prize1Amount: Optional[int] = Field(default=None, description="1등 당첨금 (원)")  # noqa: N815, UP045
+    prize1Winners: Optional[int] = Field(default=None, description="1등 당첨자 수")  # noqa: N815, UP045
 
     @field_validator("n1", "n2", "n3", "n4", "n5", "n6", "bonus")
     @classmethod

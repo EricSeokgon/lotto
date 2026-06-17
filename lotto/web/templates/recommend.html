@@ -4,8 +4,8 @@
 <div class="space-y-6">
     <div class="flex items-center justify-between flex-wrap gap-3">
         <div>
-            <h2 class="text-2xl font-bold text-ink mb-1">추천 번호</h2>
-            <p class="text-muted text-sm">10가지 전략으로 분석한 번호 추천 결과입니다.</p>
+            <h2 class="text-2xl font-bold text-ink dark:text-gray-100 mb-1">추천 번호</h2>
+            <p class="text-muted dark:text-gray-400 text-sm">10가지 전략으로 분석한 번호 추천 결과입니다.</p>
         </div>
         <div class="flex items-center gap-3">
             <!-- SPEC-LOTTO-005 REQ-PDF-005: PDF 다운로드 버튼 -->
@@ -33,7 +33,7 @@
 
     {% if recommendations %}
     <!-- 전략 안내 -->
-    <details class="bg-card rounded-lg border border-border shadow-sm">
+    <details class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 shadow-sm">
         <summary class="px-4 py-3 cursor-pointer text-sm font-semibold text-ink select-none flex items-center justify-between">
             <span>전략 안내</span>
             <span class="text-xs text-muted font-normal">클릭하여 펼치기</span>
@@ -50,6 +50,7 @@
                 ('핫콜드혼합','bg-red-100 text-red-700',       '최근 자주 나온 번호(핫)와 장기 미출현 번호(콜드)를 혼합합니다.'),
                 ('갭분석',    'bg-amber-100 text-amber-700',   '오랫동안 출현하지 않은 번호를 갭 점수로 계산하여 우선 선택합니다.'),
                 ('앙상블',    'bg-cyan-100 text-cyan-700',     '모든 분석 신호(빈도·최근·패턴·갭)를 균등 가중치로 종합합니다.'),
+                ('데이터스마트','bg-violet-100 text-violet-700','빈도·최근·동반·갭·홀짝·번호대 6축을 복합 가중하여 추천합니다.'),
             ] %}
             {% for label, badge_cls, desc in strategy_info %}
             <div class="flex gap-2 items-start">
@@ -61,7 +62,7 @@
     </details>
 
     <!-- 전략 범례 -->
-    <div class="bg-card rounded-lg border border-border p-4 shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4 shadow-sm">
         <p class="text-xs font-semibold text-muted uppercase tracking-wide mb-3">번호 색상 범례</p>
         <div class="flex flex-wrap gap-3">
             <div class="flex items-center gap-1.5">
@@ -89,7 +90,7 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {% for rec in recommendations %}
-        <div class="bg-card rounded-lg border border-border p-5 shadow-sm hover:shadow-md transition-shadow">
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm hover:shadow-md transition-shadow">
             <!-- 헤더: 세트 번호 + 전략 배지 -->
             <div class="flex items-start justify-between mb-3">
                 <span class="text-sm font-semibold text-ink">세트 {{ loop.index }}</span>
@@ -104,21 +105,33 @@
                     {% elif rec.strategy_label == '핫콜드혼합' %}bg-red-100 text-red-700
                     {% elif rec.strategy_label == '갭분석' %}bg-amber-100 text-amber-700
                     {% elif rec.strategy_label == '앙상블' %}bg-cyan-100 text-cyan-700
+                    {% elif rec.strategy_label == '데이터스마트' %}bg-violet-100 text-violet-700
                     {% else %}bg-surface text-muted{% endif %}">
                     {{ rec.strategy_label }}
                 </span>
             </div>
 
-            <!-- 번호 공 -->
-            <div class="flex flex-wrap gap-1.5 mb-3">
+            <!-- 번호 공 + SPEC-LOTTO-051 교차 전략 합의(N/11) -->
+            <div class="consensus-panel flex flex-wrap gap-2 mb-3">
                 {% for num in rec.numbers %}
                 {% if num <= 10 %}{% set bg = '#FBC400' %}{% set fg = '#1f2937' %}
                 {% elif num <= 20 %}{% set bg = '#69C8F2' %}{% set fg = '#ffffff' %}
                 {% elif num <= 30 %}{% set bg = '#FF7272' %}{% set fg = '#ffffff' %}
                 {% elif num <= 40 %}{% set bg = '#AAAAAA' %}{% set fg = '#ffffff' %}
                 {% else %}{% set bg = '#B0D840' %}{% set fg = '#ffffff' %}{% endif %}
-                <span class="inline-flex w-9 h-9 rounded-full items-center justify-center text-sm font-bold shadow-sm"
-                      style="background-color: {{ bg }}; color: {{ fg }};">{{ num }}</span>
+                {% set cons = consensus.get(num, 0) %}
+                {% set is_caution = cons >= consensus_caution_threshold %}
+                <div class="flex flex-col items-center gap-1">
+                    <span class="inline-flex w-9 h-9 rounded-full items-center justify-center text-sm font-bold shadow-sm"
+                          style="background-color: {{ bg }}; color: {{ fg }};">{{ num }}</span>
+                    <!-- 합의 카운트: 주의(>=4)는 강조 배지, 그 외는 카운트만 -->
+                    {% if is_caution %}
+                    <span class="consensus-caution text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-amber-100 text-amber-800 whitespace-nowrap"
+                          title="주의: {{ cons }}개 전략이 동시 추천한 번호입니다.">⚠ {{ cons }}/11</span>
+                    {% else %}
+                    <span class="consensus-count text-[10px] text-muted whitespace-nowrap">{{ cons }}/11</span>
+                    {% endif %}
+                </div>
                 {% endfor %}
             </div>
 
@@ -147,7 +160,7 @@
     </div>
 
     {% else %}
-    <div class="bg-card rounded-lg border border-border p-8 text-center shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-8 text-center shadow-sm">
         <p class="text-muted">통계 데이터가 없습니다.</p>
         <p class="text-sm text-muted mt-1">
             <a href="/collect" class="text-blue-600 hover:underline">수집</a> 후
@@ -155,5 +168,639 @@
         </p>
     </div>
     {% endif %}
+
+    <!-- SPEC-LOTTO-016 REQ-FAV-004: 번호 즐겨찾기 관리 섹션 -->
+    <section id="favorites-section" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-ink">즐겨찾기</h3>
+            <span class="text-xs text-muted">자주 사용하는 번호 조합을 저장합니다.</span>
+        </div>
+
+        <!-- 입력 폼 -->
+        <form id="favorite-form" class="flex flex-wrap items-end gap-2 mb-4">
+            <div class="flex flex-wrap gap-1.5">
+                {% for i in range(6) %}
+                <input type="number" min="1" max="45" required
+                       name="fav-num-{{ i }}"
+                       class="w-14 h-10 border border-border rounded text-center text-sm bg-card text-ink"
+                       placeholder="{{ i + 1 }}">
+                {% endfor %}
+            </div>
+            <input type="text" name="fav-name" maxlength="20"
+                   placeholder="이름 (선택, 최대 20자)"
+                   class="flex-1 min-w-[160px] h-10 border border-border rounded px-3 text-sm bg-card text-ink">
+            <button type="submit"
+                    class="h-10 px-4 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors">
+                저장
+            </button>
+        </form>
+        <p id="favorite-error" class="text-xs text-red-600 mb-3 hidden"></p>
+
+        <!-- 목록 -->
+        <ul id="favorites-list" class="space-y-2"></ul>
+        <p id="favorites-empty" class="text-sm text-muted hidden">저장된 즐겨찾기가 없습니다.</p>
+    </section>
+
+    <script>
+        (function () {
+            const listEl = document.getElementById('favorites-list');
+            const emptyEl = document.getElementById('favorites-empty');
+            const form = document.getElementById('favorite-form');
+            const errorEl = document.getElementById('favorite-error');
+
+            function ballHTML(num) {
+                let bg = '#FBC400', fg = '#1f2937';
+                if (num > 40) { bg = '#B0D840'; fg = '#fff'; }
+                else if (num > 30) { bg = '#AAAAAA'; fg = '#fff'; }
+                else if (num > 20) { bg = '#FF7272'; fg = '#fff'; }
+                else if (num > 10) { bg = '#69C8F2'; fg = '#fff'; }
+                return '<span class="inline-flex w-7 h-7 rounded-full items-center justify-center text-xs font-bold" style="background-color:' + bg + ';color:' + fg + '">' + num + '</span>';
+            }
+
+            function showError(msg) {
+                errorEl.textContent = msg;
+                errorEl.classList.remove('hidden');
+            }
+            function clearError() { errorEl.classList.add('hidden'); }
+
+            async function loadFavorites() {
+                try {
+                    const res = await fetch('/api/favorites');
+                    const items = await res.json();
+                    listEl.innerHTML = '';
+                    if (!items.length) {
+                        emptyEl.classList.remove('hidden');
+                        return;
+                    }
+                    emptyEl.classList.add('hidden');
+                    items.forEach(function (item) {
+                        const li = document.createElement('li');
+                        li.className = 'flex items-center justify-between gap-3 p-3 border border-border rounded bg-surface';
+                        const balls = item.numbers.map(ballHTML).join(' ');
+                        li.innerHTML =
+                            '<div class="flex items-center gap-3 flex-wrap">' +
+                                '<span class="text-sm font-semibold text-ink">' + item.name + '</span>' +
+                                '<div class="flex gap-1">' + balls + '</div>' +
+                            '</div>' +
+                            '<button type="button" data-id="' + item.id + '" class="text-xs px-2 py-1 rounded border border-border text-muted hover:bg-card hover:text-red-600 transition-colors">삭제</button>';
+                        listEl.appendChild(li);
+                    });
+                } catch (e) {
+                    showError('즐겨찾기를 불러오지 못했습니다.');
+                }
+            }
+
+            form.addEventListener('submit', async function (ev) {
+                ev.preventDefault();
+                clearError();
+                const fd = new FormData(form);
+                const numbers = [];
+                for (let i = 0; i < 6; i++) {
+                    const raw = fd.get('fav-num-' + i);
+                    const n = parseInt(raw, 10);
+                    if (!Number.isFinite(n)) {
+                        showError('6개 번호를 모두 입력해주세요.');
+                        return;
+                    }
+                    numbers.push(n);
+                }
+                const name = (fd.get('fav-name') || '').trim();
+                const payload = { numbers: numbers };
+                if (name) payload.name = name;
+
+                try {
+                    const res = await fetch('/api/favorites', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+                    if (res.status === 409) {
+                        showError('동일한 번호 조합이 이미 저장되어 있습니다.');
+                        return;
+                    }
+                    if (!res.ok) {
+                        showError('저장 실패: 번호(1~45, 중복 없음)와 이름(최대 20자)을 확인하세요.');
+                        return;
+                    }
+                    form.reset();
+                    await loadFavorites();
+                } catch (e) {
+                    showError('네트워크 오류로 저장하지 못했습니다.');
+                }
+            });
+
+            listEl.addEventListener('click', async function (ev) {
+                const target = ev.target;
+                if (!(target instanceof HTMLElement)) return;
+                const id = target.getAttribute('data-id');
+                if (!id) return;
+                if (!confirm('즐겨찾기를 삭제하시겠어요?')) return;
+                try {
+                    const res = await fetch('/api/favorites/' + encodeURIComponent(id), { method: 'DELETE' });
+                    if (!res.ok) {
+                        showError('삭제 실패: 새로고침 후 다시 시도해주세요.');
+                        return;
+                    }
+                    await loadFavorites();
+                } catch (e) {
+                    showError('네트워크 오류로 삭제하지 못했습니다.');
+                }
+            });
+
+            loadFavorites();
+        })();
+    </script>
+
+    <!-- SPEC-LOTTO-033: 번호 생성 이력 섹션 -->
+    <section id="gen-history-section" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-ink dark:text-gray-100">생성 이력</h3>
+            <button type="button" id="gen-history-clear"
+                    class="text-xs px-3 py-1.5 rounded border border-border text-muted hover:bg-surface hover:text-red-600 transition-colors">
+                전체 삭제
+            </button>
+        </div>
+        <p class="text-xs text-muted mb-3">API로 추천된 최근 10건의 번호 조합입니다.</p>
+
+        <table class="w-full text-sm">
+            <thead>
+                <tr class="border-b border-border">
+                    <th class="text-left py-2 text-muted font-medium">전략</th>
+                    <th class="text-left py-2 text-muted font-medium">번호</th>
+                    <th class="text-right py-2 text-muted font-medium">생성 시각</th>
+                </tr>
+            </thead>
+            <tbody id="gen-history-tbody"></tbody>
+        </table>
+        <p id="gen-history-empty" class="text-sm text-muted hidden">생성 이력이 없습니다.</p>
+    </section>
+
+    <script>
+        (function () {
+            const tbody = document.getElementById('gen-history-tbody');
+            const emptyEl = document.getElementById('gen-history-empty');
+            const clearBtn = document.getElementById('gen-history-clear');
+
+            function ballHTML(num) {
+                let bg = '#FBC400', fg = '#1f2937';
+                if (num > 40) { bg = '#B0D840'; fg = '#fff'; }
+                else if (num > 30) { bg = '#AAAAAA'; fg = '#fff'; }
+                else if (num > 20) { bg = '#FF7272'; fg = '#fff'; }
+                else if (num > 10) { bg = '#69C8F2'; fg = '#fff'; }
+                return '<span class="inline-flex w-6 h-6 rounded-full items-center justify-center text-xs font-bold" style="background-color:' + bg + ';color:' + fg + '">' + num + '</span>';
+            }
+
+            function formatTime(iso) {
+                if (!iso) return '';
+                try {
+                    const d = new Date(iso);
+                    return d.toLocaleString('ko-KR', { hour12: false });
+                } catch (e) {
+                    return iso;
+                }
+            }
+
+            async function loadHistory() {
+                try {
+                    const res = await fetch('/api/gen-history');
+                    const data = await res.json();
+                    const items = (data.items || []).slice(0, 10);
+                    tbody.innerHTML = '';
+                    if (!items.length) {
+                        emptyEl.classList.remove('hidden');
+                        return;
+                    }
+                    emptyEl.classList.add('hidden');
+                    items.forEach(function (item) {
+                        const tr = document.createElement('tr');
+                        tr.className = 'border-b border-border last:border-0';
+                        const balls = (item.numbers || []).map(ballHTML).join(' ');
+                        tr.innerHTML =
+                            '<td class="py-2 text-ink whitespace-nowrap">' + (item.strategy || '') + '</td>' +
+                            '<td class="py-2"><div class="flex gap-1 flex-wrap">' + balls + '</div></td>' +
+                            '<td class="py-2 text-right text-muted whitespace-nowrap">' + formatTime(item.generated_at) + '</td>';
+                        tbody.appendChild(tr);
+                    });
+                } catch (e) {
+                    emptyEl.textContent = '생성 이력을 불러오지 못했습니다.';
+                    emptyEl.classList.remove('hidden');
+                }
+            }
+
+            clearBtn.addEventListener('click', async function () {
+                if (!confirm('생성 이력을 전체 삭제하시겠어요?')) return;
+                try {
+                    await fetch('/api/gen-history', { method: 'DELETE' });
+                    await loadHistory();
+                } catch (e) {
+                    /* 삭제 실패 시 조용히 무시 */
+                }
+            });
+
+            loadHistory();
+        })();
+    </script>
+
+    <!-- SPEC-LOTTO-028 REQ-COMB-005: 번호 조합 분석 섹션 -->
+    <section id="combination-analyzer" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-ink dark:text-gray-100">조합 분석</h3>
+            <span class="text-xs text-muted dark:text-gray-400">6개 번호 조합의 특성과 과거 일치 회차를 분석합니다.</span>
+        </div>
+
+        <!-- 입력 폼 -->
+        <form id="combination-form" class="flex flex-wrap items-end gap-2 mb-4">
+            <div class="flex flex-wrap gap-1.5">
+                {% for i in range(6) %}
+                <input type="number" min="1" max="45" required
+                       name="comb-num-{{ i }}"
+                       class="w-14 h-10 border border-border rounded text-center text-sm bg-card text-ink dark:bg-gray-700 dark:text-gray-100"
+                       placeholder="{{ i + 1 }}">
+                {% endfor %}
+            </div>
+            <button type="submit"
+                    class="h-10 px-4 rounded bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors">
+                분석
+            </button>
+        </form>
+        <p id="combination-error" class="text-xs text-red-600 mb-3 hidden"></p>
+
+        <!-- 결과 카드 -->
+        <div id="combination-result" class="hidden"></div>
+    </section>
+
+    <script>
+        (function () {
+            const form = document.getElementById('combination-form');
+            const resultEl = document.getElementById('combination-result');
+            const errorEl = document.getElementById('combination-error');
+
+            // verdict 코드 → 한국어 라벨 + 배지 색상
+            const VERDICT_LABEL = { hot: '핫', cold: '콜드', balanced: '균형' };
+            const VERDICT_CLS = {
+                hot: 'bg-red-100 text-red-700',
+                cold: 'bg-blue-100 text-blue-700',
+                balanced: 'bg-gray-100 text-gray-700',
+            };
+
+            function ballHTML(num) {
+                let bg = '#FBC400', fg = '#1f2937';
+                if (num > 40) { bg = '#B0D840'; fg = '#fff'; }
+                else if (num > 30) { bg = '#AAAAAA'; fg = '#fff'; }
+                else if (num > 20) { bg = '#FF7272'; fg = '#fff'; }
+                else if (num > 10) { bg = '#69C8F2'; fg = '#fff'; }
+                return '<span class="inline-flex w-7 h-7 rounded-full items-center justify-center text-xs font-bold" style="background-color:' + bg + ';color:' + fg + '">' + num + '</span>';
+            }
+
+            function showError(msg) {
+                errorEl.textContent = msg;
+                errorEl.classList.remove('hidden');
+                resultEl.classList.add('hidden');
+            }
+            function clearError() { errorEl.classList.add('hidden'); }
+
+            function renderResult(data) {
+                const verdict = data.verdict || 'balanced';
+                const vLabel = VERDICT_LABEL[verdict] || verdict;
+                const vCls = VERDICT_CLS[verdict] || VERDICT_CLS.balanced;
+
+                // 구간 분포 텍스트
+                const rd = data.range_distribution || {};
+                const rangeText = Object.keys(rd).map(function (k) {
+                    return k + ': ' + rd[k];
+                }).join(' / ');
+
+                // historical_match 목록
+                let histHTML = '<p class="text-sm text-muted dark:text-gray-400">5개 이상 일치하는 과거 회차가 없습니다.</p>';
+                if (data.historical_match && data.historical_match.length) {
+                    histHTML = data.historical_match.map(function (m) {
+                        const balls = m.numbers.map(ballHTML).join(' ');
+                        return '<div class="flex items-center gap-3 flex-wrap p-2 border border-border rounded bg-surface dark:bg-gray-700">' +
+                            '<span class="text-xs font-semibold text-ink dark:text-gray-100">' + m.drwNo + '회</span>' +
+                            '<span class="text-xs text-muted dark:text-gray-400">' + m.matched + '개 일치</span>' +
+                            '<div class="flex gap-1">' + balls + '</div>' +
+                        '</div>';
+                    }).join('');
+                }
+
+                resultEl.innerHTML =
+                    '<div class="border border-border rounded-lg p-4 bg-surface dark:bg-gray-700 space-y-3">' +
+                        '<div class="flex items-center justify-between flex-wrap gap-2">' +
+                            '<div class="flex gap-1">' + data.numbers.map(ballHTML).join(' ') + '</div>' +
+                            '<span class="text-xs px-2.5 py-1 rounded-full font-semibold ' + vCls + '">' + vLabel + '</span>' +
+                        '</div>' +
+                        '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs text-muted dark:text-gray-400">' +
+                            '<span>합계 <strong class="text-ink dark:text-gray-100">' + data.sum + '</strong></span>' +
+                            '<span>홀 <strong class="text-ink dark:text-gray-100">' + data.odd_count + '</strong> / 짝 <strong class="text-ink dark:text-gray-100">' + data.even_count + '</strong></span>' +
+                            '<span>연속쌍 <strong class="text-ink dark:text-gray-100">' + data.consecutive_count + '</strong></span>' +
+                            '<span>빈도점수 <strong class="text-ink dark:text-gray-100">' + data.frequency_score + '</strong></span>' +
+                            '<span>최근점수 <strong class="text-ink dark:text-gray-100">' + data.recent_score + '</strong></span>' +
+                            '<span>동반점수 <strong class="text-ink dark:text-gray-100">' + data.companion_score + '</strong></span>' +
+                        '</div>' +
+                        '<p class="text-xs text-muted dark:text-gray-400">구간 분포: ' + rangeText + '</p>' +
+                        '<div class="border-t border-border pt-2">' +
+                            '<p class="text-xs font-semibold text-muted dark:text-gray-400 mb-2">과거 일치 회차 (5개 이상)</p>' +
+                            '<div class="space-y-1.5">' + histHTML + '</div>' +
+                        '</div>' +
+                    '</div>';
+                resultEl.classList.remove('hidden');
+            }
+
+            form.addEventListener('submit', async function (ev) {
+                ev.preventDefault();
+                clearError();
+                const fd = new FormData(form);
+                const numbers = [];
+                for (let i = 0; i < 6; i++) {
+                    const n = parseInt(fd.get('comb-num-' + i), 10);
+                    if (!Number.isFinite(n)) {
+                        showError('6개 번호를 모두 입력해주세요.');
+                        return;
+                    }
+                    numbers.push(n);
+                }
+                if (new Set(numbers).size !== 6) {
+                    showError('번호에 중복이 있습니다.');
+                    return;
+                }
+
+                try {
+                    const res = await fetch('/api/analyze-combination', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ numbers: numbers }),
+                    });
+                    if (res.status === 422) {
+                        showError('번호(1~45, 중복 없는 6개)를 확인하세요.');
+                        return;
+                    }
+                    if (!res.ok) {
+                        showError('분석에 실패했습니다. 잠시 후 다시 시도해주세요.');
+                        return;
+                    }
+                    renderResult(await res.json());
+                } catch (e) {
+                    showError('네트워크 오류로 분석하지 못했습니다.');
+                }
+            });
+        })();
+    </script>
+
+    <!-- SPEC-LOTTO-035: 번호 예약 섹션 -->
+    <div id="reservationSection" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+            <div>
+                <h3 class="font-semibold text-ink">번호 예약</h3>
+                <p class="text-xs text-muted mt-0.5">다음 추첨에 구매할 번호 조합을 미리 저장합니다 (최대 10개).</p>
+            </div>
+        </div>
+
+        <!-- 입력 폼 -->
+        <form id="reservationForm" class="flex flex-wrap items-end gap-2 mb-4">
+            <div class="flex items-center gap-1" id="reservationInputs">
+                <input type="number" min="1" max="45" class="reservation-num w-14 text-sm border border-border rounded px-2 py-1 bg-card text-ink" placeholder="1">
+                <input type="number" min="1" max="45" class="reservation-num w-14 text-sm border border-border rounded px-2 py-1 bg-card text-ink" placeholder="2">
+                <input type="number" min="1" max="45" class="reservation-num w-14 text-sm border border-border rounded px-2 py-1 bg-card text-ink" placeholder="3">
+                <input type="number" min="1" max="45" class="reservation-num w-14 text-sm border border-border rounded px-2 py-1 bg-card text-ink" placeholder="4">
+                <input type="number" min="1" max="45" class="reservation-num w-14 text-sm border border-border rounded px-2 py-1 bg-card text-ink" placeholder="5">
+                <input type="number" min="1" max="45" class="reservation-num w-14 text-sm border border-border rounded px-2 py-1 bg-card text-ink" placeholder="6">
+            </div>
+            <input type="text" id="reservationNote" maxlength="50" class="text-sm border border-border rounded px-2 py-1 bg-card text-ink flex-1 min-w-[120px]" placeholder="메모 (선택)">
+            <button type="submit" class="text-sm px-3 py-1.5 rounded border border-border bg-card text-ink hover:bg-surface transition-colors">예약 저장</button>
+        </form>
+        <div id="reservationError" class="text-xs text-red-700 mb-3 hidden"></div>
+
+        <!-- 예약 목록 -->
+        <div id="reservationList" class="space-y-2">
+            <div class="text-xs text-muted">예약 목록 불러오는 중...</div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // SPEC-LOTTO-035: 번호 예약 폼 + 목록 관리
+            var form = document.getElementById('reservationForm');
+            var listEl = document.getElementById('reservationList');
+            var errorEl = document.getElementById('reservationError');
+            var noteEl = document.getElementById('reservationNote');
+
+            function showError(msg) {
+                if (!errorEl) { return; }
+                errorEl.textContent = msg;
+                errorEl.classList.remove('hidden');
+            }
+            function clearError() {
+                if (errorEl) { errorEl.classList.add('hidden'); }
+            }
+
+            function renderList(data) {
+                if (!listEl) { return; }
+                if (!data.items.length) {
+                    listEl.innerHTML = '<div class="text-xs text-muted">예약된 번호가 없습니다.</div>';
+                    return;
+                }
+                listEl.innerHTML = data.items.map(function(item) {
+                    var nums = item.numbers.map(function(n) {
+                        return '<span class="inline-flex w-7 h-7 rounded-full items-center justify-center text-xs font-bold bg-surface text-ink">' + n + '</span>';
+                    }).join(' ');
+                    var note = item.note ? '<span class="text-xs text-muted ml-2">' + item.note + '</span>' : '';
+                    return '<div class="flex items-center justify-between gap-2 rounded border border-border p-2">'
+                        + '<div class="flex items-center gap-1 flex-wrap">' + nums + note + '</div>'
+                        + '<button data-id="' + item.id + '" class="reservation-delete text-xs px-2 py-1 rounded border border-border text-red-700 hover:bg-surface">삭제</button>'
+                        + '</div>';
+                }).join('');
+                listEl.querySelectorAll('.reservation-delete').forEach(function(btn) {
+                    btn.addEventListener('click', function() { deleteReservation(btn.getAttribute('data-id')); });
+                });
+            }
+
+            function loadReservations() {
+                fetch('/api/reservations')
+                    .then(function(res) { return res.json(); })
+                    .then(renderList)
+                    .catch(function() {
+                        if (listEl) { listEl.innerHTML = '<div class="text-xs text-muted">예약 목록을 불러올 수 없습니다.</div>'; }
+                    });
+            }
+
+            function deleteReservation(id) {
+                fetch('/api/reservations/' + id, { method: 'DELETE' })
+                    .then(function() { loadReservations(); });
+            }
+
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    clearError();
+                    var numbers = [];
+                    var inputs = document.querySelectorAll('.reservation-num');
+                    for (var i = 0; i < inputs.length; i++) {
+                        var n = parseInt(inputs[i].value, 10);
+                        if (isNaN(n) || n < 1 || n > 45) {
+                            showError('1~45 범위의 번호 6개를 입력하세요.');
+                            return;
+                        }
+                        numbers.push(n);
+                    }
+                    if (new Set(numbers).size !== 6) {
+                        showError('번호에 중복이 있습니다.');
+                        return;
+                    }
+                    fetch('/api/reservations', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ numbers: numbers, note: noteEl ? noteEl.value : '' }),
+                    }).then(function(res) {
+                        if (res.status === 400) {
+                            showError('최대 10개까지 예약 가능합니다.');
+                            return null;
+                        }
+                        if (res.status === 422) {
+                            showError('번호(1~45, 중복 없는 6개)를 확인하세요.');
+                            return null;
+                        }
+                        if (!res.ok) {
+                            showError('예약에 실패했습니다.');
+                            return null;
+                        }
+                        if (noteEl) { noteEl.value = ''; }
+                        loadReservations();
+                        return null;
+                    }).catch(function() {
+                        showError('네트워크 오류로 예약하지 못했습니다.');
+                    });
+                });
+            }
+
+            loadReservations();
+        })();
+    </script>
+
+    <!-- SPEC-LOTTO-037: 고급 필터 추천 섹션 -->
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-6 shadow-sm">
+        <h3 class="text-lg font-bold text-ink dark:text-gray-100 mb-1">고급 필터</h3>
+        <p class="text-sm text-muted dark:text-gray-400 mb-4">합계 범위, 홀수 개수, 포함/제외 번호 조건을 지정하여 맞춤 번호를 추천받습니다.</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-ink dark:text-gray-100 mb-1">합계 범위</label>
+                <div class="flex items-center gap-2">
+                    <input id="filter-sum-min" type="number" min="21" max="255" value="100"
+                           class="w-24 text-sm border border-border rounded px-2 py-1 bg-surface dark:bg-gray-700 text-ink dark:text-gray-100">
+                    <span class="text-muted">~</span>
+                    <input id="filter-sum-max" type="number" min="21" max="255" value="180"
+                           class="w-24 text-sm border border-border rounded px-2 py-1 bg-surface dark:bg-gray-700 text-ink dark:text-gray-100">
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-ink dark:text-gray-100 mb-1">홀수 개수 범위</label>
+                <div class="flex items-center gap-2">
+                    <input id="filter-odd-min" type="number" min="0" max="6" value="2"
+                           class="w-20 text-sm border border-border rounded px-2 py-1 bg-surface dark:bg-gray-700 text-ink dark:text-gray-100">
+                    <span class="text-muted">~</span>
+                    <input id="filter-odd-max" type="number" min="0" max="6" value="4"
+                           class="w-20 text-sm border border-border rounded px-2 py-1 bg-surface dark:bg-gray-700 text-ink dark:text-gray-100">
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-ink dark:text-gray-100 mb-1">포함 번호 (쉼표 구분, 최대 6개)</label>
+                <input id="filter-include" type="text" placeholder="예: 7, 14"
+                       class="w-full text-sm border border-border rounded px-2 py-1 bg-surface dark:bg-gray-700 text-ink dark:text-gray-100">
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-ink dark:text-gray-100 mb-1">제외 번호 (쉼표 구분)</label>
+                <input id="filter-exclude" type="text" placeholder="예: 1, 2, 3"
+                       class="w-full text-sm border border-border rounded px-2 py-1 bg-surface dark:bg-gray-700 text-ink dark:text-gray-100">
+            </div>
+        </div>
+
+        <div class="flex items-center gap-3 mt-4">
+            <label class="text-sm text-muted">추천 개수:</label>
+            <select id="filter-count"
+                    class="text-sm border border-border rounded px-2 py-1 bg-card text-ink dark:bg-gray-700 dark:text-gray-100">
+                {% for n in [1, 3, 5, 10] %}
+                <option value="{{ n }}" {% if n == 5 %}selected{% endif %}>{{ n }}개</option>
+                {% endfor %}
+            </select>
+            <button id="filter-run"
+                    class="text-sm px-4 py-1.5 rounded bg-data-blue text-white hover:opacity-90 transition">필터 추천</button>
+            <span id="filter-status" class="text-xs text-muted dark:text-gray-400"></span>
+        </div>
+
+        <div id="filter-results" class="mt-5 space-y-3"></div>
+    </div>
+
+    <script>
+        (function () {
+            // SPEC-LOTTO-037: 고급 필터 추천 (/api/recommend/filtered)
+            var statusEl = document.getElementById("filter-status");
+            var resultsEl = document.getElementById("filter-results");
+            var runBtn = document.getElementById("filter-run");
+
+            function parseNumbers(text) {
+                if (!text) { return []; }
+                return text.split(",").map(function (s) {
+                    return parseInt(s.trim(), 10);
+                }).filter(function (n) { return !isNaN(n); });
+            }
+
+            function ballHtml(n) {
+                return '<span class="inline-flex items-center justify-center w-9 h-9 rounded-full ' +
+                    'bg-surface dark:bg-gray-700 text-ink dark:text-gray-100 text-sm font-bold">' + n + '</span>';
+            }
+
+            function renderResults(combinations) {
+                if (!resultsEl) { return; }
+                resultsEl.innerHTML = "";
+                if (!combinations.length) {
+                    resultsEl.innerHTML = '<p class="text-sm text-muted dark:text-gray-400">조건에 맞는 조합을 찾지 못했습니다.</p>';
+                    return;
+                }
+                combinations.forEach(function (combo) {
+                    var row = document.createElement("div");
+                    row.className = "flex flex-wrap gap-2 items-center bg-surface dark:bg-gray-700 rounded-lg p-3";
+                    row.innerHTML = combo.map(ballHtml).join("");
+                    resultsEl.appendChild(row);
+                });
+            }
+
+            function run() {
+                if (statusEl) { statusEl.textContent = "추천 중..."; }
+                var payload = {
+                    sum_min: parseInt(document.getElementById("filter-sum-min").value, 10),
+                    sum_max: parseInt(document.getElementById("filter-sum-max").value, 10),
+                    odd_min: parseInt(document.getElementById("filter-odd-min").value, 10),
+                    odd_max: parseInt(document.getElementById("filter-odd-max").value, 10),
+                    include_numbers: parseNumbers(document.getElementById("filter-include").value),
+                    exclude_numbers: parseNumbers(document.getElementById("filter-exclude").value),
+                    count: parseInt(document.getElementById("filter-count").value, 10)
+                };
+                fetch("/api/recommend/filtered", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                }).then(function (res) {
+                    if (res.status === 422) {
+                        if (statusEl) { statusEl.textContent = "조건이 올바르지 않습니다. (합/홀수 범위, 포함·제외 중복 등 확인)"; }
+                        return null;
+                    }
+                    if (!res.ok) {
+                        if (statusEl) { statusEl.textContent = "추천에 실패했습니다."; }
+                        return null;
+                    }
+                    return res.json();
+                }).then(function (body) {
+                    if (body) {
+                        if (statusEl) { statusEl.textContent = body.count + "개 조합을 찾았습니다."; }
+                        renderResults(body.combinations);
+                    }
+                }).catch(function () {
+                    if (statusEl) { statusEl.textContent = "네트워크 오류가 발생했습니다."; }
+                });
+            }
+
+            if (runBtn) { runBtn.addEventListener("click", run); }
+        })();
+    </script>
 </div>
 {% endblock %}

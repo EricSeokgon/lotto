@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-063: 끝자리 합계 분석 — 끝자리 합 분포/카테고리 분류 (JS 없음) #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">끝자리 합계 분석</h2>
+    </div>
+
+    <p class="text-sm text-muted dark:text-gray-400">
+        당첨 본번호 6개(보너스 제외)의 끝자리(번호 % 10)를 모두 더한 합계를 집계합니다.
+        이론상 0~54 범위이며 low(15 미만)·mid(15~29)·high(30 이상)로 분류합니다.
+        예) [10,20,30,40,1,2]는 끝자리 합 3(low)입니다.
+        과거 통계일 뿐 미래 출현을 보장하지 않습니다.
+    </p>
+
+    {% if stats.total_draws == 0 %}
+    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+    </div>
+    {% else %}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">분석 회차</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.total_draws }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">평균 합</p>
+            <p class="text-xl font-bold text-sky-600 dark:text-sky-400">{{ stats.avg_sum }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">최소 합</p>
+            <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">{{ stats.min_sum }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">최대 합</p>
+            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{ stats.max_sum }}</p>
+        </div>
+    </div>
+
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">합계 카테고리 분류</h3>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="py-2 pr-4">카테고리</th>
+                    <th class="py-2 pr-4 text-right">회차 수</th>
+                    <th class="py-2 pr-4 text-right">비율</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="border-b border-border dark:border-gray-700">
+                    <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">low (15 미만)</td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ stats.low_sum_count }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ stats.low_sum_pct }}%</td>
+                </tr>
+                <tr class="border-b border-border dark:border-gray-700">
+                    <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">mid (15~29)</td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ stats.mid_sum_count }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ stats.mid_sum_pct }}%</td>
+                </tr>
+                <tr class="border-b border-border dark:border-gray-700">
+                    <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">high (30 이상)</td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ stats.high_sum_count }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ stats.high_sum_pct }}%</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">끝자리 합 분포 (상위 20)</h3>
+        <p class="text-xs text-muted dark:text-gray-400 mb-3">
+            최빈 끝자리 합: <span class="font-semibold text-ink dark:text-gray-100">{{ stats.most_common_sum }}</span>
+        </p>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="py-2 pr-4">끝자리 합</th>
+                    <th class="py-2 pr-4 text-right">회차 수</th>
+                </tr>
+            </thead>
+            <tbody>
+                {# 회차 수 내림차순, 동률 시 합계 오름차순으로 상위 20개만 표시 #}
+                {% for s, cnt in stats.sum_distribution.items() | sort(attribute='0') | sort(attribute='1', reverse=True) %}
+                {% if loop.index <= 20 %}
+                {% if s == stats.most_common_sum %}
+                <tr class="border-b border-border dark:border-gray-700 bg-sky-50 dark:bg-sky-900/20">
+                {% else %}
+                <tr class="border-b border-border dark:border-gray-700">
+                {% endif %}
+                    <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">
+                        {{ s }}{% if s == stats.most_common_sum %} <span class="text-xs font-normal text-sky-600 dark:text-sky-400">(최빈)</span>{% endif %}
+                    </td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ cnt }}</td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

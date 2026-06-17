@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{# @MX:NOTE: SPEC-LOTTO-053 — 번호 동시 출현 분석 페이지 #}
+{% block content %}
+<section class="space-y-6">
+  <div>
+    <h2 class="text-2xl font-bold text-ink dark:text-gray-100">번호 동시 출현 분석</h2>
+    <p class="text-sm text-muted dark:text-gray-400 mt-1">
+      역대 추첨에서 두 번호가 같은 회차에 함께 나온 횟수를 집계한 원시 동시 출현
+      데이터입니다. 번호를 입력하면 해당 번호의 동반 번호를, 비우면 전체 상위
+      동시 출현 쌍을 보여줍니다. 이 통계는 과거 기록일 뿐 미래 출현을 보장하지 않습니다.
+    </p>
+  </div>
+
+  <!-- 입력 폼 -->
+  <form method="get" action="/numbers/cooccurrence"
+        class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4 flex flex-wrap items-end gap-3">
+    <div>
+      <label for="number" class="block text-xs text-muted dark:text-gray-400 mb-1">번호 (1~45, 선택)</label>
+      <input type="number" id="number" name="number" min="1" max="45"
+             value="{% if number is not none %}{{ number }}{% endif %}"
+             class="w-28 px-3 py-2 rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100">
+    </div>
+    <button type="submit"
+            class="px-4 py-2 rounded bg-data-blue text-white text-sm font-medium hover:bg-blue-600 transition-colors">
+      동반 번호 조회
+    </button>
+    {% if number is not none %}
+    <a href="/numbers/cooccurrence"
+       class="px-4 py-2 rounded border border-border dark:border-gray-600 text-sm text-muted dark:text-gray-300 hover:bg-border/30 transition-colors">
+      상위 쌍 보기
+    </a>
+    {% endif %}
+  </form>
+
+  {% if number is not none %}
+  <!-- 파트너 뷰: 특정 번호의 동반 번호 분석 -->
+  <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4">
+    <p class="text-sm font-medium text-ink dark:text-gray-100 mb-3">
+      번호 {{ number }}의 동반 번호 분석
+    </p>
+    {% if partners %}
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+          <th class="text-left py-2">동반 번호</th>
+          <th class="text-right py-2">동시 출현 횟수</th>
+          <th class="text-right py-2">비율</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in partners %}
+        <tr class="border-b border-border/50 dark:border-gray-700/50">
+          <td class="py-2">
+            <span class="inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold text-white"
+                  style="background-color: {{ p.number | ball_color }}">{{ p.number }}</span>
+          </td>
+          <td class="text-right py-2 font-medium text-ink dark:text-gray-100">{{ p.count }}회</td>
+          <td class="text-right py-2 text-muted dark:text-gray-300">{{ p.pct }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-sm text-muted dark:text-gray-400">
+      번호 {{ number }}과 함께 나온 동반 번호가 없습니다. (데이터가 없거나 미출현)
+    </p>
+    {% endif %}
+  </div>
+  {% else %}
+  <!-- 기본 뷰: 상위 동시 출현 번호 쌍 -->
+  <div class="bg-card dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg p-4">
+    <p class="text-sm font-medium text-ink dark:text-gray-100 mb-3">상위 동시 출현 번호 쌍</p>
+    {% if pairs %}
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+          <th class="text-left py-2">번호 쌍</th>
+          <th class="text-right py-2">동시 출현 횟수</th>
+          <th class="text-right py-2">비율</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in pairs %}
+        <tr class="border-b border-border/50 dark:border-gray-700/50">
+          <td class="py-2">
+            <span class="inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold text-white"
+                  style="background-color: {{ item.pair[0] | ball_color }}">{{ item.pair[0] }}</span>
+            <span class="mx-1 text-muted dark:text-gray-400">+</span>
+            <span class="inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold text-white"
+                  style="background-color: {{ item.pair[1] | ball_color }}">{{ item.pair[1] }}</span>
+          </td>
+          <td class="text-right py-2 font-medium text-ink dark:text-gray-100">{{ item.count }}회</td>
+          <td class="text-right py-2 text-muted dark:text-gray-300">{{ item.pct }}%</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="text-sm text-muted dark:text-gray-400">
+      동시 출현 데이터가 없습니다. 데이터를 먼저 수집해 주세요.
+    </p>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

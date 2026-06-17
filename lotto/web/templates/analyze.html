@@ -4,8 +4,8 @@
 <div class="space-y-6">
     <div class="flex items-center justify-between flex-wrap gap-3">
         <div>
-            <h2 class="text-2xl font-bold text-ink mb-1">빈도 분석</h2>
-            <p class="text-muted text-sm">1~45 번호별 출현 빈도를 시각화합니다. 색이 진할수록 출현 빈도가 높습니다.</p>
+            <h2 class="text-2xl font-bold text-ink dark:text-gray-100 mb-1">빈도 분석</h2>
+            <p class="text-muted dark:text-gray-400 text-sm">1~45 번호별 출현 빈도를 시각화합니다. 색이 진할수록 출현 빈도가 높습니다.</p>
         </div>
         <!-- SPEC-LOTTO-005 REQ-PDF-005: PDF 다운로드 버튼 -->
         <a href="/api/report/pdf"
@@ -16,7 +16,7 @@
 
     {% if stats %}
     <!-- 시그니처 배지 그리드 -->
-    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
         <h3 class="font-semibold text-ink mb-4">번호별 빈도 배지</h3>
         <div class="grid grid-cols-9 gap-1">
             {% for num in numbers %}
@@ -41,7 +41,7 @@
     </div>
 
     <!-- 상위 20개 빈도 차트 -->
-    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
         <div class="flex items-center justify-between mb-4">
             <h3 class="font-semibold text-ink">빈도 상위 20개 번호</h3>
             <div class="flex items-center gap-3 text-xs text-muted">
@@ -62,7 +62,7 @@
     {% set gap_top = gap_rounds.items() | sort(attribute=1, reverse=True) | list %}
     {% set gap_nonzero = gap_top | selectattr(1, 'gt', 0) | list %}
     {% if gap_nonzero %}
-    <div class="bg-card rounded-lg border border-border p-5 shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
         <div class="flex items-center justify-between mb-3">
             <h3 class="font-semibold text-ink">갭 분석 — 미출현 회차</h3>
             <span class="text-xs text-muted">최근 출현이 없는 번호일수록 갭이 높습니다</span>
@@ -85,8 +85,114 @@
     {% endif %}
     {% endif %}
 
+    <!-- SPEC-LOTTO-019 REQ-PAT-002: 패턴 분석 섹션 (홀짝 / 범위 분포) -->
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-ink">패턴 분석</h3>
+            <span id="patternMeta" class="text-xs text-muted">불러오는 중...</span>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div>
+                <h4 class="text-sm font-medium text-ink mb-2">홀짝 분포 (회차별 홀수 개수)</h4>
+                <div style="position:relative; height:240px;">
+                    <canvas id="oddEvenChart"></canvas>
+                </div>
+            </div>
+            <div>
+                <h4 class="text-sm font-medium text-ink mb-2">번호 범위 분포</h4>
+                <div style="position:relative; height:240px;">
+                    <canvas id="rangeDistChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SPEC-LOTTO-026 REQ-TREND-002/004: 번호 트렌드 히트맵 + 핫/콜드 카드 -->
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <div>
+                <h3 class="font-semibold text-ink">트렌드</h3>
+                <p class="text-xs text-muted mt-0.5">번호별 기간 출현 빈도를 색상 히트맵으로 보여줍니다. 색이 진할수록 자주 출현했습니다.</p>
+            </div>
+            <div class="flex items-center gap-2">
+                <label for="trendPeriodSelect" class="text-xs text-muted">기간 단위</label>
+                <select id="trendPeriodSelect"
+                        class="text-sm rounded border border-border bg-card text-ink px-2 py-1 dark:bg-gray-700 dark:border-gray-600">
+                    <option value="yearly">연도별</option>
+                    <option value="quarterly">분기별</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- 핫/콜드 카드 -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
+            <div class="rounded-lg border border-border dark:border-gray-700 p-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="inline-block w-3 h-3 rounded-full" style="background:#FF7272"></span>
+                    <h4 class="text-sm font-semibold text-ink">핫 넘버 (최근 상승)</h4>
+                    <span id="hotColdMeta" class="text-xs text-muted ml-auto">불러오는 중...</span>
+                </div>
+                <div id="hotCards" class="flex flex-wrap gap-2"></div>
+            </div>
+            <div class="rounded-lg border border-border dark:border-gray-700 p-4">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="inline-block w-3 h-3 rounded-full" style="background:#3B82F6"></span>
+                    <h4 class="text-sm font-semibold text-ink">콜드 넘버 (최근 하락)</h4>
+                </div>
+                <div id="coldCards" class="flex flex-wrap gap-2"></div>
+            </div>
+        </div>
+
+        <!-- 히트맵 테이블 -->
+        <div class="overflow-x-auto">
+            <div id="heatmapStatus" class="text-xs text-muted mb-2">히트맵 불러오는 중...</div>
+            <table id="heatmapTable" class="text-xs border-collapse hidden">
+                <thead id="heatmapHead"></thead>
+                <tbody id="heatmapBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- SPEC-LOTTO-034: 주간 리포트 탭 -->
+    <div id="weeklyReport" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+            <h3 class="font-semibold text-ink">주간 리포트</h3>
+            <div class="flex items-center gap-2">
+                <label class="text-sm text-muted" for="weeklyWeeksSelect">기간:</label>
+                <select id="weeklyWeeksSelect"
+                        class="text-sm border border-border rounded px-2 py-1 bg-card text-ink">
+                    <option value="1">최근 1주</option>
+                    <option value="4" selected>최근 4주</option>
+                    <option value="12">최근 12주</option>
+                    <option value="26">최근 26주</option>
+                </select>
+            </div>
+        </div>
+        <div id="weeklyStatus" class="text-xs text-muted mb-3">주간 리포트 불러오는 중...</div>
+
+        <!-- 요약 지표 -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+            <div class="rounded border border-border p-3 text-center">
+                <div class="text-xs text-muted">합계 평균</div>
+                <div id="weeklyAvgSum" class="text-lg font-bold text-ink">-</div>
+            </div>
+            <div class="rounded border border-border p-3 text-center">
+                <div class="text-xs text-muted">홀:짝 비율</div>
+                <div id="weeklyOddEven" class="text-lg font-bold text-ink">-</div>
+            </div>
+            <div class="rounded border border-border p-3 text-center">
+                <div class="text-xs text-muted">최다 번호대</div>
+                <div id="weeklyRange" class="text-lg font-bold text-ink">-</div>
+            </div>
+        </div>
+
+        <!-- top10 번호 카드 -->
+        <div class="text-sm font-medium text-ink mb-2">출현 상위 번호</div>
+        <div id="weeklyTopCards" class="flex flex-wrap gap-2"></div>
+    </div>
+
     {% else %}
-    <div class="bg-card rounded-lg border border-border p-8 text-center shadow-sm">
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-8 text-center shadow-sm">
         <p class="text-muted">통계 데이터가 없습니다.</p>
         <p class="text-sm text-muted mt-1">CLI에서 <code class="bg-surface px-1 rounded">python main.py analyze</code> 명령을 실행하세요.</p>
     </div>
@@ -183,6 +289,252 @@
             }
         }
     });
+})();
+</script>
+
+<!-- SPEC-LOTTO-019 REQ-PAT-002: 패턴 분석 차트 렌더링 -->
+<script>
+(function() {
+    fetch('/api/pattern-analysis')
+        .then(function(res) {
+            if (!res.ok) { throw new Error('HTTP ' + res.status); }
+            return res.json();
+        })
+        .then(function(data) {
+            var meta = document.getElementById('patternMeta');
+            if (meta) {
+                var consecPct = (data.consecutive * 100).toFixed(1);
+                meta.textContent = '총 ' + data.total_draws + '회차 · 연속 번호 포함: ' + consecPct + '%';
+            }
+
+            // 홀짝 분포 차트
+            var oddCtxEl = document.getElementById('oddEvenChart');
+            if (oddCtxEl && data.odd_even) {
+                var labels = ['0','1','2','3','4','5','6'];
+                var values = labels.map(function(k) { return data.odd_even[k] || 0; });
+                new Chart(oddCtxEl.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: labels.map(function(k) { return k + '개'; }),
+                        datasets: [{
+                            label: '회차 수',
+                            data: values,
+                            backgroundColor: '#3B82F6',
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+            }
+
+            // 번호 범위 분포 차트
+            var rangeCtxEl = document.getElementById('rangeDistChart');
+            if (rangeCtxEl && data.range_dist) {
+                var rLabels = ['1-9','10-19','20-29','30-39','40-45'];
+                var rColors = ['#FBC400','#69C8F2','#FF7272','#AAAAAA','#B0D840'];
+                var rValues = rLabels.map(function(k) { return data.range_dist[k] || 0; });
+                new Chart(rangeCtxEl.getContext('2d'), {
+                    type: 'bar',
+                    data: {
+                        labels: rLabels,
+                        datasets: [{
+                            label: '번호 출현 횟수',
+                            data: rValues,
+                            backgroundColor: rColors,
+                            borderRadius: 4,
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+            }
+        })
+        .catch(function(err) {
+            var meta = document.getElementById('patternMeta');
+            if (meta) { meta.textContent = '패턴 데이터를 불러올 수 없습니다.'; }
+        });
+})();
+</script>
+
+<!-- SPEC-LOTTO-026 REQ-TREND-002/004: 트렌드 히트맵 + 핫/콜드 렌더링 -->
+<script>
+(function() {
+    /* 빈도 백분위(0~1)를 저빈도(#E2E8F0)→고빈도(#3B82F6) 색상으로 변환 */
+    function heatColor(t) {
+        t = Math.max(0, Math.min(1, t));
+        var low = [0xE2, 0xE8, 0xF0], high = [0x3B, 0x82, 0xF6];
+        var r = Math.round(low[0] + (high[0] - low[0]) * t);
+        var g = Math.round(low[1] + (high[1] - low[1]) * t);
+        var b = Math.round(low[2] + (high[2] - low[2]) * t);
+        return 'rgb(' + r + ',' + g + ',' + b + ')';
+    }
+
+    function renderHeatmap(data) {
+        var statusEl = document.getElementById('heatmapStatus');
+        var tableEl = document.getElementById('heatmapTable');
+        var headEl = document.getElementById('heatmapHead');
+        var bodyEl = document.getElementById('heatmapBody');
+        if (!tableEl) { return; }
+
+        if (!data.periods.length) {
+            statusEl.textContent = '표시할 트렌드 데이터가 없습니다.';
+            tableEl.classList.add('hidden');
+            return;
+        }
+
+        /* 색상 정규화를 위한 전역 최대 빈도 */
+        var maxCount = 0;
+        data.matrix.forEach(function(row) {
+            row.forEach(function(v) { if (v > maxCount) { maxCount = v; } });
+        });
+        if (maxCount === 0) { maxCount = 1; }
+
+        /* 헤더: 번호 + 각 기간 라벨 */
+        var headHtml = '<tr><th class="sticky left-0 bg-card px-2 py-1 text-ink text-right">번호</th>';
+        data.periods.forEach(function(p) {
+            headHtml += '<th class="px-1.5 py-1 text-muted font-medium whitespace-nowrap">' + p + '</th>';
+        });
+        headHtml += '</tr>';
+        headEl.innerHTML = headHtml;
+
+        /* 본문: 번호별 행 */
+        var bodyHtml = '';
+        data.numbers.forEach(function(num, i) {
+            bodyHtml += '<tr><td class="sticky left-0 bg-card px-2 py-1 text-right font-bold text-ink">' + num + '</td>';
+            data.matrix[i].forEach(function(v) {
+                var bg = heatColor(v / maxCount);
+                var fg = (v / maxCount) >= 0.5 ? '#ffffff' : '#1A202C';
+                bodyHtml += '<td class="text-center px-1.5 py-1" style="background-color:' + bg + ';color:' + fg + ';" title="' + num + '번 · ' + v + '회">' + (v || '') + '</td>';
+            });
+            bodyHtml += '</tr>';
+        });
+        bodyEl.innerHTML = bodyHtml;
+
+        statusEl.textContent = '';
+        tableEl.classList.remove('hidden');
+    }
+
+    function loadHeatmap(period) {
+        var statusEl = document.getElementById('heatmapStatus');
+        if (statusEl) { statusEl.textContent = '히트맵 불러오는 중...'; }
+        fetch('/api/trend-heatmap?period=' + encodeURIComponent(period))
+            .then(function(res) {
+                if (!res.ok) { throw new Error('HTTP ' + res.status); }
+                return res.json();
+            })
+            .then(renderHeatmap)
+            .catch(function() {
+                if (statusEl) { statusEl.textContent = '히트맵 데이터를 불러올 수 없습니다.'; }
+            });
+    }
+
+    function ballColor(num) {
+        if (num <= 10) return '#FBC400';
+        if (num <= 20) return '#69C8F2';
+        if (num <= 30) return '#FF7272';
+        if (num <= 40) return '#AAAAAA';
+        return '#B0D840';
+    }
+
+    function renderCard(item) {
+        var diff = item.diff;
+        var sign = diff > 0 ? '+' : '';
+        var bg = ballColor(item.number);
+        var fg = (item.number > 10 && item.number <= 20) || item.number > 20 ? '#ffffff' : '#1f2937';
+        return '<div class="rounded-lg border border-border p-2 text-center min-w-[64px]">'
+            + '<span class="inline-flex w-8 h-8 rounded-full items-center justify-center text-sm font-bold" style="background-color:' + bg + ';color:' + fg + ';">' + item.number + '</span>'
+            + '<div class="text-xs text-ink mt-1 font-medium">' + item.recent_count + '회</div>'
+            + '<div class="text-[10px] text-muted">' + sign + diff + '</div>'
+            + '</div>';
+    }
+
+    function loadHotCold() {
+        var metaEl = document.getElementById('hotColdMeta');
+        fetch('/api/hot-cold')
+            .then(function(res) {
+                if (!res.ok) { throw new Error('HTTP ' + res.status); }
+                return res.json();
+            })
+            .then(function(data) {
+                var hotEl = document.getElementById('hotCards');
+                var coldEl = document.getElementById('coldCards');
+                if (!data.hot.length && !data.cold.length) {
+                    if (metaEl) { metaEl.textContent = '데이터 없음'; }
+                    if (hotEl) { hotEl.innerHTML = '<span class="text-xs text-muted">표시할 핫 넘버가 없습니다.</span>'; }
+                    if (coldEl) { coldEl.innerHTML = '<span class="text-xs text-muted">표시할 콜드 넘버가 없습니다.</span>'; }
+                    return;
+                }
+                if (metaEl) { metaEl.textContent = '최근 ' + data.recent_n + '회 기준'; }
+                if (hotEl) { hotEl.innerHTML = data.hot.map(renderCard).join(''); }
+                if (coldEl) { coldEl.innerHTML = data.cold.map(renderCard).join(''); }
+            })
+            .catch(function() {
+                if (metaEl) { metaEl.textContent = '불러올 수 없습니다.'; }
+            });
+    }
+
+    // SPEC-LOTTO-034: 주간 리포트 로딩
+    function renderWeeklyCard(item) {
+        var bg = ballColor(item.number);
+        var fg = item.number > 10 ? '#ffffff' : '#1f2937';
+        return '<div class="rounded-lg border border-border p-2 text-center min-w-[60px]">'
+            + '<span class="inline-flex w-8 h-8 rounded-full items-center justify-center text-sm font-bold" style="background-color:' + bg + ';color:' + fg + ';">' + item.number + '</span>'
+            + '<div class="text-xs text-ink mt-1 font-medium">' + item.count + '회</div>'
+            + '</div>';
+    }
+
+    function loadWeeklyReport(weeks) {
+        var statusEl = document.getElementById('weeklyStatus');
+        fetch('/api/weekly-report?weeks=' + weeks)
+            .then(function(res) {
+                if (!res.ok) { throw new Error('HTTP ' + res.status); }
+                return res.json();
+            })
+            .then(function(data) {
+                if (statusEl) {
+                    statusEl.textContent = '최근 ' + data.weeks + '주 (' + data.draws_included + '회차) 집계';
+                }
+                var avgEl = document.getElementById('weeklyAvgSum');
+                var oeEl = document.getElementById('weeklyOddEven');
+                var rangeEl = document.getElementById('weeklyRange');
+                var topEl = document.getElementById('weeklyTopCards');
+                if (avgEl) { avgEl.textContent = data.avg_sum; }
+                if (oeEl) { oeEl.textContent = data.odd_even_ratio.odd + ' : ' + data.odd_even_ratio.even; }
+                if (rangeEl) { rangeEl.textContent = data.most_common_range || '-'; }
+                if (topEl) {
+                    if (data.top10_numbers.length) {
+                        topEl.innerHTML = data.top10_numbers.map(renderWeeklyCard).join('');
+                    } else {
+                        topEl.innerHTML = '<span class="text-xs text-muted">표시할 데이터가 없습니다.</span>';
+                    }
+                }
+            })
+            .catch(function() {
+                if (statusEl) { statusEl.textContent = '주간 리포트를 불러올 수 없습니다.'; }
+            });
+    }
+
+    var select = document.getElementById('trendPeriodSelect');
+    if (select) {
+        select.addEventListener('change', function() { loadHeatmap(select.value); });
+        loadHeatmap(select.value);
+    }
+    loadHotCold();
+
+    var weeklySelect = document.getElementById('weeklyWeeksSelect');
+    if (weeklySelect) {
+        weeklySelect.addEventListener('change', function() { loadWeeklyReport(weeklySelect.value); });
+        loadWeeklyReport(weeklySelect.value);
+    }
 })();
 </script>
 {% endif %}

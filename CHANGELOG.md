@@ -6,6 +6,652 @@
 
 ---
 
+## [1.60.0] - 2026-06-17
+
+### Added
+- SPEC-LOTTO-099: 번호 사분위 분포 분석
+  - 본번호 6개를 4개 사분위(Q1:1-11, Q2:12-22, Q3:23-33, Q4:34-45)로 분류한 패턴 분포 통계
+  - GET /api/stats/quartile-dist API 엔드포인트
+  - GET /stats/quartile-dist 웹 페이지
+  - 테스트 54개 추가 (2618 → 2672)
+
+---
+
+## [1.59.0] - 2026-06-17
+
+### Added
+- SPEC-LOTTO-098: 구간별 번호 선택 분포 분석
+  - 본번호 6개가 9개 구간(1-5, 6-10, ..., 41-45) 중 몇 개 구간에 분포하는지 통계
+  - GET /api/stats/zone-coverage API 엔드포인트
+  - GET /stats/zone-coverage 웹 페이지
+  - 테스트 59개 추가 (2559 → 2618)
+
+---
+
+## [1.58.0] - 2026-06-16
+
+### Added
+- SPEC-LOTTO-097: 간격 중앙값 구간 분포 분석
+  - 회차별 본번호 5개 인접 간격의 중앙값을 6개 구간("1-2"~"11+")으로 분류한 분포 통계
+  - GET /api/stats/gap-median-dist API 엔드포인트
+  - GET /stats/gap-median-dist 웹 페이지
+  - 테스트 61개 추가 (2498 → 2559)
+
+---
+
+## [1.57.0] - 2026-06-16
+
+### Added
+- SPEC-LOTTO-096: 최소 간격 구간 분포 분석
+  - 회차별 본번호 6개의 최소 간격(min_gap)을 6개 구간("1"~"11+")으로 분류한 분포 통계
+  - GET /api/stats/min-gap-dist API 엔드포인트
+  - GET /stats/min-gap-dist 웹 페이지
+  - 테스트 45개 추가 (2453 → 2498)
+
+---
+
+## [1.56.0] - 2026-06-16
+
+### Added
+- SPEC-LOTTO-095: 번호 스팬 분포 분석
+  - 본번호 6개의 max-min(스팬)을 7개 구간("10 이하"~"41 이상")으로 분류한 분포 통계
+  - GET /api/stats/span API 엔드포인트
+  - GET /stats/span 웹 페이지
+  - 테스트 41개 추가 (2412 → 2453)
+
+---
+
+## [1.55.0] - 2026-06-16
+
+### Added
+- SPEC-LOTTO-094: 홀짝 교차 패턴 분포 분석
+  - 정렬된 6개 번호 인접 쌍의 홀짝 교차 횟수(교차0~교차5) 분포 통계
+  - GET /api/stats/alternation API 엔드포인트
+  - GET /stats/alternation 웹 페이지
+  - 테스트 34개 추가 (2378 → 2412)
+
+---
+
+## [1.54.0] - 2026-06-16
+
+### Added
+- SPEC-LOTTO-093: 첫·마지막 번호 구간 조합 분포 분석
+  - 최솟값·최댓값 소속 구간(A:1-15/B:16-30/C:31-45) 조합(AA~CC) 분포 통계
+  - GET /api/stats/first_last_zone API 엔드포인트
+  - GET /stats/first-last-zone 웹 페이지
+  - 테스트 28개 추가 (2350 → 2378)
+
+---
+
+## [1.53.0] - 2026-06-16
+
+### Added
+- SPEC-LOTTO-092: 번호 군집 수 분포 분석
+  - 정렬된 6개 번호에서 연속 묶음(군집, 길이≥2) 개수(0~3) 분포 통계
+  - GET /api/stats/cluster_count API 엔드포인트
+  - GET /stats/cluster-count 웹 페이지
+  - 테스트 29개 추가 (2321 → 2350)
+
+---
+
+## [1.52.0] - 2026-06-16
+
+### Added
+- SPEC-LOTTO-091: 소수 이웃 번호 포함 분포 분석
+  - 소수(prime) 또는 소수±1에 해당하는 번호 포함 개수(0~6) 분포 통계
+  - GET /api/stats/prime_neighbor API 엔드포인트
+  - GET /stats/prime-neighbor 웹 페이지
+  - 테스트 28개 추가 (2293 → 2321)
+
+---
+
+## [1.51.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-090: 번호 합산 끝자리 분포 분석
+  - 6개 당첨번호 합계의 일의 자리(0~9) 분포 통계
+  - GET /api/stats/sum_last_digit API 엔드포인트
+  - GET /stats/sum-last-digit 웹 페이지
+  - 테스트 24개 추가 (2269 → 2293)
+
+---
+
+## [1.50.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-089: 저·고 번호 균형 분포 분석
+  - 1-22(저번호) vs 23-45(고번호) 개수 조합(0저6고~6저0고) 분포 통계
+  - GET /api/stats/low_high API 엔드포인트
+  - GET /stats/low-high 웹 페이지
+  - 테스트 28개 추가 (2241 → 2269)
+
+---
+
+## [1.49.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-088: 번호 간격 분산 분포 분석
+  - 정렬된 6개 번호 간 5개 간격의 분산(균등도) 구간 분포 통계
+  - GET /api/stats/gap_variance API 엔드포인트
+  - GET /stats/gap-variance 웹 페이지
+  - 테스트 32개 추가 (2209 → 2241)
+
+---
+
+## [1.48.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-087: 번호 중앙값 구간 분포 분석
+  - 6개 번호 3·4번째 수의 평균(중앙값) 10단위 구간 분포 통계
+  - GET /api/stats/median_range API 엔드포인트
+  - GET /stats/median-range 웹 페이지
+  - 테스트 30개 추가 (2179 → 2209)
+
+---
+
+## [1.47.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-086: 번호 합계 구간 세분화 분포 분석
+  - 6개 번호 합계의 10단위 세분화 구간(21-60 ~ 201-255) 분포 통계
+  - GET /api/stats/sum_range API 엔드포인트
+  - GET /stats/sum-range 웹 페이지
+  - 테스트 33개 추가 (2146 → 2179)
+
+---
+
+## [1.46.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-085: 일의 자리 중복 분포 분석
+  - 6개 번호 중 일의 자리가 같은 그룹 수(0~3) 분포 통계
+  - GET /api/stats/last_digit_pair API 엔드포인트
+  - GET /stats/last-digit-pair 웹 페이지
+  - 테스트 29개 추가 (2117 → 2146)
+
+---
+
+## [1.45.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-084: 홀짝 전환 횟수 분포 분석
+  - 정렬된 번호 인접 쌍 홀↔짝 전환 횟수(0~5) 분포 통계
+  - GET /api/stats/parity_transition API 엔드포인트
+  - GET /stats/parity-transition 웹 페이지
+  - 테스트 30개 추가 (2087 → 2117)
+
+---
+
+## [1.44.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-083: 홀수 연속 포함 분포 분석
+  - 정렬된 홀수 번호에서 +2 간격 연속 그룹 수(0~3+) 분포 통계
+  - GET /api/stats/odd_run API 엔드포인트
+  - GET /stats/odd-run 웹 페이지
+  - 테스트 35개 추가 (2052 → 2087)
+
+---
+
+## [1.43.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-082: 10단위 다양성 분포 분석
+  - 6개 번호가 커버하는 10단위 그룹 수(1~5개) 분포 통계
+  - GET /api/stats/decade_diversity API 엔드포인트
+  - GET /stats/decade-diversity 웹 페이지
+  - 테스트 33개 추가 (2019 → 2052)
+
+---
+
+## [1.42.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-081: 짝수 연속 포함 분포 분석
+  - 간격=2인 짝수 연속 묶음 수(0~3개) 분포 통계
+  - GET /api/stats/even_run API 엔드포인트
+  - GET /stats/even-run 웹 페이지
+  - 테스트 34개 추가 (1985 → 2019)
+
+---
+
+## [1.41.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-080: 번호 간격 최대값 분포 분석
+  - 정렬된 당첨번호 간 최대 간격의 구간별 분포 통계
+  - GET /api/stats/max_gap_dist API 엔드포인트
+  - GET /stats/max-gap-dist 웹 페이지
+  - 테스트 33개 추가 (1952 → 1985)
+
+---
+
+## [1.40.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-079: 끝자리 합계 분포 분석
+  - 당첨번호 6개 끝자리(일의 자리) 합계의 구간별 분포 통계
+  - GET /api/stats/digit_sum_dist API 엔드포인트
+  - GET /stats/digit-sum-dist 웹 페이지
+  - 테스트 34개 추가 (1918 → 1952)
+
+---
+
+## [1.39.0] - 2026-06-15
+
+### Added
+- SPEC-LOTTO-078: 3연속 이상 번호 포함 분포 분석
+  - 3개 이상 연속 번호 묶음 수(0~2개) 분포 통계
+  - GET /api/stats/triple_run API 엔드포인트
+  - GET /stats/triple-run 웹 페이지
+  - 테스트 36개 추가 (1882 → 1918)
+
+---
+
+## [1.38.0] - 2026-06-12
+
+### Added
+- SPEC-LOTTO-077: 1자리 번호 포함 개수 분포 분석
+  - 1~9 사이 1자리 번호(9개) 회차별 포함 개수(0~6개) 분포 통계
+  - GET /api/stats/single_digit API 엔드포인트
+  - GET /stats/single-digit 웹 페이지
+  - 테스트 31개 추가 (1851 → 1882)
+
+---
+
+## [1.37.0] - 2026-06-12
+
+### Added
+- SPEC-LOTTO-076: 4의 배수 포함 개수 분포 분석
+  - 4의 배수(4,8,12,...,44) 회차별 포함 개수(0~6개) 분포 통계
+  - GET /api/stats/mult4 API 엔드포인트
+  - GET /stats/mult4 웹 페이지
+  - 테스트 31개 추가 (1820 → 1851)
+
+---
+
+## [1.36.0] - 2026-06-12
+
+### Added
+- SPEC-LOTTO-075: 5의 배수 포함 개수 분포 분석 기능 추가
+  - `get_mult5_stats()`: 회차별 5의 배수 개수(0~6) 분포 통계 산출
+  - `GET /api/stats/mult5`: JSON 통계 API 엔드포인트
+  - `GET /stats/mult5`: 5의 배수 개수 분포 분석 페이지 (`mult5.html`)
+  - 내비게이션 "5배수" 링크 추가
+  - 테스트 25개 추가 (1791→1816)
+
+---
+
+## [1.35.0] - 2026-06-12
+
+### Added
+- SPEC-LOTTO-074: 짝수 포함 개수 분포 분석 기능 추가
+  - `get_even_count_stats()`: 회차별 짝수 개수(0~6) 분포 통계 산출
+  - `GET /api/stats/even_count`: JSON 통계 API 엔드포인트
+  - `GET /stats/even-count`: 짝수 개수 분포 분석 페이지 (`even_count.html`)
+  - 내비게이션 "짝수개수" 링크 추가
+  - 테스트 29개 추가 (1762→1791)
+
+---
+
+## [1.34.0] - 2026-06-12
+
+### Added
+- SPEC-LOTTO-073: 3의 배수 포함 개수 분포 분석 기능 추가
+  - `get_mult3_stats()`: 회차별 3의 배수 개수(0~6) 분포 통계 산출
+  - `GET /api/stats/mult3`: JSON 통계 API 엔드포인트
+  - `GET /stats/mult3`: 3의 배수 분포 분석 페이지 (`mult3.html`)
+  - 내비게이션 "3배수" 링크 추가
+  - 테스트 30개 추가 (1732→1762)
+
+---
+
+## [1.33.0] - 2026-06-12
+
+### Added (SPEC-LOTTO-072)
+- 끝자리 유니크 수 분포 분석 기능 추가
+  - `get_last_digit_unique_stats()`: 회차별 6개 번호의 끝자리(일의 자리) 중 서로 다른 값이 몇 개인지 분포 통계
+  - 6개 구간("1"~"6") 분포, 평균 유니크 수, 전부 다른 회차 비율 제공
+  - `GET /api/stats/last_digit_unique` API 엔드포인트
+  - `GET /stats/last-digit-unique` 통계 페이지 (`last_digit_unique.html`)
+  - 네비게이션 "끝자리유니크" 링크 추가
+  - 테스트 30개 추가 (1702 → 1732)
+
+---
+
+## [1.32.0] - 2026-06-12
+
+### Added (SPEC-LOTTO-071)
+- 번호 중앙값(median) 분포 분석 기능 추가
+  - `get_median_stats()`: 회차별 6개 번호의 중앙값((3번째+4번째)/2) 분포 통계
+  - 9개 구간("1-5"~"41-45") 분포, 평균 중앙값, 저중앙값 비율(< 23.0) 제공
+  - `GET /api/stats/median` API 엔드포인트
+  - `GET /stats/median` 통계 페이지 (`median.html`)
+  - 네비게이션 "중앙값" 링크 추가
+  - 테스트 38개 추가 (1664 → 1702)
+
+---
+
+## [1.31.0] - 2026-06-11
+
+### Added
+- SPEC-LOTTO-070: AC값(산술 복잡도) 분포 분석
+  - 회차별 본번호 6개의 C(6,2)=15 쌍 절대차 중 distinct 개수(AC값) 분포 분석
+  - `GET /api/stats/ac_value` API 엔드포인트
+  - `GET /stats/ac-value` 웹 페이지
+  - AC값 0~14 전 구간 분포, 평균, 고다양성(AC≥9) 비율 제공
+  - 35개 테스트 추가 (1629 → 1664)
+
+---
+
+## [1.30.0] - 2026-06-11
+
+### Added
+- SPEC-LOTTO-069: 연속번호 패턴 분석 (Consecutive Number Pattern Analysis)
+  - `GET /api/stats/consecutive-pairs` — 4버킷 연속 쌍 분포 JSON API
+  - `GET /stats/consecutive-pairs` — 연속번호 패턴 시각화 페이지
+  - `get_consecutive_pairs_stats()` 함수: 0·1·2·3+ 버킷별 count/pct, avg_consecutive_pairs, most_common_bucket 산출
+  - `count_consecutive_pairs()` 헬퍼 함수 (단독 테스트 가능)
+  - `_consecutive_pairs_cache` 캐시 (SPEC-062 `_consecutive_cache`와 별개 네임스페이스)
+  - `tests/test_consecutive_pairs_analysis.py` 31개 테스트 추가 (1598 → 1629)
+
+---
+
+## [1.29.0] - 2026-06-11
+
+### Added
+- SPEC-LOTTO-068: 번호 구간별 분포 분석 (Number Range Distribution Analysis)
+  - `GET /api/stats/range_dist` — 5개 구간별 분포 통계 JSON API
+  - `GET /stats/range_dist` — 번호 구간별 분포 시각화 페이지
+  - `get_range_dist_stats()` 함수: 1-9, 10-19, 20-29, 30-39, 40-45 구간별 total_count, draw_count, avg_per_draw, pct_of_numbers, draw_pct 산출
+  - `_range_dist_cache` 캐시 (key: 회차 수 기준, `invalidate_cache()` 연동)
+  - `tests/test_range_dist_analysis.py` 29개 테스트 추가 (1569 → 1598)
+
+---
+
+## [1.28.0] - 2026-06-11
+
+### Added
+- SPEC-LOTTO-067: 번호 총합 분포 분석 (`get_total_sum_stats`, `/stats/total_sum`, `GET /api/stats/total_sum`)
+  - 당첨번호 6개 총합(total sum) 분포 분석, 6개 고정 bucket(21-80, 81-110, 111-130, 131-150, 151-170, 171-255)
+  - 저(<110)/중(110-170)/고(>170) 3구간 분류, 평균·최솟값·최댓값·최빈 bucket 제공
+  - +28 테스트 (1541→1569)
+
+---
+
+## [1.27.0] - 2026-06-11
+
+### Added
+- SPEC-LOTTO-066: 소수합 분포 분석 (`get_prime_sum_stats`, `/stats/prime-sum`, `GET /api/stats/prime-sum`)
+  - 회차별 소수(prime) 번호들의 합계 분포 분석, SPEC-058(소수 개수 분포)과 보완 관계
+  - +26 테스트 (1515→1541)
+
+---
+
+## [1.26.0] - 2026-06-10
+
+### Added
+- SPEC-LOTTO-065: 번호 표준편차 분석 (`get_std_stats`, `/stats/std`, `GET /api/stats/std`)
+  - 회차별 본번호 6개 모표준편차 분석, 저(<10)/중(10~14)/고(≥14) 카테고리, 6개 고정 bucket 분포
+  - +35 테스트 (1480→1515)
+
+---
+
+## [1.25.0] - 2026-06-10
+
+### Added
+- SPEC-LOTTO-064: 최솟값·최댓값 분포 분석 (`get_min_max_stats`, `/stats/min-max`, `GET /api/stats/min-max`)
+  - 회차별 최솟값·최댓값·범위(max-min) 분포 분석, 좁은(<30)/넓은(≥30) 범위 구간
+  - +25 테스트 (1455→1480)
+
+---
+
+## [1.24.0] - 2026-06-10
+
+### Added
+- SPEC-LOTTO-063: 끝자리 합계 분석 (`get_last_digit_sum_stats`, `/stats/last-digit-sum`, `GET /api/stats/last-digit-sum`)
+  - 회차별 본번호 6개 끝자리 합계 분석 (범위 0~54, 저/중/고 3구간 분류)
+  - +26 테스트 (1429→1455)
+
+---
+
+## [1.23.0] - 2026-06-10
+
+### Added
+- SPEC-LOTTO-062: 연속 번호 패턴 분석 (`get_consecutive_pattern_stats`, `/stats/consecutive-pattern`, `GET /api/stats/consecutive-pattern`)
+  - 회차별 연속 쌍(diff=1) 개수 0~5 분포, 트리플(3연속) 포함 회차 비율
+  - +27 테스트 (1402→1429)
+
+---
+
+## [1.22.0] - 2026-06-10
+
+### Added
+- SPEC-LOTTO-061: 고저 비율 분석 (`get_high_low_stats`, `/stats/high-low`, `GET /api/stats/high-low`)
+  - 저(1-22)/고(23-45) 번호 개수 분포 분석 (0~6 범위)
+  - 균형 회차(저3:고3) 비율, 평균 저고 수, 분포 퍼센트
+  - +28 테스트 (1374→1402)
+
+---
+
+## [1.21.0] - 2026-06-10
+
+### Added
+- SPEC-LOTTO-060: 홀짝 비율 분석 (`get_odd_even_stats`, `/stats/odd-even`, `GET /api/stats/odd-even`)
+  - 회차별 홀수/짝수 개수 분포 분석 (0~6 범위)
+  - 균형 회차(홀3:짝3) 비율, 평균 홀짝 수, 분포 퍼센트
+  - +27 테스트 (1347→1374)
+
+---
+
+## [1.20.0] - 2026-06-10
+
+### Added
+- SPEC-LOTTO-059: 십의 자리 구간 분포 분석 (`get_decade_stats`, `/stats/decade`, `GET /api/stats/decade`)
+  - 5개 구간(01-09, 10-19, 20-29, 30-39, 40-45) 분류 (명시적 범위 비교 방식)
+  - 구간별 평균 출현수, 기대값 대비 편차, 분포 테이블 시각화
+  - +27 테스트 (1320→1347)
+
+---
+
+## [1.14.0] - 2026-06-09
+
+### Added (SPEC-LOTTO-058)
+- `get_prime_stats(draws)` — 소수/합성수/숫자1 분포 분석 (_PRIMES_1_45 frozenset 기반, 메모리 캐시)
+- `/stats/prime` 페이지 — 소수·합성수 개수별 분포 표
+- `GET /api/stats/prime` — 소수/합성수 통계 JSON API
+- 24개 신규 테스트 추가 (1296 → 1320)
+
+---
+
+## [1.13.0] - 2026-06-09
+
+### Added (SPEC-LOTTO-057)
+- `get_ac_stats(draws)` — AC(산술 복잡도)값 분포 분석 (avg_ac, 분포표, 고/저복잡도 비율, 메모리 캐시)
+- `/stats/ac` 페이지 — AC 0~10 분포 표 (고복잡도 녹색·저복잡도 주황 강조)
+- `GET /api/stats/ac` — AC 통계 JSON API
+- 20개 신규 테스트 추가 (1276 → 1296)
+
+---
+
+## [1.12.0] - 2026-06-09
+
+### Added (SPEC-LOTTO-056)
+- `get_gap_stats(draws)` — 본번호 인접 간격 패턴 분석 (소·중·대 분포, 최빈 간격 top 10, 위치별 평균, 메모리 캐시)
+- `/stats/gap` 페이지 — 간격 분포·위치별 평균·최빈 간격 표
+- `GET /api/stats/gap` — 번호 간격 통계 JSON API
+- 20개 신규 테스트 추가 (1256 → 1276)
+
+---
+
+## [1.11.0] - 2026-06-09
+
+### Added (SPEC-LOTTO-055)
+- `get_last_digit_stats(draws)` — 끝자리(0~9)별 출현 빈도·비율·편차 분석 (메모리 캐시)
+- `/stats/last-digit` 페이지 — 끝자리별 count·pct·avg_expected·deviation 표 (과대/과소 강조)
+- `GET /api/stats/last-digit` — 끝자리 분포 JSON API (10개 항목)
+- 14개 신규 테스트 추가 (1242 → 1256)
+
+---
+
+## [1.10.0] - 2026-06-09
+
+### Added (SPEC-LOTTO-054)
+- `get_rolling_frequency(draws, windows)` — 윈도우별 번호 빈도·델타·추세 분류 (메모리 캐시)
+- 추세 분류: 델타 > +0.02 "상승", < -0.02 "하락", 그 외 "보합"
+- `/stats/rolling` 페이지 — 윈도우별 상승/하락 번호 표 (`?w=N` 단일 윈도우 지원)
+- `GET /api/stats/rolling?windows=10,20,50,100` — 롤링 빈도 JSON API
+- 21개 신규 테스트 추가 (1221 → 1242)
+
+---
+
+## [1.9.0] - 2026-06-09
+
+### Added (SPEC-LOTTO-053)
+- `get_cooccurrence_matrix` — 전체 번호 쌍(i<j) 동시 출현 횟수 원시 행렬 (메모리 캐시)
+- `get_top_cooccurrences(n=20)` — 동시 출현 상위 N쌍 (count·pct 포함)
+- `get_number_partners(number, top_k=10)` — 특정 번호의 상위 동반 번호 목록
+- `/numbers/cooccurrence` 페이지 — 상위 쌍 표 / `?number=N` 시 특정 번호 파트너 표
+- `GET /api/numbers/cooccurrence?number=N&top=T` — 동시 출현 JSON API
+- 21개 신규 테스트 추가 (1200 → 1221)
+
+---
+
+## [1.8.0] - 2026-06-09
+
+### Added (SPEC-LOTTO-052)
+- `run_backtest(draws, n_past)` — 11개 전략을 과거 N회차에 대해 look-ahead 없이 백테스트
+- `/backtest` 페이지 — 전략별 평균 적중수·점수를 내림차순 테이블로 표시
+- `GET /api/backtest?n=N` — 백테스팅 결과 JSON API
+- 메모리 캐시 (n_past 키) — DB 영속화 없이 동일 요청 재계산 방지
+- 18개 신규 테스트 추가 (1182 → 1200)
+
+---
+
+## [1.7.0] - 2026-06-09
+
+교차 전략 합의 알림 추가 (SPEC-LOTTO-051)
+
+### 추가
+
+#### 교차 전략 합의 알림 (SPEC-LOTTO-051)
+- `get_cross_strategy_consensus(recommender, target_numbers)` 신규 함수 (`lotto/web/data.py`)
+  - 11개 전략(`STRATEGY_LABELS`)을 요청당 1회씩 순회하여 각 번호의 합의 카운트(0~11) 산출
+  - `recommend_by_strategy(label)`만 호출, raw draws/내부 점수 미접근 (레이어 분리)
+- 추천 페이지(`GET /recommend`) 각 번호에 전략 합의도(`N/11`) 오버레이 표시
+- 합의도 4개 이상 번호에 주의 배지/하이라이트 서버사이드 렌더링 (JS 미추가)
+- `GET /api/recommendations` 응답에 `consensus` 필드 추가 (`{number: count}` 매핑)
+
+### 개선
+
+#### 테스트
+- 1174개 → **1182개** (+8개, `TestCrossStrategyConsensus`)
+
+---
+
+## [1.6.0] - 2026-06-05
+
+데이터스마트 추천 전략 추가 (SPEC-LOTTO-050)
+
+### 추가
+
+#### 데이터스마트 추천 전략 (SPEC-LOTTO-050)
+- 11번째 추천 전략 "데이터스마트" 추가 (`STRATEGY_LABELS`, `STRATEGY_DESCRIPTIONS`)
+- `_smart_scores()` 메서드: 빈도(0.22)·최근편향(0.22)·동반패턴(0.18)·갭분석(0.18)·홀짝균형(0.10)·번호대균형(0.10) 6축 복합 가중 점수
+- 픽 로직은 기존 앙상블 경로(상위 25개 후보) 재사용 (`_pick_set` 조건 병합)
+- `recommend.html` 전략 안내 범례에 보라색(`bg-violet-100 text-violet-700`) 배지 추가
+- `Statistics` 객체만 의존, 원시 draws 미사용 — 추천기 계층 침범 없음
+
+### 개선
+
+#### 테스트
+- 1165개 → **1174개** (+9개, `TestDataSmartStrategy`)
+- 커버리지 89.20% (목표 85% 초과)
+
+---
+
+## [1.5.0] - 2026-05-27
+
+신규 기능 5종 일괄 도입 (SPEC-LOTTO-016~021)
+
+### 추가
+
+#### 번호 즐겨찾기 관리 (SPEC-LOTTO-016)
+- `POST /api/favorites` — 번호 조합(6개) + 이름 즐겨찾기 추가 (중복 시 409)
+- `GET /api/favorites` — 즐겨찾기 전체 목록 반환
+- `DELETE /api/favorites/{fav_id}` — 즐겨찾기 단건 삭제
+- `data/favorites.json` 원자적 쓰기(tempfile + os.replace) 저장
+- 추천 페이지: 번호 직접 입력·이름 저장 폼 + 목록·삭제 UI
+- 시뮬레이션 페이지: 즐겨찾기 번호 선택 → 바로 시뮬레이션 실행
+
+#### 번호 패턴 분석 강화 (SPEC-LOTTO-019)
+- `GET /api/pattern-analysis` — 홀짝 비율·번호대 분포·연속 번호·합계 분포·끝자리 분포 반환
+- 분석 페이지 "패턴 분석" 탭: 홀짝 도넛·번호대 바·합계 히스토그램 Chart.js 차트
+
+#### 데이터 내보내기 (SPEC-LOTTO-020)
+- `GET /api/export/draws` → `lotto_draws_YYYYMMDD.csv` 파일 다운로드 (`from_drw`, `to_drw` 필터 지원)
+- `GET /api/export/history` → `lotto_history_YYYYMMDD.csv` 파일 다운로드
+- `GET /api/export/history?format=json` → JSON 파일 다운로드
+- 수집 현황 페이지: "추첨 데이터 내보내기 (CSV)" 버튼
+- 구매 내역 페이지: "CSV 내보내기" / "JSON 내보내기" 버튼
+- 데이터 없어도 빈 헤더 CSV 반환 (200, 404 아님)
+
+#### 다크모드 & 반응형 UI (SPEC-LOTTO-021)
+- `base.html` 헤더에 다크/라이트 토글 버튼 추가
+- `localStorage.theme` 설정 영속화 + 시스템 `prefers-color-scheme` 자동 감지
+- Tailwind CDN `darkMode: 'class'` 활성화
+- FOUC 방지 인라인 스크립트 (페이지 로드 전 `dark` 클래스 적용)
+- 모바일 햄버거 메뉴 토글 + 현재 페이지 활성화 표시
+- 전체 페이지 `dark:` 클래스 적용 (테이블·카드·네비게이션·차트 영역)
+
+#### 당첨금 분석 대시보드 (SPEC-LOTTO-017)
+- `DrawResult` 모델에 `prize1Amount: Optional[int]`, `prize1Winners: Optional[int]` 추가
+- `GET /api/prize-stats` — 평균·최대·최소 당첨금, 최근 20회차 데이터 반환
+- 인덱스 페이지: 1등 당첨금 추이 라인 차트 + 평균/최대/최소 통계 카드
+- 당첨금 데이터 없으면 차트 섹션 자동 숨김
+- 기존 CSV 하위 호환 유지 (새 컬럼 없어도 오류 없음)
+
+#### 추첨 회차 삭제
+- `DELETE /api/draws/{drw_no}` — 지정 회차 데이터 삭제 (없으면 404)
+- 수집 현황 테이블에 삭제 버튼 추가
+
+### 개선
+
+#### 테스트 커버리지
+- 541개 → **631개** 테스트 (+90개)
+- 즐겨찾기(17) · 패턴 분석(12) · 내보내기(21) · 다크모드(23) · 당첨금(17) 신규 테스트
+
+---
+
+## [1.4.0] - 2026-05-26
+
+구매 이력 관리 및 수동 입력 날짜 형식 표준화 (SPEC-LOTTO-002·003·004·014)
+
+### 추가
+
+#### 구매 이력 관리 (SPEC-LOTTO-014)
+- `POST /api/history` — 구매 티켓 등록 (회차·번호 6개 입력)
+- `GET /api/history` — 구매 이력 목록 + 당첨 결과 자동 대조 (등수·ROI 계산)
+- `DELETE /api/history/{ticket_id}` — 구매 티켓 단건 삭제
+- `data/purchases.json` 파일 기반 영속 저장 (외부 DB 불필요)
+- 등수 자동 산출: 추첨 결과와 대조하여 1~5등 / "미당첨" / "미추첨" 표시
+- ROI(투자수익률) 통계: 누적 투자금·당첨금·수익률 요약
+- 웹 UI "구매 내역" 탭: 구매 등록 폼 + 등수 확인 목록
+
+### 변경
+
+#### 수동 회차 입력 날짜 형식 (SPEC-LOTTO-002)
+- `POST /draws/manual` — `date` 파라미터 형식을 `YYYYMMDD`(8자리 숫자)로 표준화
+- 기존 `YYYY-MM-DD` 하이픈 형식에서 변경; API 클라이언트 업데이트 필요
+
+### 개선
+
+#### 테스트 커버리지 100% 달성
+- 511개 테스트, 커버리지 99.85% → **100%** (branch partial miss 3건 pragma 억제)
+- 구매 이력 관련 신규 테스트 51건 추가 (SPEC-LOTTO-014)
+
+---
+
 ## [1.3.0] - 2026-05-26
 
 추천 전략 앙상블 고도화 및 웹 UI 개선 (SPEC-LOTTO-009·013)

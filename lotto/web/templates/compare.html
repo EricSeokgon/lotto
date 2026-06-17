@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+        <div>
+            <h2 class="text-2xl font-bold text-ink dark:text-gray-100 mb-1">번호 비교 분석기</h2>
+            <p class="text-muted dark:text-gray-400 text-sm">6개 번호를 입력하면 역대 모든 회차와 비교해 일치 수준과 등급을 알려드립니다.</p>
+        </div>
+    </div>
+
+    <!-- 입력 폼 -->
+    <section class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm font-medium text-ink dark:text-gray-100 mb-2">번호 (6개, 1~45):</label>
+                <div class="flex flex-wrap items-center gap-2">
+                    {% for i in range(6) %}
+                    <input type="number" min="1" max="45"
+                           class="compare-num w-16 px-2 py-2 text-sm text-center border border-border rounded bg-card text-ink dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                           data-index="{{ i }}">
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2 pt-2">
+                <button id="compare-submit"
+                        class="px-4 py-2 text-sm font-medium rounded bg-data-blue text-white hover:opacity-90 transition-opacity">
+                    비교 분석
+                </button>
+                <button id="compare-reset"
+                        class="px-4 py-2 text-sm font-medium rounded border border-border bg-card text-muted hover:bg-surface dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-600 transition-colors">
+                    초기화
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- 결과 영역 -->
+    <section id="compare-result" class="hidden space-y-4">
+        <!-- 종합 등급 카드 -->
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+            <div class="flex items-center justify-between flex-wrap gap-3">
+                <div>
+                    <div class="text-sm text-muted dark:text-gray-400">종합 등급</div>
+                    <div id="compare-grade" class="text-2xl font-bold text-data-blue dark:text-data-muted"></div>
+                </div>
+                <div class="text-sm text-muted dark:text-gray-400">
+                    비교 회차: <strong id="compare-total" class="text-ink dark:text-gray-100"></strong>회
+                </div>
+            </div>
+        </div>
+
+        <!-- 일치 수준별 통계 -->
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+            <h3 class="text-base font-semibold text-ink dark:text-gray-100 mb-3">일치 수준별 회차</h3>
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                        <th class="py-2">일치</th>
+                        <th class="py-2">회차 수</th>
+                        <th class="py-2">회차 목록</th>
+                    </tr>
+                </thead>
+                <tbody id="compare-match-body"></tbody>
+            </table>
+        </div>
+
+        <!-- 번호별 출현 빈도 -->
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+            <h3 class="text-base font-semibold text-ink dark:text-gray-100 mb-3">번호별 출현 빈도</h3>
+            <div id="compare-frequency" class="space-y-2"></div>
+        </div>
+    </section>
+
+    <!-- 오류 메시지 -->
+    <section id="compare-error" class="hidden bg-red-50 border border-red-200 dark:bg-red-900/30 dark:border-red-800 rounded-lg p-4">
+        <p id="compare-error-message" class="text-sm text-red-700 dark:text-red-300"></p>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    function ballColor(n) {
+        if (n <= 10) return '#FBC400';
+        if (n <= 20) return '#69C8F2';
+        if (n <= 30) return '#FF7272';
+        if (n <= 40) return '#AAAAAA';
+        return '#B0D840';
+    }
+
+    function ballHTML(n) {
+        var bg = ballColor(n);
+        var fg = (n >= 11 && n <= 20) || (n >= 21 && n <= 30) || (n >= 41 && n <= 45) ? '#fff' : '#1f2937';
+        return '<span class="inline-flex w-9 h-9 rounded-full items-center justify-center text-sm font-bold" style="background-color:' + bg + ';color:' + fg + ';">' + n + '</span>';
+    }
+
+    function getInputs() {
+        return Array.from(document.querySelectorAll('.compare-num'));
+    }
+
+    function readNumbers() {
+        return getInputs()
+            .map(function(el) { return el.value.trim(); })
+            .filter(function(v) { return v !== ''; })
+            .map(function(v) { return parseInt(v, 10); });
+    }
+
+    function showError(msg) {
+        document.getElementById('compare-error-message').textContent = msg;
+        document.getElementById('compare-error').classList.remove('hidden');
+        document.getElementById('compare-result').classList.add('hidden');
+    }
+
+    function hideError() {
+        document.getElementById('compare-error').classList.add('hidden');
+    }
+
+    function renderMatchSummary(summary) {
+        var body = document.getElementById('compare-match-body');
+        var levels = ['6', '5', '4', '3'];
+        body.innerHTML = levels.map(function(lvl) {
+            var entry = summary[lvl] || {count: 0, draws: []};
+            var drawList = (entry.draws || []).map(function(d) {
+                return '<a href="/draw/' + d.drwNo + '" class="text-data-blue dark:text-data-muted underline">' + d.drwNo + '회</a>';
+            }).join(', ') || '<span class="text-muted dark:text-gray-500">-</span>';
+            return '<tr class="border-b border-border dark:border-gray-700">' +
+                '<td class="py-2 font-medium text-ink dark:text-gray-100">' + lvl + '개</td>' +
+                '<td class="py-2 text-ink dark:text-gray-100">' + entry.count + '회</td>' +
+                '<td class="py-2 text-xs">' + drawList + '</td>' +
+            '</tr>';
+        }).join('');
+    }
+
+    function renderFrequency(freq) {
+        var box = document.getElementById('compare-frequency');
+        var maxCount = Math.max.apply(null, freq.map(function(f) { return f.count; }).concat([1]));
+        box.innerHTML = freq.map(function(f) {
+            var pct = maxCount > 0 ? (f.count / maxCount * 100) : 0;
+            return '<div class="flex items-center gap-3">' +
+                ballHTML(f.number) +
+                '<div class="flex-1 bg-surface dark:bg-gray-700 rounded h-5 overflow-hidden">' +
+                  '<div class="bg-data-blue h-5" style="width:' + pct + '%"></div>' +
+                '</div>' +
+                '<span class="text-xs text-muted dark:text-gray-400 w-20 text-right">' + f.count + '회 (#' + f.rank + ')</span>' +
+            '</div>';
+        }).join('');
+    }
+
+    function showResult(data) {
+        hideError();
+        document.getElementById('compare-grade').textContent = data.grade;
+        document.getElementById('compare-total').textContent = data.total_draws_checked;
+        renderMatchSummary(data.match_summary);
+        renderFrequency(data.number_frequency);
+        document.getElementById('compare-result').classList.remove('hidden');
+    }
+
+    async function doCompare() {
+        var nums = readNumbers();
+        if (nums.length !== 6) {
+            showError('번호를 정확히 6개 입력하세요.');
+            return;
+        }
+        if (nums.some(function(n) { return isNaN(n) || n < 1 || n > 45; })) {
+            showError('번호는 1~45 범위여야 합니다.');
+            return;
+        }
+        if (new Set(nums).size !== 6) {
+            showError('중복된 번호가 있습니다.');
+            return;
+        }
+        try {
+            var res = await fetch('/api/compare', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({numbers: nums})
+            });
+            var body = await res.json();
+            if (!res.ok) {
+                showError((body.detail && body.detail.message) || '비교에 실패했습니다.');
+                return;
+            }
+            showResult(body);
+        } catch (e) {
+            showError('네트워크 오류: ' + e.message);
+        }
+    }
+
+    function resetAll() {
+        getInputs().forEach(function(el) { el.value = ''; });
+        document.getElementById('compare-result').classList.add('hidden');
+        hideError();
+    }
+
+    document.getElementById('compare-submit').addEventListener('click', doCompare);
+    document.getElementById('compare-reset').addEventListener('click', resetAll);
+})();
+</script>
+{% endblock %}

@@ -3,29 +3,64 @@
 {% block content %}
 <div class="space-y-6">
     <div>
-        <h2 class="text-2xl font-bold text-ink mb-1">대시보드</h2>
-        <p class="text-muted text-sm">로또 번호 통계 분석 도구에 오신 것을 환영합니다.</p>
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100 mb-1">대시보드</h2>
+        <p class="text-muted dark:text-gray-400 text-sm">로또 번호 통계 분석 도구에 오신 것을 환영합니다.</p>
     </div>
+
+    {# SPEC-LOTTO-023 REQ-SCHED-004: 다음 자동 수집 예정 (스케줄러 활성 시에만) #}
+    {% if scheduler_enabled and scheduler_next_run %}
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-3 shadow-sm">
+        <p class="text-xs text-muted dark:text-gray-400">
+            다음 자동 수집 예정: <span class="font-mono text-ink dark:text-gray-100">{{ scheduler_next_run }}</span>
+        </p>
+    </div>
+    {% endif %}
+
+    {# SPEC-LOTTO-025 REQ-NOTIF-005: 알림 설정 상태 카드 (URL/이메일은 마스킹) #}
+    {% if notify_status %}
+    <div id="notify-settings" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4 shadow-sm">
+        <div class="flex items-center justify-between mb-2">
+            <h3 class="text-sm font-semibold text-ink dark:text-gray-100">알림 설정</h3>
+            <a href="/api/notifications" class="text-xs text-muted dark:text-gray-400 hover:underline">이력 보기 →</a>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+            <div>
+                <p class="text-muted dark:text-gray-400">임계값 (1등)</p>
+                <p class="font-mono text-ink dark:text-gray-100" data-testid="notify-threshold">
+                    {% if notify_status.threshold > 0 %}{{ "{:,}".format(notify_status.threshold) }}원{% else %}비활성{% endif %}
+                </p>
+            </div>
+            <div>
+                <p class="text-muted dark:text-gray-400">Webhook</p>
+                <p class="font-mono text-ink dark:text-gray-100" data-testid="notify-webhook">{{ notify_status.webhook }}</p>
+            </div>
+            <div>
+                <p class="text-muted dark:text-gray-400">Email</p>
+                <p class="font-mono text-ink dark:text-gray-100" data-testid="notify-email">{{ notify_status.email }}</p>
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- 데이터 상태 카드 -->
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="bg-card rounded-lg border border-border p-4 shadow-sm">
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4 shadow-sm">
             <div class="flex items-center space-x-3">
                 <div class="w-3 h-3 rounded-full {% if data_status.draws_available %}bg-data-blue{% else %}bg-gray-300{% endif %}"></div>
                 <div>
-                    <p class="text-sm font-medium text-ink">수집 데이터</p>
-                    <p class="text-xs text-muted">
+                    <p class="text-sm font-medium text-ink dark:text-gray-100">수집 데이터</p>
+                    <p class="text-xs text-muted dark:text-gray-400">
                         {% if data_status.draws_available %}데이터 있음{% else %}데이터 없음 — collect 명령을 실행하세요{% endif %}
                     </p>
                 </div>
             </div>
         </div>
-        <div class="bg-card rounded-lg border border-border p-4 shadow-sm">
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-4 shadow-sm">
             <div class="flex items-center space-x-3">
                 <div class="w-3 h-3 rounded-full {% if data_status.stats_available %}bg-data-blue{% else %}bg-gray-300{% endif %}"></div>
                 <div>
-                    <p class="text-sm font-medium text-ink">통계 분석</p>
-                    <p class="text-xs text-muted">
+                    <p class="text-sm font-medium text-ink dark:text-gray-100">통계 분석</p>
+                    <p class="text-xs text-muted dark:text-gray-400">
                         {% if data_status.stats_available %}분석 완료{% else %}미분석 — analyze 명령을 실행하세요{% endif %}
                     </p>
                 </div>
@@ -35,22 +70,124 @@
 
     <!-- 기능 카드 4개 -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <a href="/collect" class="bg-card rounded-lg border border-border p-5 shadow-sm hover:shadow-md transition-shadow">
-            <h3 class="font-semibold text-ink mb-2">수집 현황</h3>
-            <p class="text-xs text-muted">동행복권 API에서 수집한 당첨 번호 현황을 확인합니다.</p>
+        <a href="/collect" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm hover:shadow-md transition-shadow">
+            <h3 class="font-semibold text-ink dark:text-gray-100 mb-2">수집 현황</h3>
+            <p class="text-xs text-muted dark:text-gray-400">동행복권 API에서 수집한 당첨 번호 현황을 확인합니다.</p>
         </a>
-        <a href="/analyze" class="bg-card rounded-lg border border-border p-5 shadow-sm hover:shadow-md transition-shadow">
-            <h3 class="font-semibold text-ink mb-2">빈도 분석</h3>
-            <p class="text-xs text-muted">1~45 번호별 출현 빈도와 컬러 배지로 시각화합니다.</p>
+        <a href="/analyze" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm hover:shadow-md transition-shadow">
+            <h3 class="font-semibold text-ink dark:text-gray-100 mb-2">빈도 분석</h3>
+            <p class="text-xs text-muted dark:text-gray-400">1~45 번호별 출현 빈도와 컬러 배지로 시각화합니다.</p>
         </a>
-        <a href="/recommend" class="bg-card rounded-lg border border-border p-5 shadow-sm hover:shadow-md transition-shadow">
-            <h3 class="font-semibold text-ink mb-2">추천 번호</h3>
-            <p class="text-xs text-muted">통계 기반으로 번호 세트를 추천합니다.</p>
+        <a href="/recommend" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm hover:shadow-md transition-shadow">
+            <h3 class="font-semibold text-ink dark:text-gray-100 mb-2">추천 번호</h3>
+            <p class="text-xs text-muted dark:text-gray-400">통계 기반으로 번호 세트를 추천합니다.</p>
         </a>
-        <a href="/simulate" class="bg-card rounded-lg border border-border p-5 shadow-sm hover:shadow-md transition-shadow">
-            <h3 class="font-semibold text-ink mb-2">시뮬레이션</h3>
-            <p class="text-xs text-muted">역대 데이터로 백테스팅 시뮬레이션을 실행합니다.</p>
+        <a href="/simulate" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm hover:shadow-md transition-shadow">
+            <h3 class="font-semibold text-ink dark:text-gray-100 mb-2">시뮬레이션</h3>
+            <p class="text-xs text-muted dark:text-gray-400">역대 데이터로 백테스팅 시뮬레이션을 실행합니다.</p>
         </a>
     </div>
+
+    <!-- SPEC-LOTTO-017 REQ-PRIZE-D-003: 1등 당첨금 통계 -->
+    <section id="prize-stats" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="font-semibold text-ink dark:text-gray-100">당첨금 통계</h3>
+            <span id="prize-stats-meta" class="text-xs text-muted dark:text-gray-400"></span>
+        </div>
+        <div id="prize-stats-empty" class="hidden text-sm text-muted dark:text-gray-400 py-6 text-center">
+            당첨금 데이터 없음 — 추후 수집 시 통계가 표시됩니다.
+        </div>
+        <div id="prize-stats-body">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+                <div class="bg-surface dark:bg-gray-900 rounded p-3">
+                    <p class="text-xs text-muted dark:text-gray-400 mb-1">평균 1등</p>
+                    <p id="prize-avg" class="text-lg font-bold text-ink dark:text-gray-100">—</p>
+                </div>
+                <div class="bg-surface dark:bg-gray-900 rounded p-3">
+                    <p class="text-xs text-muted dark:text-gray-400 mb-1">최대 1등</p>
+                    <p id="prize-max" class="text-lg font-bold text-ink dark:text-gray-100">—</p>
+                </div>
+                <div class="bg-surface dark:bg-gray-900 rounded p-3">
+                    <p class="text-xs text-muted dark:text-gray-400 mb-1">최소 1등</p>
+                    <p id="prize-min" class="text-lg font-bold text-ink dark:text-gray-100">—</p>
+                </div>
+            </div>
+            <div class="relative" style="height: 220px;">
+                <canvas id="prize-trend-chart"></canvas>
+            </div>
+        </div>
+    </section>
 </div>
+<script>
+(function() {
+    fetch('/api/prize-stats')
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(data) {
+            if (!data) { return; }
+            var hasData = data.draws_with_prize_data && data.draws_with_prize_data > 0;
+            var emptyEl = document.getElementById('prize-stats-empty');
+            var bodyEl = document.getElementById('prize-stats-body');
+            var metaEl = document.getElementById('prize-stats-meta');
+            if (!hasData) {
+                if (emptyEl) emptyEl.classList.remove('hidden');
+                if (bodyEl) bodyEl.classList.add('hidden');
+                return;
+            }
+            if (metaEl) {
+                metaEl.textContent = data.draws_with_prize_data + ' / ' + data.total_draws + '회차';
+            }
+            function fmt(n) {
+                if (n == null) return '—';
+                // 억 단위 표시 (한국식)
+                if (n >= 1e8) return (n / 1e8).toFixed(2) + '억원';
+                if (n >= 1e4) return (n / 1e4).toFixed(0) + '만원';
+                return n.toLocaleString() + '원';
+            }
+            var avgEl = document.getElementById('prize-avg');
+            var maxEl = document.getElementById('prize-max');
+            var minEl = document.getElementById('prize-min');
+            if (avgEl) avgEl.textContent = fmt(data.avg_prize1);
+            if (maxEl) maxEl.textContent = fmt(data.max_prize1);
+            if (minEl) minEl.textContent = fmt(data.min_prize1);
+
+            // 라인 차트 (최근 회차 → 오래된 순으로 X축 좌→우 시간 흐름)
+            var ctxEl = document.getElementById('prize-trend-chart');
+            if (!ctxEl || typeof Chart === 'undefined') return;
+            var recent = (data.recent || []).slice().reverse();
+            var labels = recent.map(function(r) { return r.drwNo + '회'; });
+            var values = recent.map(function(r) { return r.prize1Amount; });
+            new Chart(ctxEl.getContext('2d'), {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: '1등 당첨금',
+                        data: values,
+                        borderColor: '#3B82F6',
+                        backgroundColor: 'rgba(59,130,246,0.15)',
+                        tension: 0.25,
+                        fill: true,
+                    }],
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: {
+                            ticks: {
+                                callback: function(v) {
+                                    if (v >= 1e8) return (v / 1e8).toFixed(1) + '억';
+                                    if (v >= 1e4) return (v / 1e4).toFixed(0) + '만';
+                                    return v;
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+        })
+        .catch(function() { /* 네트워크 오류는 카드 빈 상태로 노출 */ });
+})();
+</script>
 {% endblock %}

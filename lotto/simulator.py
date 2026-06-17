@@ -7,7 +7,11 @@ import warnings
 from typing import Any
 
 from lotto.analyzer import LottoAnalyzer
-from lotto.models import DrawResult, SimulationResult
+from lotto.models import DrawResult
+
+# SPEC-LOTTO-045: 명시적 재노출(PEP 484 redundant-alias). simulator의 공개 출력 타입을
+# 소비 모듈/테스트가 lotto.simulator 경로로 임포트할 수 있도록 한다 (런타임 동작 무관).
+from lotto.models import SimulationResult as SimulationResult
 from lotto.recommender import LottoRecommender
 
 # SPEC-LOTTO-002: 모듈 로거 — 무작위 폴백 시 운영 가시성 확보용

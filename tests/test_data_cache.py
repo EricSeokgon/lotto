@@ -107,6 +107,7 @@ def test_get_draws_cache_returns_same_data(tmp_path, monkeypatch):
         cached = wd.get_draws()
 
     assert first == cached
+    assert cached is not None
     assert len(cached) == 3
     assert cached[0].drwNo == 10
 

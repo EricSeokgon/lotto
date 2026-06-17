@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-046: 당첨금 연도별 비교 페이지 — 막대 차트 + 연도별 통계 테이블 #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">연도별 당첨금 비교</h2>
+    </div>
+
+    {% if report.total_years == 0 %}
+    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+    </div>
+    {% else %}
+    <!-- 요약 카드: 전체 평균 / 최고·최저 평균 연도 -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-sm text-muted dark:text-gray-400">전체 평균 1등 당첨금</p>
+            <p class="text-3xl font-bold text-amber mt-1">{{ "{:,}".format(report.overall_avg_prize1) }}<span class="text-base font-normal text-muted ml-1">원</span></p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-sm text-muted dark:text-gray-400">최고 평균 연도</p>
+            <p class="text-3xl font-bold text-data-blue dark:text-data-muted mt-1">{{ report.highest_avg_year or '-' }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-sm text-muted dark:text-gray-400">최저 평균 연도</p>
+            <p class="text-3xl font-bold text-slate-blue dark:text-gray-300 mt-1">{{ report.lowest_avg_year or '-' }}</p>
+        </div>
+    </div>
+
+    <!-- 연도별 평균 당첨금 막대 차트 -->
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-base font-medium text-ink dark:text-gray-100 mb-3">연도별 평균 1등 당첨금</h3>
+        <div style="height: 320px;">
+            <canvas id="yearlyPrizeChart"></canvas>
+        </div>
+    </div>
+
+    <!-- 연도별 통계 테이블 -->
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700 overflow-x-auto">
+        <h3 class="text-base font-medium text-ink dark:text-gray-100 mb-3">연도별 상세</h3>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="py-2 pr-4">연도</th>
+                    <th class="py-2 pr-4 text-right">전체 회차</th>
+                    <th class="py-2 pr-4 text-right">당첨금 회차</th>
+                    <th class="py-2 pr-4 text-right">평균</th>
+                    <th class="py-2 pr-4 text-right">최대</th>
+                    <th class="py-2 pr-4 text-right">최소</th>
+                    <th class="py-2 pr-4 text-right">당첨자 합계</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for y in report.years %}
+                <tr class="border-b border-border dark:border-gray-700
+                    {% if y.year == report.highest_avg_year %}bg-blue-50 dark:bg-blue-900/20
+                    {% elif y.year == report.lowest_avg_year %}bg-gray-50 dark:bg-gray-700/40{% endif %}">
+                    <td class="py-2 pr-4 font-medium text-ink dark:text-gray-100">
+                        {{ y.year }}
+                        {% if y.year == report.highest_avg_year %}<span class="ml-1 text-xs text-data-blue dark:text-data-muted">▲ 최고</span>{% endif %}
+                        {% if y.year == report.lowest_avg_year %}<span class="ml-1 text-xs text-muted">▼ 최저</span>{% endif %}
+                    </td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ y.total_draws }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ y.prize_draws }}</td>
+                    <td class="py-2 pr-4 text-right font-medium text-amber">{{ "{:,}".format(y.avg_prize1) }}</td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ "{:,}".format(y.max_prize1) }}</td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ "{:,}".format(y.min_prize1) }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ "{:,}".format(y.total_winners) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if report.total_years > 0 %}
+<script>
+(function() {
+    var report = {{ report | tojson }};
+    var years = report.years;
+    var labels = years.map(function(y) { return y.year; });
+    var values = years.map(function(y) { return y.avg_prize1; });
+
+    var canvas = document.getElementById('yearlyPrizeChart');
+    if (canvas) {
+        new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '평균 1등 당첨금 (원)',
+                    data: values,
+                    backgroundColor: '#3B82F6',
+                    borderWidth: 0,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { title: { display: true, text: '연도' } },
+                    y: { beginAtZero: true, title: { display: true, text: '평균 당첨금 (원)' } }
+                }
+            }
+        });
+    }
+})();
+</script>
+{% endif %}
+{% endblock %}

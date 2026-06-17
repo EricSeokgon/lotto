@@ -180,6 +180,9 @@ def test_collect_page_with_draws(monkeypatch):
     mock_draw.date = "2024-01-01"
     mock_draw.numbers.return_value = [1, 7, 15, 22, 33, 42]
     mock_draw.bonus = 5
+    # SPEC-LOTTO-022 REQ-PRIZE-C-003: 템플릿이 prize1Amount 컬럼을 렌더링하므로
+    # MagicMock 의 자동 생성 속성이 Jinja format 에 들어가지 않도록 명시적으로 None 지정
+    mock_draw.prize1Amount = None
 
     with __import__("unittest.mock", fromlist=["patch"]).patch(
         "lotto.web.routes.pages.get_draws", return_value=[mock_draw]
@@ -371,7 +374,8 @@ def test_collect_tbody_has_initial_rows_desc_order():
     assert match is not None, "draws-tbody 가 발견되지 않음"
     tbody_content = match.group(1).strip()
     assert tbody_content != "", "draws-tbody 가 비어있음 (서버사이드 초기 렌더링 필요)"
-    rounds_in_order = re.findall(r'(\d+)회</td>', tbody_content)
+    # SPEC-LOTTO-029 REQ-DETAIL-003: 회차 번호가 /draw/{n} 상세 링크로 감싸짐
+    rounds_in_order = re.findall(r'(\d+)회</a>', tbody_content)
     assert rounds_in_order[0] == "5", (
         f"첫 번째 행이 최신 회차가 아님: {rounds_in_order}"
     )

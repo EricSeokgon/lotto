@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-067: 번호 총합 분포 분석 — 평균·최소·최대 총합, 저/중/고 카테고리, 6개 고정 bucket 분포 (JS 없음) #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">번호 총합 분포 분석</h2>
+    </div>
+
+    <p class="text-sm text-muted dark:text-gray-400">
+        당첨 본번호 6개(보너스 제외)의 총합 분포를 집계합니다.
+        총합의 이론적 범위는 21([1,2,3,4,5,6])부터 255([40,41,42,43,44,45])까지이며, 평균은 약 138입니다.
+        저총합(110 미만)·중총합(110 이상 170 이하)·고총합(170 초과)으로 분류합니다.
+        예) [20,23,24,23,24,24]는 총합 138(중총합)입니다.
+        과거 통계일 뿐 미래 출현을 보장하지 않습니다.
+    </p>
+
+    {% if stats.total_draws == 0 %}
+    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+    </div>
+    {% else %}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">분석 회차</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.total_draws }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">평균 총합</p>
+            <p class="text-xl font-bold text-sky-600 dark:text-sky-400">{{ stats.avg_total_sum }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">최소 총합</p>
+            <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">{{ stats.min_total_sum }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">최대 총합</p>
+            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{ stats.max_total_sum }}</p>
+        </div>
+    </div>
+
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">총합 카테고리 분류</h3>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="py-2 pr-4">카테고리</th>
+                    <th class="py-2 pr-4 text-right">회차 수</th>
+                    <th class="py-2 pr-4 text-right">비율</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="border-b border-border dark:border-gray-700">
+                    <td class="py-2 pr-4 font-semibold text-emerald-600 dark:text-emerald-400">저총합 (110 미만)</td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ stats.low_count }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ stats.low_pct }}%</td>
+                </tr>
+                <tr class="border-b border-border dark:border-gray-700">
+                    <td class="py-2 pr-4 font-semibold text-sky-600 dark:text-sky-400">중총합 (110 이상 170 이하)</td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ stats.mid_count }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ stats.mid_pct }}%</td>
+                </tr>
+                <tr class="border-b border-border dark:border-gray-700">
+                    <td class="py-2 pr-4 font-semibold text-rose-600 dark:text-rose-400">고총합 (170 초과)</td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ stats.high_count }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ stats.high_pct }}%</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">총합 구간 분포</h3>
+        <p class="text-xs text-muted dark:text-gray-400 mb-3">
+            최빈 구간: <span class="font-semibold text-ink dark:text-gray-100">{{ stats.most_common_bucket }}</span>
+        </p>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="py-2 pr-4">구간(총합)</th>
+                    <th class="py-2 pr-4 text-right">회차 수</th>
+                    <th class="py-2 pr-4 text-right">비율</th>
+                </tr>
+            </thead>
+            <tbody>
+                {# 6개 고정 bucket 을 정의 순서대로 표시한다(미관측 구간 0 포함) #}
+                {% for label, cnt in stats.total_sum_distribution.items() %}
+                {% if label == stats.most_common_bucket %}
+                <tr class="border-b border-border dark:border-gray-700 bg-sky-50 dark:bg-sky-900/20">
+                {% else %}
+                <tr class="border-b border-border dark:border-gray-700">
+                {% endif %}
+                    <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">
+                        {{ label }}{% if label == stats.most_common_bucket %} <span class="text-xs font-normal text-sky-600 dark:text-sky-400">(최빈)</span>{% endif %}
+                    </td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ cnt }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ ((cnt / stats.total_draws * 100) | round(2)) }}%</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

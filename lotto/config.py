@@ -22,7 +22,9 @@ try:
 except ImportError:  # pragma: no cover
     _DOTENV_AVAILABLE = False
 
-    def _load_dotenv(*_args: object, **_kwargs: object) -> bool:
+    # SPEC-LOTTO-045: 미설치 시 no-op 폴백. 실제 load_dotenv와 시그니처가 다르므로
+    # 조건부 함수 변형 misc 경고를 억제한다 (런타임 no-op 동작 보존).
+    def _load_dotenv(*_args: object, **_kwargs: object) -> bool:  # type: ignore[misc]
         """python-dotenv 미설치 시 no-op."""
         return False
 
@@ -38,6 +40,17 @@ _DEFAULT_SCRAPER_URL_1 = "https://signalfire85.tistory.com/798"
 _DEFAULT_SCRAPER_URL_2 = "https://signalfire85.tistory.com/28"
 # SPEC-LOTTO-003 REQ-BONUS-004: 보너스 회피 가중치 기본값 (0.0 = 비활성 → 기존 동작 보존)
 _DEFAULT_BONUS_AVOIDANCE_WEIGHT = "0.0"
+# SPEC-LOTTO-023 REQ-SCHED-002: 스케줄러 설정 기본값
+# - 활성화 여부, 크론 표현식, 타임존
+# - 기본: 매주 토요일 21:10 KST (당첨 결과 발표 직후)
+_DEFAULT_SCHEDULE_ENABLED = "true"
+_DEFAULT_SCHEDULE_CRON = "10 21 * * 6"
+_DEFAULT_SCHEDULE_TZ = "Asia/Seoul"
+# SPEC-LOTTO-025 REQ-NOTIF-001: 알림 설정 기본값
+# - 임계값 0 = 비활성, webhook/email 미설정 = 비활성
+# - SMTP 포트 기본 587 (TLS)
+_DEFAULT_NOTIFY_PRIZE_THRESHOLD = "0"
+_DEFAULT_NOTIFY_SMTP_PORT = "587"
 
 
 def _parse_weights(raw: str) -> tuple[float, float, float, float]:
@@ -93,6 +106,20 @@ class Settings:
     scraper_urls: list[str] = field(default_factory=list)
     # SPEC-LOTTO-003 REQ-BONUS-004: 보너스 회피 가중치 (기본 0.0 = 비활성)
     bonus_avoidance_weight: float = 0.0
+    # SPEC-LOTTO-023 REQ-SCHED-002: 주간 자동 수집 스케줄러 설정
+    schedule_enabled: bool = True
+    schedule_cron: str = "10 21 * * 6"
+    schedule_tz: str = "Asia/Seoul"
+    # SPEC-LOTTO-025 REQ-NOTIF-001: 조건부 알림 설정
+    # threshold=0 또는 채널 미설정 시 알림 비활성
+    notify_prize_threshold: int = 0
+    notify_webhook_url: str = ""
+    notify_email_to: str = ""
+    notify_email_from: str = ""
+    notify_smtp_host: str = ""
+    notify_smtp_port: int = 587
+    notify_smtp_user: str = ""
+    notify_smtp_pass: str = ""
 
 
 def _load_settings() -> Settings:
@@ -125,6 +152,26 @@ def _load_settings() -> Settings:
         os.environ.get("LOTTO_BONUS_AVOIDANCE_WEIGHT", _DEFAULT_BONUS_AVOIDANCE_WEIGHT),
         "LOTTO_BONUS_AVOIDANCE_WEIGHT",
     )
+    # SPEC-LOTTO-023 REQ-SCHED-002: 스케줄러 설정 — 환경 변수 우선, 기본값 폴백
+    raw_enabled = os.environ.get("LOTTO_SCHEDULE_ENABLED", _DEFAULT_SCHEDULE_ENABLED)
+    schedule_enabled = raw_enabled.strip().lower() in {"true", "1", "yes", "on"}
+    schedule_cron = os.environ.get("LOTTO_SCHEDULE_CRON", _DEFAULT_SCHEDULE_CRON)
+    schedule_tz = os.environ.get("LOTTO_SCHEDULE_TZ", _DEFAULT_SCHEDULE_TZ)
+    # SPEC-LOTTO-025 REQ-NOTIF-001: 알림 설정 — 환경 변수 우선, 기본값 폴백
+    notify_prize_threshold = _parse_int(
+        os.environ.get("LOTTO_NOTIFY_PRIZE_THRESHOLD", _DEFAULT_NOTIFY_PRIZE_THRESHOLD),
+        "LOTTO_NOTIFY_PRIZE_THRESHOLD",
+    )
+    notify_webhook_url = os.environ.get("LOTTO_NOTIFY_WEBHOOK_URL", "")
+    notify_email_to = os.environ.get("LOTTO_NOTIFY_EMAIL_TO", "")
+    notify_email_from = os.environ.get("LOTTO_NOTIFY_EMAIL_FROM", "")
+    notify_smtp_host = os.environ.get("LOTTO_NOTIFY_SMTP_HOST", "")
+    notify_smtp_port = _parse_int(
+        os.environ.get("LOTTO_NOTIFY_SMTP_PORT", _DEFAULT_NOTIFY_SMTP_PORT),
+        "LOTTO_NOTIFY_SMTP_PORT",
+    )
+    notify_smtp_user = os.environ.get("LOTTO_NOTIFY_SMTP_USER", "")
+    notify_smtp_pass = os.environ.get("LOTTO_NOTIFY_SMTP_PASS", "")
 
     return Settings(
         api_url=api_url,
@@ -135,6 +182,17 @@ def _load_settings() -> Settings:
         checkpoint_interval=checkpoint_interval,
         scraper_urls=scraper_urls,
         bonus_avoidance_weight=bonus_avoidance_weight,
+        schedule_enabled=schedule_enabled,
+        schedule_cron=schedule_cron,
+        schedule_tz=schedule_tz,
+        notify_prize_threshold=notify_prize_threshold,
+        notify_webhook_url=notify_webhook_url,
+        notify_email_to=notify_email_to,
+        notify_email_from=notify_email_from,
+        notify_smtp_host=notify_smtp_host,
+        notify_smtp_port=notify_smtp_port,
+        notify_smtp_user=notify_smtp_user,
+        notify_smtp_pass=notify_smtp_pass,
     )
 
 

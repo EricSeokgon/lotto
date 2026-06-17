@@ -138,7 +138,7 @@ class TestNormalize:
 
     def test_normalize_uniform_values_returns_half(self) -> None:
         """모든 값이 같을 때 span=0 → 0.5 반환 확인."""
-        from lotto.recommender import _normalize  # type: ignore[attr-defined]
+        from lotto.recommender import _normalize
 
         result = _normalize({1: 10, 2: 10, 3: 10})
         assert all(v == 0.5 for v in result.values())
