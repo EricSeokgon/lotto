@@ -8461,3 +8461,336 @@ def get_quartile_dist_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
     }
     _quartile_dist_cache[cache_key] = result
     return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-100: 통계 기반 번호 조합 적합도 점수 (Fitness Score)
+# ---------------------------------------------------------------------------
+
+def _get_fitness_grade(score: float) -> str:
+    """점수에 따른 등급을 반환한다.
+
+    # @MX:NOTE: [AUTO] 등급 임계값 — S>=80, A>=60, B>=40, C>=20, D<20
+    # @MX:SPEC: SPEC-LOTTO-100
+    """
+    if score >= 80.0:
+        return "S"
+    if score >= 60.0:
+        return "A"
+    if score >= 40.0:
+        return "B"
+    if score >= 20.0:
+        return "C"
+    return "D"
+
+
+def _fitness_span_bucket(numbers: list[int]) -> str:
+    """6개 번호의 스팬 구간 버킷 키를 반환한다 (적합도 점수용)."""
+    span = max(numbers) - min(numbers)
+    if span <= 10:
+        return "10 이하"
+    if span <= 20:
+        return "11-20"
+    if span <= 25:
+        return "21-25"
+    if span <= 30:
+        return "26-30"
+    if span <= 35:
+        return "31-35"
+    if span <= 40:
+        return "36-40"
+    return "41 이상"
+
+
+def _fitness_total_sum_bucket(numbers: list[int]) -> str:
+    """6개 번호 합계의 구간 버킷 키를 반환한다."""
+    # _TOTAL_SUM_BUCKETS = ["21-80","81-110","111-130","131-150","151-170","171-255"]
+    total = sum(numbers)
+    if total <= 80:
+        return "21-80"
+    if total <= 110:
+        return "81-110"
+    if total <= 130:
+        return "111-130"
+    if total <= 150:
+        return "131-150"
+    if total <= 170:
+        return "151-170"
+    return "171-255"
+
+
+def _fitness_min_gap_bucket(numbers: list[int]) -> str:
+    """정렬된 번호들의 최소 갭 구간 버킷 키를 반환한다 (적합도 점수용).
+
+    # @MX:NOTE: [AUTO] _MIN_GAP_KEYS = ["1","2","3","4-5","6-10","11+"]
+    """
+    sorted_nums = sorted(numbers)
+    gaps = [sorted_nums[i + 1] - sorted_nums[i] for i in range(len(sorted_nums) - 1)]  # noqa: B905
+    min_gap = min(gaps)
+    if min_gap == 1:
+        return "1"
+    if min_gap == 2:
+        return "2"
+    if min_gap == 3:
+        return "3"
+    if min_gap <= 5:
+        return "4-5"
+    if min_gap <= 10:
+        return "6-10"
+    return "11+"
+
+
+def _fitness_gap_median_bucket(numbers: list[int]) -> str:
+    """정렬된 번호들의 갭 중앙값 구간 버킷 키를 반환한다 (적합도 점수용).
+
+    # @MX:NOTE: [AUTO] gap_median = sorted(gaps)[2] (5개 갭의 3번째)
+    # @MX:SPEC: SPEC-LOTTO-099
+    # _GAP_MEDIAN_KEYS = ["1-2","3-4","5-6","7-8","9-10","11+"]
+    """
+    sorted_nums = sorted(numbers)
+    gaps = sorted([sorted_nums[i + 1] - sorted_nums[i] for i in range(len(sorted_nums) - 1)])  # noqa: B905
+    gap_median = gaps[2]  # 3번째 값 (인덱스 2)
+    if gap_median <= 2:
+        return "1-2"
+    if gap_median <= 4:
+        return "3-4"
+    if gap_median <= 6:
+        return "5-6"
+    if gap_median <= 8:
+        return "7-8"
+    if gap_median <= 10:
+        return "9-10"
+    return "11+"
+
+
+def _quartile_key(numbers: list[int]) -> str:
+    """6개 번호의 사분위 분포 패턴 키를 반환한다 (예: '2-2-1-1').
+
+    # @MX:NOTE: [AUTO] Q1=1-11, Q2=12-22, Q3=23-33, Q4=34-45
+    """
+    q_counts = [0, 0, 0, 0]
+    for n in numbers:
+        if n <= 11:
+            q_counts[0] += 1
+        elif n <= 22:
+            q_counts[1] += 1
+        elif n <= 33:
+            q_counts[2] += 1
+        else:
+            q_counts[3] += 1
+    return f"{q_counts[0]}-{q_counts[1]}-{q_counts[2]}-{q_counts[3]}"
+
+
+def _zone_coverage_key(numbers: list[int]) -> str:
+    """6개 번호가 커버하는 구간 수를 문자열로 반환한다.
+
+    # @MX:NOTE: [AUTO] 구간 = (num-1)//5, 1~9 구간 중 몇 개를 커버하는지
+    """
+    zones = {(n - 1) // 5 for n in numbers}
+    return str(len(zones))
+
+
+def _consecutive_pairs_bucket(numbers: list[int]) -> str:
+    """연속 쌍의 수를 기반으로 consecutive_pairs 버킷 키를 반환한다.
+
+    # @MX:NOTE: [AUTO] _CONSECUTIVE_BUCKETS = ["0","1","2","3+"]
+    """
+    sorted_nums = sorted(numbers)
+    pair_count = sum(
+        1 for i in range(len(sorted_nums) - 1)  # noqa: B905
+        if sorted_nums[i + 1] - sorted_nums[i] == 1
+    )
+    if pair_count >= 3:
+        return "3+"
+    return str(pair_count)
+
+
+def _get_flat_pct(dist: dict[str, int], key: str, total: int) -> float:
+    """플랫(count만 있는) 분포에서 pct를 계산한다."""
+    if total <= 0:
+        return 0.0
+    count = dist.get(key, 0)
+    return round(count / total * 100, 2)
+
+
+def _get_nested_pct(dist: dict[str, Any], key: str) -> float:
+    """중첩({count, pct}) 분포에서 pct를 반환한다."""
+    entry = dist.get(key)
+    if entry is None:
+        return 0.0
+    if isinstance(entry, dict):
+        return float(entry.get("pct", 0.0))
+    return 0.0
+
+
+def _primes_set() -> set[int]:
+    """1~45 범위의 소수 집합을 반환한다."""
+    return {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43}
+
+
+# @MX:ANCHOR: [AUTO] 통계 기반 번호 조합 적합도 점수 계산 — fan_in >= 3 예상
+# @MX:REASON: api.py, pages.py, 테스트에서 직접 호출됨
+# @MX:SPEC: SPEC-LOTTO-100
+def get_fitness_score(numbers: list[int], draws: list[DrawResult] | None) -> dict[str, Any]:
+    """6개 번호 조합의 역대 당첨 패턴 부합도를 0~100 점수로 반환한다.
+
+    15개 통계 각각의 해당 구간 출현 비율(pct)을 평균하여 점수를 계산한다.
+
+    Args:
+        numbers: 분석할 6개 번호 리스트 (1~45, 중복 없음)
+        draws: 역대 당첨 회차 리스트 (None 또는 빈 리스트면 0점 반환)
+
+    Returns:
+        {"numbers", "fitness_score", "grade", "disclaimer", "breakdown"}
+
+    Raises:
+        ValueError: 번호 6개 미충족, 범위 오류, 중복 오류
+    """
+    # 입력 유효성 검사
+    if len(numbers) != 6:
+        raise ValueError(f"번호는 정확히 6개여야 합니다. 현재: {len(numbers)}개")
+    if any(n < 1 or n > 45 for n in numbers):  # noqa: B905
+        raise ValueError("번호는 1~45 범위여야 합니다.")
+    if len(set(numbers)) != 6:
+        raise ValueError("중복 번호가 있습니다.")
+
+    # 빈 회차 처리
+    if not draws:
+        return {
+            "numbers": sorted(numbers),
+            "fitness_score": 0.0,
+            "grade": "D",
+            "disclaimer": "당첨 이력 데이터가 없어 점수를 계산할 수 없습니다.",
+            "breakdown": [],
+        }
+
+    sorted_nums = sorted(numbers)
+
+    # 각 통계 함수 호출 및 구간 pct 조회
+    pcts: list[float] = []
+    breakdown: list[dict[str, Any]] = []
+
+    def _add(name: str, label: str, pct: float) -> None:
+        pcts.append(pct)
+        breakdown.append({"name": name, "label": label, "pct": round(float(pct), 2)})
+
+    # 1. 홀짝 분포
+    odd_even = get_odd_even_stats(draws)
+    odd_count = sum(1 for n in numbers if n % 2 == 1)  # noqa: B905
+    oe_dist = odd_even["odd_distribution"]
+    oe_total = sum(oe_dist.values())
+    _add("odd_even", f"홀수 {odd_count}개",
+         _get_flat_pct(oe_dist, odd_count, oe_total))
+
+    # 2. 고저 분포 (low=1~22)
+    high_low = get_high_low_stats(draws)
+    low_count = sum(1 for n in numbers if n <= 22)  # noqa: B905
+    hl_dist = high_low["low_distribution"]
+    hl_total = sum(hl_dist.values())
+    _add("high_low", f"저번호 {low_count}개",
+         _get_flat_pct(hl_dist, low_count, hl_total))
+
+    # 3. 합계 구간 분포
+    total_sum_stat = get_total_sum_stats(draws)
+    ts_key = _fitness_total_sum_bucket(sorted_nums)
+    ts_dist = total_sum_stat["total_sum_distribution"]
+    ts_total = sum(ts_dist.values())
+    _add("total_sum", f"합계 구간 {ts_key}",
+         _get_flat_pct(ts_dist, ts_key, ts_total))
+
+    # 4. 스팬 분포
+    span_stat = get_span_stats(draws)
+    sp_key = _fitness_span_bucket(sorted_nums)
+    _add("span", f"스팬 {sp_key}",
+         _get_nested_pct(span_stat["span_distribution"], sp_key))
+
+    # 5. 연속 쌍 (pair_distribution, int 키)
+    consec_stat = get_consecutive_pattern_stats(draws)
+    cp_dist = consec_stat["pair_distribution"]
+    cp_total = sum(cp_dist.values())
+    consec_sorted = sorted(sorted_nums)
+    pair_count = sum(
+        1 for i in range(len(consec_sorted) - 1)  # noqa: B905
+        if consec_sorted[i + 1] - consec_sorted[i] == 1
+    )
+    _add("consecutive", f"연속쌍 {pair_count}개",
+         _get_flat_pct(cp_dist, pair_count, cp_total))
+
+    # 6. AC값 분포
+    ac_stat = get_ac_value_stats(draws)
+    ac_val = compute_ac_value(sorted_nums)
+    _add("ac_value", f"AC값 {ac_val}",
+         _get_nested_pct(ac_stat["ac_distribution"], str(ac_val)))
+
+    # 7. 사분위 분포
+    quartile_stat = get_quartile_dist_stats(draws)
+    q_key = _quartile_key(sorted_nums)
+    _add("quartile", f"사분위 {q_key}",
+         _get_nested_pct(quartile_stat["quartile_distribution"], q_key))
+
+    # 8. 구간 커버리지 분포
+    zone_stat = get_zone_coverage_stats(draws)
+    z_key = _zone_coverage_key(sorted_nums)
+    _add("zone_coverage", f"구간 커버 {z_key}개",
+         _get_nested_pct(zone_stat["zone_coverage_distribution"], z_key))
+
+    # 9. 최소 갭 분포
+    min_gap_stat = get_min_gap_dist_stats(draws)
+    mg_key = _fitness_min_gap_bucket(sorted_nums)
+    _add("min_gap", f"최소갭 {mg_key}",
+         _get_nested_pct(min_gap_stat["min_gap_distribution"], mg_key))
+
+    # 10. 갭 중앙값 분포
+    gap_med_stat = get_gap_median_dist_stats(draws)
+    gm_key = _fitness_gap_median_bucket(sorted_nums)
+    _add("gap_median", f"갭중앙값 {gm_key}",
+         _get_nested_pct(gap_med_stat["gap_median_distribution"], gm_key))
+
+    # 11. 소수 개수 분포
+    prime_stat = get_prime_stats(draws)
+    prime_count = sum(1 for n in numbers if n in _primes_set())  # noqa: B905
+    pr_dist = prime_stat["prime_distribution"]
+    pr_total = sum(pr_dist.values())
+    _add("prime", f"소수 {prime_count}개",
+         _get_flat_pct(pr_dist, prime_count, pr_total))
+
+    # 12. 끝수 합계 분포 (last_digit_sum — int 키, 관측값만)
+    lds_stat = get_last_digit_sum_stats(draws)
+    last_digit_sum = sum(n % 10 for n in numbers)  # noqa: B905
+    lds_dist = lds_stat["sum_distribution"]
+    lds_total = sum(lds_dist.values())
+    _add("last_digit_sum", f"끝수합 {last_digit_sum}",
+         _get_flat_pct(lds_dist, last_digit_sum, lds_total))
+
+    # 13. 합계 끝자리 분포 (sum_last_digit)
+    sld_stat = get_sum_last_digit_stats(draws)
+    total_sum = sum(numbers)
+    sld_key = str(total_sum % 10)
+    _add("sum_last_digit", f"합계끝자리 {sld_key}",
+         _get_nested_pct(sld_stat["sum_last_digit_distribution"], sld_key))
+
+    # 14. 연속쌍 분포 (consecutive_pairs, str 키 "0"/"1"/"2"/"3+")
+    cp_pairs_stat = get_consecutive_pairs_stats(draws)
+    cpairs_key = _consecutive_pairs_bucket(sorted_nums)
+    _add("consecutive_pairs", f"연속쌍구간 {cpairs_key}",
+         _get_nested_pct(cp_pairs_stat["consecutive_distribution"], cpairs_key))
+
+    # 15. AC값 분포 (ac_value_dist — ac_value_stats와 동일 함수)
+    ac_dist_stat = get_ac_value_stats(draws)
+    _add("ac_value_dist", f"AC분포 {ac_val}",
+         _get_nested_pct(ac_dist_stat["ac_distribution"], str(ac_val)))
+
+    # 평균 점수 계산
+    avg_pct = round(sum(pcts) / len(pcts), 2) if pcts else 0.0
+    grade = _get_fitness_grade(avg_pct)
+
+    return {
+        "numbers": sorted_nums,
+        "fitness_score": avg_pct,
+        "grade": grade,
+        "disclaimer": (
+            "이 점수는 과거 통계 기반 분석 결과이며 당첨을 보장하지 않습니다. "
+            "로또는 무작위 추첨이므로 모든 조합의 당첨 확률은 동일합니다."
+        ),
+        "breakdown": breakdown,
+    }

@@ -1784,3 +1784,33 @@ async def history_page(request: Request) -> TemplateResponse:
         "prize_counts": prize_counts,
         "roi_summary": roi_summary,
     })
+
+
+@router.get("/stats/fitness")
+async def fitness_page(
+    request: Request,
+    numbers: Optional[str] = Query(None),  # noqa: UP045 — Python 3.9 FastAPI 호환
+) -> TemplateResponse:
+    """번호 조합 적합도 점수 분석 페이지.
+
+    Query:
+        numbers: 쉼표로 구분된 6개 번호 (선택, 예: "1,7,14,21,35,42")
+    """
+    from lotto.web import data as wd
+
+    stats = None
+    error_msg = None
+
+    if numbers:
+        try:
+            nums = [int(x.strip()) for x in numbers.split(",") if x.strip()]
+            stats = wd.get_fitness_score(nums, wd.get_draws())
+        except (ValueError, TypeError) as exc:
+            error_msg = str(exc)
+
+    return _render(request, "fitness.html", {
+        "active_tab": "fitness",
+        "stats": stats,
+        "numbers": numbers or "",
+        "error_msg": error_msg,
+    })
