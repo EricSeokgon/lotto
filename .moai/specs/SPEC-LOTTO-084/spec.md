@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-084
 title: 홀짝 전환 횟수 분포 분석
-status: Completed
+status: completed
 version: 1.0.0
 created: 2026-06-15
 ---

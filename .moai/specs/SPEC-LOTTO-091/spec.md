@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-091
 title: 소수 이웃 번호 포함 분포 분석
-status: Planned
+status: completed
 version: 0.1.0
 created: 2026-06-16
 ---

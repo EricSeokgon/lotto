@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-089
 title: 저·고 번호 균형 분포 분석
-status: Completed
+status: completed
 version: 1.0.0
 created: 2026-06-15
 updated: 2026-06-15

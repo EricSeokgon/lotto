@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-078
 title: 3연속 이상 번호 포함 분포 분석
-status: Completed
+status: completed
 version: 1.0.0
 created: 2026-06-15
 ---

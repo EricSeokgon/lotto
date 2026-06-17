@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-088
 title: 번호 간격 분산 분포 분석
-status: Completed
+status: completed
 version: 1.0.0
 created: 2026-06-15
 ---

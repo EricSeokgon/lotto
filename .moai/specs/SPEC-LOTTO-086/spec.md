@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-086
 title: 번호 합계 구간 세분화 분포 분석
-status: Planned
+status: completed
 version: 0.1.0
 created: 2026-06-15
 ---

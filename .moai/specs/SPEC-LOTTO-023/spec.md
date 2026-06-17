@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-023
 version: 0.1.0
-status: approved
+status: completed
 created: 2026-05-27
 updated: 2026-05-27
 author: ircp

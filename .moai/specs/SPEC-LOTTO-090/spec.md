@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-090
 title: 번호 합산 끝자리 분포 분석
-status: Completed
+status: completed
 version: 0.1.0
 created: 2026-06-15
 ---

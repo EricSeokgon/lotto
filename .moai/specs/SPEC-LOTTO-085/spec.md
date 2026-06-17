@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-085
 title: 일의 자리 중복 분포 분석
-status: Completed
+status: completed
 version: 1.0.0
 created: 2026-06-15
 ---
