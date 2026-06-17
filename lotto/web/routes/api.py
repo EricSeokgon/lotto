@@ -1289,6 +1289,26 @@ async def get_gap_median_dist_stats_route(
     return wd.get_gap_median_dist_stats(draws)
 
 
+@router.get("/stats/quartile_dist")
+async def get_quartile_dist_stats_route(
+    limit: Optional[int] = Query(None, description="최근 N 회차만 분석 (미지정 시 전체)")  # noqa: UP045
+) -> dict[str, Any]:
+    """본번호 6개의 사분위 구간(Q1~Q4) 분포를 반환합니다 (SPEC-LOTTO-099).
+
+    - Q1(1-11), Q2(12-22), Q3(23-33), Q4(34-45)
+    - avg_q1~q4(평균), most_common_combination(동률 시 사전순 앞선 값)
+    - balanced_pct(각 구간 1~2개 비율), skewed_pct(어느 구간 4개 이상 비율)
+    - quartile_distribution: 관측된 패턴만 포함 ({count, pct} 형태)
+    - 데이터 부재 시에도 200으로 정상 응답 (total_draws=0).
+    """
+    draws = wd.get_draws()
+    if limit is not None and limit > 0 and draws:
+        draws = draws[-limit:]
+    elif limit is not None and limit < 0 and draws:
+        pass  # N4: 음수 limit은 전체로 처리
+    return wd.get_quartile_dist_stats(draws)
+
+
 @router.get("/stats/zone_coverage")
 async def get_zone_coverage_stats_route(
     limit: Optional[int] = Query(None, description="최근 N 회차만 분석 (미지정 시 전체)")  # noqa: UP045

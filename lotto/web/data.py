@@ -399,6 +399,9 @@ _zone_coverage_cache: dict[str, Any] = {}
 # SPEC-LOTTO-098: 커버 구간 수 버킷 6개 고정 키(정의 순서가 동률 시 우선순위).
 _ZONE_COV_KEYS = ["1", "2", "3", "4", "5", "6"]
 
+# SPEC-LOTTO-099: 번호 사분위 분포 캐시. invalidate_cache로 무효화.
+_quartile_dist_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -450,6 +453,7 @@ def invalidate_cache() -> None:
     SPEC-LOTTO-096: 신규 추첨 데이터 적재 시 최소 간격 구간 분포 캐시도 무효화한다.
     SPEC-LOTTO-097: 신규 추첨 데이터 적재 시 간격 중앙값 구간 분포 캐시도 무효화한다.
     SPEC-LOTTO-098: 신규 추첨 데이터 적재 시 구간별 번호 선택 분포 캐시도 무효화한다.
+    SPEC-LOTTO-099: 신규 추첨 데이터 적재 시 번호 사분위 분포 캐시도 무효화한다.
     """
     global _draws_cache, _stats_cache, _cooccurrence_cache, _last_digit_cache  # noqa: PLW0603 — 모듈 레벨 캐시는 의도된 전역 상태
     _draws_cache = None
@@ -501,6 +505,7 @@ def invalidate_cache() -> None:
     _min_gap_dist_cache.clear()
     _gap_median_dist_cache.clear()
     _zone_coverage_cache.clear()
+    _quartile_dist_cache.clear()
 
 
 def interpolate_color(t: float) -> str:
@@ -8325,4 +8330,134 @@ def get_zone_coverage_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
         "zone_coverage_distribution": dist,
     }
     _zone_coverage_cache[cache_key] = result
+    return result
+
+
+def _get_quartile(n: int) -> int:
+    """번호 n의 사분위 구간(1~4)을 반환합니다 (SPEC-LOTTO-099, Python 3.9 호환).
+
+    Q1: 1~11, Q2: 12~22, Q3: 23~33, Q4: 34~45
+    """
+    if n <= 11:
+        return 1
+    elif n <= 22:
+        return 2
+    elif n <= 33:
+        return 3
+    else:
+        return 4
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-099 — 사분위 구간 분포 분석 함수
+# @MX:SPEC: SPEC-LOTTO-099
+def get_quartile_dist_stats(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """회차별 본번호 6개를 4개 사분위 구간(Q1~Q4)으로 분류하여 분포를 분석합니다 (SPEC-LOTTO-099).
+
+    구간 정의:
+        Q1: 1~11 (11개), Q2: 12~22 (11개), Q3: 23~33 (11개), Q4: 34~45 (12개)
+
+    각 회차별 q1_count+q2_count+q3_count+q4_count = 6이어야 한다.
+    조합 키는 "{q1}-{q2}-{q3}-{q4}" 형식의 문자열 (예: "2-1-2-1").
+
+    균형 분포(balanced): q1, q2, q3, q4 각각이 1 또는 2인 회차.
+    쏠림 분포(skewed): 어느 하나의 구간에 4개 이상 번호가 몰린 회차.
+    most_common_combination 동률 시 사전순(lexicographic) 앞선 값 선택.
+    캐시 키는 str(len(draws))이며 invalidate_cache()로 무효화된다.
+
+    Args:
+        draws: 분석 대상 회차 리스트. None 또는 빈 리스트이면 total_draws=0,
+               most_common_combination="0-0-0-0", 나머지 값 0 반환.
+
+    Returns:
+        {total_draws, avg_q1, avg_q2, avg_q3, avg_q4,
+         most_common_combination, balanced_pct, skewed_pct,
+         quartile_distribution} 매핑.
+    """
+    cache_key = str(len(draws) if draws else 0)
+    cached: dict[str, Any] | None = _quartile_dist_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    empty_result: dict[str, Any] = {
+        "total_draws": 0,
+        "avg_q1": 0.0,
+        "avg_q2": 0.0,
+        "avg_q3": 0.0,
+        "avg_q4": 0.0,
+        "most_common_combination": "0-0-0-0",
+        "balanced_pct": 0.0,
+        "skewed_pct": 0.0,
+        "quartile_distribution": {},
+    }
+
+    if not draws:
+        _quartile_dist_cache[cache_key] = empty_result
+        return empty_result
+
+    pattern_counts: dict[str, int] = {}
+    total = 0
+    sum_q1 = sum_q2 = sum_q3 = sum_q4 = 0
+    balanced = 0
+    skewed = 0
+
+    for draw in draws:
+        if draw is None:
+            continue
+        nums = draw.numbers()  # 정렬된 본번호 6개 (보너스 제외)
+        if not nums:
+            continue
+        q1 = q2 = q3 = q4 = 0
+        for n in nums:
+            q = _get_quartile(n)
+            if q == 1:
+                q1 += 1
+            elif q == 2:
+                q2 += 1
+            elif q == 3:
+                q3 += 1
+            else:
+                q4 += 1
+        pattern = f"{q1}-{q2}-{q3}-{q4}"
+        pattern_counts[pattern] = pattern_counts.get(pattern, 0) + 1
+        sum_q1 += q1
+        sum_q2 += q2
+        sum_q3 += q3
+        sum_q4 += q4
+        # 균형 분포: 각 구간이 1 또는 2개
+        if (q1 >= 1 and q1 <= 2 and q2 >= 1 and q2 <= 2
+                and q3 >= 1 and q3 <= 2 and q4 >= 1 and q4 <= 2):
+            balanced += 1
+        # 쏠림 분포: 어느 한 구간에 4개 이상
+        if q1 >= 4 or q2 >= 4 or q3 >= 4 or q4 >= 4:
+            skewed += 1
+        total += 1
+
+    if total == 0:
+        _quartile_dist_cache[cache_key] = empty_result
+        return empty_result
+
+    # 동률 시 사전순(lexicographic) 앞선 값 선택
+    max_cnt = max(pattern_counts.values())
+    most_common = min(k for k, v in pattern_counts.items() if v == max_cnt)
+
+    # quartile_distribution: 관측된 패턴만 포함, {count, pct} 형태
+    dist: dict[str, dict[str, Any]] = {}
+    for pattern, cnt in pattern_counts.items():
+        dist[pattern] = {
+            "count": cnt,
+            "pct": round(cnt / total * 100, 2),
+        }
+
+    result: dict[str, Any] = {
+        "total_draws": total,
+        "avg_q1": round(sum_q1 / total, 2),
+        "avg_q2": round(sum_q2 / total, 2),
+        "avg_q3": round(sum_q3 / total, 2),
+        "avg_q4": round(sum_q4 / total, 2),
+        "most_common_combination": most_common,
+        "balanced_pct": round(balanced / total * 100, 2),
+        "skewed_pct": round(skewed / total * 100, 2),
+        "quartile_distribution": dist,
+    }
+    _quartile_dist_cache[cache_key] = result
     return result

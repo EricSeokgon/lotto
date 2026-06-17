@@ -1539,6 +1539,23 @@ async def gap_median_dist_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/quartile-dist")
+async def quartile_dist_page(request: Request) -> TemplateResponse:
+    """번호 사분위 분포 분석 페이지 (SPEC-LOTTO-099).
+
+    - 요약 카드: 총 회차 / Q1~Q4 평균 / 균형 비율 / 쏠림 비율 / 최빈 패턴
+    - 분포 테이블: 관측된 패턴의 count/pct (상위 10개)
+    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
+    """
+    from lotto.web import data as wd
+
+    stats = wd.get_quartile_dist_stats(wd.get_draws())
+    return _render(request, "quartile_dist.html", {
+        "active_tab": "quartile_dist",
+        "stats": stats,
+    })
+
+
 @router.get("/stats/zone-coverage")
 async def zone_coverage_page(request: Request) -> TemplateResponse:
     """구간별 번호 선택 분포 분석 페이지 (SPEC-LOTTO-098).
