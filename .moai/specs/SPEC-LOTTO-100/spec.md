@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-100
-version: 0.1.0
-status: draft
+version: 1.0.0
+status: completed
 created: 2026-06-17
 updated: 2026-06-17
 author: ircp
@@ -182,3 +182,25 @@ fitness_score = round(sum(item_pcts) / len(item_pcts), 2)
 - 한국어 UI 라벨 사용
 - ruff 린트 통과 필수
 - 면책 고지(disclaimer) 필수 포함
+
+---
+
+## 구현 노트 (Implementation Notes)
+
+- 구현 완료일: 2026-06-17
+- 구현 브랜치: feat/spec-lotto-100-fitness-score
+- 테스트: 50개 추가 (2672 → 2722)
+- 구현 파일:
+  - `lotto/web/data.py`: `get_fitness_score()` 함수 및 15개 통계 헬퍼 함수
+  - `lotto/web/routes/api.py`: `GET /api/stats/fitness` 엔드포인트
+  - `lotto/web/routes/pages.py`: `GET /stats/fitness` 페이지 라우트
+  - `lotto/web/templates/fitness.html`: 적합도 점수 웹 페이지
+  - `lotto/web/templates/base.html`: 네비게이션 탭 추가
+  - `tests/test_fitness_score.py`: 50개 테스트
+
+### 주요 구현 결정
+
+- Python 3.9 호환: `from __future__ import annotations`가 없는 파일(api.py, pages.py)은 `Optional[str]` 사용 (# noqa: UP045)
+- data.py는 `from __future__ import annotations` 선언으로 `list[DrawResult] | None` 타입 힌트 사용 가능
+- 적합도 점수 = 15개 통계 버킷 pct 산술평균 (REQ-FS-U04)
+- 등급 분류: 매우 높음(≥80), 높음(60-79), 보통(40-59), 낮음(20-39), 매우 낮음(<20)
