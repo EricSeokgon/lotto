@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-101: 적합도 기반 번호 추천 — 무작위 조합 풀에서 역대 당첨 패턴 부합도가 높은 조합을 선별 #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">적합도 기반 번호 추천</h2>
+    </div>
+
+    <p class="text-sm text-muted dark:text-gray-400">
+        무작위로 생성한 번호 조합 풀(pool)에서 역대 로또 당첨 번호의 통계 패턴(홀짝, 합계 구간, 스팬, AC값 등 15개 지표)에
+        가장 부합하는 고적합도 조합을 자동으로 선별합니다.
+        단, 이 추천은 통계적 유사성 지표이며 당첨을 보장하지 않습니다.
+    </p>
+
+    {# 추천 조건 입력 폼 #}
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">추천 조건</h3>
+        <form method="get" action="/stats/fitness-recommend" class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+            <div>
+                <label class="block text-xs text-muted dark:text-gray-400 mb-1">추천 개수 (1~20)</label>
+                <input
+                    type="number" name="count" value="{{ count }}" min="1" max="20"
+                    class="w-full border border-border rounded px-3 py-2 text-sm bg-white dark:bg-gray-900 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-rose-400"
+                />
+            </div>
+            <div>
+                <label class="block text-xs text-muted dark:text-gray-400 mb-1">최소 점수 (0~100)</label>
+                <input
+                    type="number" name="min_score" value="{{ min_score }}" min="0" max="100" step="0.1"
+                    class="w-full border border-border rounded px-3 py-2 text-sm bg-white dark:bg-gray-900 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-rose-400"
+                />
+            </div>
+            <div>
+                <label class="block text-xs text-muted dark:text-gray-400 mb-1">조합 풀 크기 (1~5000)</label>
+                <input
+                    type="number" name="pool_size" value="{{ pool_size }}" min="1" max="5000"
+                    class="w-full border border-border rounded px-3 py-2 text-sm bg-white dark:bg-gray-900 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-rose-400"
+                />
+            </div>
+            <button
+                type="submit"
+                class="px-4 py-2 bg-rose-600 text-white rounded text-sm font-medium hover:bg-rose-700 dark:bg-rose-500 dark:hover:bg-rose-600 transition-colors"
+            >추천받기</button>
+        </form>
+    </div>
+
+    {# 오류 메시지 #}
+    {% if error_msg %}
+    <div class="bg-red-50 border border-red-200 rounded-lg p-4 dark:bg-red-900/20 dark:border-red-800">
+        <p class="text-sm text-red-700 dark:text-red-400">오류: {{ error_msg }}</p>
+    </div>
+    {% endif %}
+
+    {# 추천 결과 #}
+    {% if recommendations is not none %}
+        {% if recommendations %}
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">추천 조합 ({{ recommendations | length }}개)</h3>
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                        <th class="py-2 pr-4">순위</th>
+                        <th class="py-2 pr-4">번호 조합</th>
+                        <th class="py-2 pr-4 text-right">적합도 점수</th>
+                        <th class="py-2 pl-4">등급</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for rec in recommendations %}
+                    <tr class="border-b border-border dark:border-gray-700">
+                        <td class="py-2 pr-4 text-muted dark:text-gray-400">{{ loop.index }}</td>
+                        <td class="py-2 pr-4 font-medium text-ink dark:text-gray-100">{{ rec.numbers | join(", ") }}</td>
+                        <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ rec.score }}</td>
+                        <td class="py-2 pl-4">
+                            <span class="px-2 py-0.5 rounded text-xs font-bold
+                                {% if rec.grade == 'S' %}bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300
+                                {% elif rec.grade == 'A' %}bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300
+                                {% elif rec.grade == 'B' %}bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300
+                                {% elif rec.grade == 'C' %}bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300
+                                {% else %}bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300
+                                {% endif %}
+                            ">{{ rec.grade }}</span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-muted dark:text-gray-400">최소 점수 {{ min_score }}점 이상의 조합을 찾지 못했습니다. 점수 기준을 낮추거나 풀 크기를 늘려보세요.</p>
+        </div>
+        {% endif %}
+    {% endif %}
+
+    {# 면책 조항 #}
+    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 dark:bg-amber-900/20 dark:border-amber-800">
+        <p class="text-sm text-amber-700 dark:text-amber-400">
+            이 추천은 과거 통계 기반 분석 결과이며 당첨을 보장하지 않습니다.
+            로또는 무작위 추첨이므로 모든 조합의 당첨 확률은 동일합니다.
+        </p>
+    </div>
+</div>
+{% endblock %}

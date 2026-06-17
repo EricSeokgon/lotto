@@ -3232,3 +3232,29 @@ async def get_fitness_score_route(
         raise HTTPException(status_code=400, detail={"error": str(exc)}) from exc
 
     return result
+
+
+@router.get("/stats/fitness-recommend")
+async def get_fitness_recommendations_route(
+    count: int = Query(default=5, ge=1, le=20),
+    min_score: float = Query(default=60.0, ge=0.0, le=100.0),
+    pool_size: int = Query(default=1000, ge=1, le=5000),
+) -> list[dict[str, Any]]:
+    """적합도 기반 번호 추천 API.
+
+    pool_size개 무작위 조합 중 min_score 이상의 상위 count개를 반환한다.
+
+    Query:
+        count: 추천 개수 (1~20, 기본 5)
+        min_score: 최소 적합도 점수 (0~100, 기본 60.0)
+        pool_size: 평가할 무작위 조합 개수 (1~5000, 기본 1000)
+
+    Returns:
+        [{"numbers": [int,...], "score": float, "grade": str}, ...]
+    """
+    from lotto.web import data as wd
+
+    draws = wd.get_draws()
+    return wd.get_fitness_recommendations(
+        count=count, min_score=min_score, pool_size=pool_size, draws=draws
+    )

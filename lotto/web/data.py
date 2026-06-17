@@ -13,6 +13,7 @@ import json
 import logging
 import math
 import os
+import random
 import tempfile
 
 # SPEC-LOTTO-045: 명시적 재노출(redundant-alias). 테스트가 모듈 네임스페이스
@@ -8794,3 +8795,46 @@ def get_fitness_score(numbers: list[int], draws: list[DrawResult] | None) -> dic
         ),
         "breakdown": breakdown,
     }
+
+
+# @MX:ANCHOR: [AUTO] 적합도 기반 번호 추천 — pool에서 고적합도 조합 선별
+# @MX:REASON: api.py, pages.py에서 호출되는 SPEC-LOTTO-101 핵심 진입점
+# @MX:SPEC: SPEC-LOTTO-101
+def get_fitness_recommendations(
+    count: int = 5,
+    min_score: float = 60.0,
+    pool_size: int = 1000,
+    draws: list[DrawResult] | None = None,
+) -> list[dict[str, Any]]:
+    """pool_size개 무작위 조합 중 min_score 이상의 상위 count개 적합도 추천을 반환한다.
+
+    get_fitness_score(SPEC-LOTTO-100)로 각 조합의 적합도를 계산하고,
+    min_score 이상만 필터링해 점수 내림차순으로 정렬한 뒤 상위 count개를 반환한다.
+
+    Args:
+        count: 반환할 추천 개수 (기본 5)
+        min_score: 최소 적합도 점수 임계값 0~100 (기본 60.0)
+        pool_size: 평가할 무작위 조합 개수 (기본 1000)
+        draws: 역대 당첨 회차 (None이면 get_draws() 호출)
+
+    Returns:
+        [{"numbers": [int,...], "score": float, "grade": str}, ...]
+        score 내림차순 정렬, 최대 count개.
+    """
+    if draws is None:
+        draws = get_draws()
+
+    results: list[dict[str, Any]] = []
+    for _ in range(pool_size):
+        numbers = sorted(random.sample(range(1, 46), 6))
+        fitness = get_fitness_score(numbers, draws)
+        score = float(fitness["fitness_score"])
+        if score >= min_score:
+            results.append({
+                "numbers": numbers,
+                "score": score,
+                "grade": fitness["grade"],
+            })
+
+    results.sort(key=lambda item: item["score"], reverse=True)
+    return results[:count]

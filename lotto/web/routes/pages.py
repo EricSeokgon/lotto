@@ -1814,3 +1814,39 @@ async def fitness_page(
         "numbers": numbers or "",
         "error_msg": error_msg,
     })
+
+
+@router.get("/stats/fitness-recommend")
+async def fitness_recommend_page(
+    request: Request,
+    count: int = Query(default=5, ge=1, le=20),
+    min_score: float = Query(default=60.0, ge=0.0, le=100.0),
+    pool_size: int = Query(default=1000, ge=1, le=5000),
+) -> TemplateResponse:
+    """적합도 기반 번호 추천 페이지.
+
+    Query:
+        count: 추천 개수 (1~20, 기본 5)
+        min_score: 최소 적합도 점수 (0~100, 기본 60.0)
+        pool_size: 평가할 무작위 조합 개수 (1~5000, 기본 1000)
+    """
+    from lotto.web import data as wd
+
+    recommendations = None
+    error_msg = None
+    try:
+        draws = wd.get_draws()
+        recommendations = wd.get_fitness_recommendations(
+            count=count, min_score=min_score, pool_size=pool_size, draws=draws
+        )
+    except (ValueError, TypeError) as exc:
+        error_msg = str(exc)
+
+    return _render(request, "fitness_recommend.html", {
+        "active_tab": "fitness_recommend",
+        "recommendations": recommendations,
+        "count": count,
+        "min_score": min_score,
+        "pool_size": pool_size,
+        "error_msg": error_msg,
+    })
