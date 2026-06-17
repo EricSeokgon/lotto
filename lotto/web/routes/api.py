@@ -3190,3 +3190,45 @@ async def test_email() -> Union[Response, dict[str, Any]]:  # noqa: UP007 — Py
     if sent:
         return {"sent": True}
     return {"sent": False, "reason": "Email 전송 실패 (상세는 로그 참조)"}
+
+
+@router.get("/stats/fitness")
+async def get_fitness_score_route(
+    numbers: Optional[str] = None,  # noqa: UP045 — Python 3.9 FastAPI 호환
+) -> dict[str, Any]:
+    """번호 조합 적합도 점수 API.
+
+    Query:
+        numbers: 쉼표로 구분된 6개 번호 (예: "1,7,14,21,35,42")
+
+    Returns:
+        {"numbers", "fitness_score", "grade", "disclaimer", "breakdown"}
+
+    Raises:
+        HTTP 400: 번호 파라미터 누락, 파싱 오류, 유효성 오류
+    """
+    from lotto.web import data as wd
+
+    # numbers 파라미터 필수 검사
+    if numbers is None:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "numbers 파라미터가 필요합니다. 예: ?numbers=1,7,14,21,35,42"},
+        )
+
+    # 파싱
+    try:
+        nums = [int(x.strip()) for x in numbers.split(",") if x.strip()]
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "numbers 파싱 오류. 정수를 쉼표로 구분해 입력하세요."},
+        ) from exc
+
+    # get_fitness_score 유효성 검사 위임
+    try:
+        result = wd.get_fitness_score(nums, wd.get_draws())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail={"error": str(exc)}) from exc
+
+    return result
