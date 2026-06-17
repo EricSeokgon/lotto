@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-076
 version: 1.0.0
-status: Completed
+status: completed
 created: 2026-06-12
 updated: 2026-06-12
 author: ircp

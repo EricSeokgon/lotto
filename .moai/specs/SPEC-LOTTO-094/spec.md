@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-094
 title: 홀짝 교차 패턴 분포 분석
-status: Completed
+status: completed
 version: 1.0.0
 created: 2026-06-16
 ---

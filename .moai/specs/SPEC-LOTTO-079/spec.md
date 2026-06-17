@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-079
 title: 끝자리 합계 분포 분석
-status: Planned
+status: completed
 version: 0.1.0
 created: 2026-06-15
 ---

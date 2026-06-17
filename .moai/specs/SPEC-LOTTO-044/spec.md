@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-044
 version: 0.1.0
-status: Planned
+status: completed
 created: 2026-06-02
 updated: 2026-06-02
 author: ircp

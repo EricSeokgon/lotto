@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-065
 version: 0.1.0
-status: Completed
+status: completed
 created: 2026-06-10
 updated: 2026-06-10
 author: ircp
