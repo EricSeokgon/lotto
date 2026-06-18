@@ -1,7 +1,7 @@
 ---
 id: SPEC-LOTTO-102
 version: 0.1.0
-status: draft
+status: implemented
 created: 2026-06-18
 updated: 2026-06-18
 author: ircp

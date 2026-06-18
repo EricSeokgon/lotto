@@ -176,14 +176,14 @@
 
 ## Definition of Done
 
-- [ ] AC-SIM-001 ~ AC-SIM-020 전부 통과
-- [ ] `get_combo_simulation`, `_judge_grade` 함수 구현 및 타입 힌트 완비
-- [ ] `POST /api/stats/simulate` 엔드포인트 동작 (검증 위반 시 HTTP 422)
-- [ ] `GET /stats/simulate` 페이지 및 `simulate_combo.html` 렌더링
-- [ ] `base.html` 내비게이션에 "조합 시뮬레이션" 추가, active_tab 헤딩 분기 추가
-- [ ] 기존 `/simulate` 및 `/simulation-history` 라우트 미변경
-- [ ] Python 3.9 호환 (match/case·zip strict 미사용)
-- [ ] ruff 린트 통과
-- [ ] mypy 통과
-- [ ] 신규 테스트 약 35개 추가, 전체 테스트 스위트 그린
-- [ ] 면책 고지 API 응답·UI 모두 포함
+- [x] AC-SIM-001 ~ AC-SIM-020 전부 통과
+- [x] `get_combo_simulation`, `_judge_grade` 함수 구현 및 타입 힌트 완비
+- [x] `POST /api/stats/simulate` 엔드포인트 동작 (검증 위반 시 HTTP 422)
+- [x] `GET /stats/simulate` 페이지 및 `simulate_combo.html` 렌더링
+- [x] `base.html` 내비게이션에 "조합 시뮬레이션" 추가, active_tab 헤딩 분기 추가
+- [x] 기존 `/simulate` 및 `/simulation-history` 라우트 미변경
+- [x] Python 3.9 호환 (match/case·zip strict 미사용)
+- [x] ruff 린트 통과
+- [x] mypy 통과
+- [x] 신규 테스트 47개 추가 (2781 → 2828), 전체 테스트 스위트 그린
+- [x] 면책 고지 API 응답·UI 모두 포함

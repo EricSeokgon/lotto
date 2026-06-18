@@ -6,6 +6,26 @@
 
 ---
 
+## [1.62.0] - 2026-06-18
+
+### Added
+- SPEC-LOTTO-102: 번호 조합 시뮬레이션 (회차별 백테스트)
+  - 사용자가 지정한 6개 번호를 역대 모든 로또 추첨 회차에 대입하여 등급별 분포를 집계하는 백테스트 기능
+  - 한국 로또 6/45 당첨 등수 규칙(1등~5등, 꽝) 적용, 2등 보너스 번호 판정 포함
+  - `lotto/web/data.py`: `_judge_grade()` 헬퍼 및 `get_combo_simulation()` 함수 추가 (@MX:ANCHOR)
+  - `POST /api/stats/simulate` API 엔드포인트 (Pydantic SimulateRequest JSON 바디)
+    - 응답: `numbers`, `summary`(total_rounds, grade_counts, grade_percentages), `rounds[]`, `fitness`(fitness_score, grade), `disclaimer`
+    - 잘못된 입력(6개 아님, 범위 초과, 중복) 시 HTTP 422 반환
+  - `GET /stats/simulate` 웹 페이지 및 `simulate_combo.html` 템플릿 신규 추가
+    - JavaScript fetch 기반 비동기 결과 표시 (전체 페이지 새로고침 없음)
+    - 등급 분포 테이블 및 적합도 점수 표시, 면책 고지 포함
+  - `base.html` 내비게이션에 "조합 시뮬레이션" 탭 추가 (`/stats/simulate`, tab=`combo_simulate`)
+  - 기존 `/simulate`(몬테카를로 ROI) 및 `/simulation-history` 라우트와 경로 충돌 없음
+  - SPEC-LOTTO-100의 적합도 점수(`get_fitness_score`) 결과 통합 표시
+  - 테스트 47개 추가 (2781 → 2828)
+
+---
+
 ## [1.61.0] - 2026-06-17
 
 ### Added
