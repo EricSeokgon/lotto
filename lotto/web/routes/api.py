@@ -3258,3 +3258,44 @@ async def get_fitness_recommendations_route(
     return wd.get_fitness_recommendations(
         count=count, min_score=min_score, pool_size=pool_size, draws=draws
     )
+
+
+# SPEC-LOTTO-102: 번호 조합 시뮬레이션 요청 모델
+class SimulateRequest(BaseModel):
+    """POST /api/stats/simulate 요청 바디 — 6개 번호."""
+
+    numbers: List[int]  # noqa: UP006 — Pydantic + Python 3.9 호환
+
+    @field_validator("numbers")
+    @classmethod
+    def validate_numbers(cls, v: List[int]) -> List[int]:  # noqa: UP006
+        """6개의 서로 다른 1~45 정수인지 검증한다."""
+        if len(v) != 6:  # noqa: PLR2004 — 로또 번호는 정확히 6개
+            msg = "번호는 정확히 6개여야 합니다."
+            raise ValueError(msg)
+        if any(n < 1 or n > 45 for n in v):  # noqa: B905, PLR2004 — 1~45 범위
+            msg = "번호는 1~45 범위여야 합니다."
+            raise ValueError(msg)
+        if len(set(v)) != 6:  # noqa: PLR2004 — 중복 없는 6개
+            msg = "중복된 번호가 있습니다."
+            raise ValueError(msg)
+        return sorted(v)
+
+
+@router.post("/stats/simulate")
+async def simulate_combo_route(body: SimulateRequest) -> dict[str, Any]:
+    """번호 조합 회차별 백테스트 API.
+
+    Body:
+        {"numbers": [n1, n2, n3, n4, n5, n6]} — 6개 번호 (1~45, 중복 없음)
+
+    Returns:
+        {"numbers", "summary", "rounds", "fitness", "disclaimer"}
+
+    Raises:
+        HTTP 422: 번호 개수/범위/중복 오류 (Pydantic 검증)
+    """
+    from lotto.web import data as wd
+
+    draws = wd.get_draws()
+    return wd.get_combo_simulation(body.numbers, draws)

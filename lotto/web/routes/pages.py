@@ -1850,3 +1850,16 @@ async def fitness_recommend_page(
         "pool_size": pool_size,
         "error_msg": error_msg,
     })
+
+
+# SPEC-LOTTO-102: 번호 조합 시뮬레이션 페이지
+@router.get("/stats/simulate")
+async def simulate_combo_page(request: Request) -> TemplateResponse:
+    """번호 조합 회차별 백테스트 페이지.
+
+    6개 번호 입력 폼을 렌더링하며, 결과는 JavaScript fetch로
+    POST /api/stats/simulate를 호출해 표시한다.
+    """
+    return _render(request, "simulate_combo.html", {
+        "active_tab": "combo_simulate",
+    })

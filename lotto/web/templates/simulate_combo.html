@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-102: 번호 조합 시뮬레이션 — 사용자 지정 6개 번호를 역대 모든 회차에 백테스트 #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">번호 조합 시뮬레이션</h2>
+    </div>
+
+    <p class="text-sm text-muted dark:text-gray-400">
+        선택한 6개 번호(1~45)를 역대 모든 로또 추첨 회차에 대입하여,
+        각 회차에서 몇 개가 일치하고 어떤 등수에 해당했을지를 백테스트합니다.
+        "만약 매주 이 번호를 샀다면 결과가 어땠을까"라는 질문에 답하는 회고적 분석입니다.
+    </p>
+
+    {# 번호 입력 폼 #}
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">번호 입력</h3>
+        <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+            <div class="flex flex-wrap gap-2" id="combo-inputs">
+                {% for i in range(1, 7) %}
+                <input
+                    type="number"
+                    min="1"
+                    max="45"
+                    data-combo-input
+                    placeholder="{{ i }}번"
+                    class="w-20 border border-border rounded px-3 py-2 text-sm bg-white dark:bg-gray-900 dark:border-gray-600 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                />
+                {% endfor %}
+            </div>
+            <button
+                id="combo-run-btn"
+                type="button"
+                class="px-4 py-2 bg-sky-600 text-white rounded text-sm font-medium hover:bg-sky-700 dark:bg-sky-500 dark:hover:bg-sky-600 transition-colors"
+            >시뮬레이션 실행</button>
+        </div>
+        <p class="text-xs text-muted dark:text-gray-400 mt-2">1~45 범위의 서로 다른 번호 6개를 입력하세요.</p>
+    </div>
+
+    {# 오류 메시지 #}
+    <div id="combo-error" class="hidden bg-red-50 border border-red-200 rounded-lg p-4 dark:bg-red-900/20 dark:border-red-800">
+        <p class="text-sm text-red-700 dark:text-red-400" id="combo-error-text"></p>
+    </div>
+
+    {# 결과 영역 #}
+    <div id="combo-result" class="hidden space-y-6">
+        {# 적합도 점수 카드 #}
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700 text-center">
+                <p class="text-xs text-muted dark:text-gray-400 mb-1">입력 번호</p>
+                <p class="text-lg font-bold text-ink dark:text-gray-100" id="combo-numbers"></p>
+            </div>
+            <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700 text-center">
+                <p class="text-xs text-muted dark:text-gray-400 mb-1">적합도 점수</p>
+                <p class="text-3xl font-bold text-sky-600 dark:text-sky-400" id="combo-fitness-score"></p>
+                <p class="text-xs text-muted dark:text-gray-400 mt-1">/ 100</p>
+            </div>
+            <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700 text-center">
+                <p class="text-xs text-muted dark:text-gray-400 mb-1">적합도 등급</p>
+                <p class="text-3xl font-bold text-emerald-600 dark:text-emerald-400" id="combo-fitness-grade"></p>
+            </div>
+        </div>
+
+        {# 등급 분포 테이블 #}
+        <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+            <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">
+                등급 분포 (총 <span id="combo-total-rounds"></span>회차)
+            </h3>
+            <table class="min-w-full text-sm">
+                <thead>
+                    <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                        <th class="py-2 pr-4">등급</th>
+                        <th class="py-2 pr-4 text-right">횟수</th>
+                        <th class="py-2 pr-4 text-right">비율</th>
+                        <th class="py-2 pl-4 w-1/3">분포</th>
+                    </tr>
+                </thead>
+                <tbody id="combo-grade-table"></tbody>
+            </table>
+        </div>
+    </div>
+
+    {# 면책 조항 #}
+    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 dark:bg-amber-900/20 dark:border-amber-800">
+        <p class="text-sm text-amber-700 dark:text-amber-400">
+            이 시뮬레이션은 과거 회차 결과에 대한 회고 분석이며 미래 당첨 가능성을 예측하지 않습니다.
+        </p>
+    </div>
+</div>
+
+<script>
+(function () {
+    const GRADES = ["1등", "2등", "3등", "4등", "5등", "꽝"];
+    const runBtn = document.getElementById("combo-run-btn");
+    const errorBox = document.getElementById("combo-error");
+    const errorText = document.getElementById("combo-error-text");
+    const resultBox = document.getElementById("combo-result");
+
+    function showError(msg) {
+        errorText.textContent = msg;
+        errorBox.classList.remove("hidden");
+        resultBox.classList.add("hidden");
+    }
+
+    function render(data) {
+        errorBox.classList.add("hidden");
+        document.getElementById("combo-numbers").textContent = data.numbers.join(", ");
+        document.getElementById("combo-fitness-score").textContent = data.fitness.fitness_score;
+        document.getElementById("combo-fitness-grade").textContent = data.fitness.grade;
+        document.getElementById("combo-total-rounds").textContent = data.summary.total_rounds;
+
+        const tbody = document.getElementById("combo-grade-table");
+        tbody.innerHTML = "";
+        GRADES.forEach(function (g) {
+            const count = data.summary.grade_counts[g] || 0;
+            const pct = data.summary.grade_percentages[g] || 0;
+            const tr = document.createElement("tr");
+            tr.className = "border-b border-border dark:border-gray-700";
+            tr.innerHTML =
+                '<td class="py-2 pr-4 font-medium text-ink dark:text-gray-100">' + g + '</td>' +
+                '<td class="py-2 pr-4 text-right text-ink dark:text-gray-100">' + count + '</td>' +
+                '<td class="py-2 pr-4 text-right text-ink dark:text-gray-100">' + pct + '%</td>' +
+                '<td class="py-2 pl-4"><div class="w-full bg-gray-100 dark:bg-gray-700 rounded h-2.5">' +
+                '<div class="bg-sky-500 dark:bg-sky-400 h-2.5 rounded" style="width: ' + pct + '%"></div></div></td>';
+            tbody.appendChild(tr);
+        });
+        resultBox.classList.remove("hidden");
+    }
+
+    runBtn.addEventListener("click", function () {
+        const inputs = document.querySelectorAll("[data-combo-input]");
+        const numbers = [];
+        inputs.forEach(function (el) {
+            const v = parseInt(el.value, 10);
+            if (!isNaN(v)) { numbers.push(v); }
+        });
+        if (numbers.length !== 6) {
+            showError("번호 6개를 모두 입력하세요.");
+            return;
+        }
+        fetch("/api/stats/simulate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ numbers: numbers }),
+        })
+            .then(function (resp) {
+                if (!resp.ok) {
+                    return resp.json().then(function () {
+                        throw new Error("입력 번호가 유효하지 않습니다 (1~45, 서로 다른 6개).");
+                    });
+                }
+                return resp.json();
+            })
+            .then(render)
+            .catch(function (err) { showError(err.message); });
+    });
+})();
+</script>
+{% endblock %}

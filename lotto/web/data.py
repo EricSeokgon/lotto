@@ -8838,3 +8838,116 @@ def get_fitness_recommendations(
 
     results.sort(key=lambda item: item["score"], reverse=True)
     return results[:count]
+
+
+# SPEC-LOTTO-102: 번호 조합 회차별 백테스트
+# 한국 로또 6/45 당첨 등수 고정 키 (발생 0인 등급도 포함)
+_COMBO_GRADES = ["1등", "2등", "3등", "4등", "5등", "꽝"]
+_COMBO_DISCLAIMER = (
+    "이 시뮬레이션은 과거 회차 결과에 대한 회고 분석이며 "
+    "미래 당첨 가능성을 예측하지 않습니다."
+)
+
+
+def _judge_grade(match_count: int, bonus_match: bool) -> str:
+    """일치 개수와 보너스 일치 여부로 한국 로또 당첨 등수를 판정한다.
+
+    2등(5개+보너스) 판정을 3등(5개)보다 먼저 검사한다.
+    """
+    if match_count == 6:  # noqa: PLR2004 — 본번호 6개 일치
+        return "1등"
+    if match_count == 5 and bonus_match:  # noqa: PLR2004 — 5개 + 보너스
+        return "2등"
+    if match_count == 5:  # noqa: PLR2004 — 5개, 보너스 불일치
+        return "3등"
+    if match_count == 4:  # noqa: PLR2004 — 4개 일치
+        return "4등"
+    if match_count == 3:  # noqa: PLR2004 — 3개 일치
+        return "5등"
+    return "꽝"
+
+
+# @MX:ANCHOR: [AUTO] 사용자 지정 6개 번호를 역대 회차에 백테스트하는 핵심 진입점
+# @MX:REASON: api.py(POST /api/stats/simulate)에서 호출되는 SPEC-LOTTO-102 핵심 함수
+# @MX:SPEC: SPEC-LOTTO-102
+def get_combo_simulation(
+    numbers: list[int],
+    draws: list[DrawResult] | None,
+) -> dict[str, Any]:
+    """사용자 지정 6개 번호를 역대 모든 회차에 백테스트한다.
+
+    Args:
+        numbers: 시뮬레이션할 6개 번호 (1~45, 중복 없음)
+        draws: 역대 당첨 회차 리스트 (None 또는 빈 리스트면 빈 요약 반환)
+
+    Returns:
+        {"numbers", "summary", "rounds", "fitness", "disclaimer"}
+
+    Raises:
+        ValueError: 번호 6개 미충족, 범위(1~45) 오류, 중복 오류
+    """
+    # 입력 검증 (REQ-SIM-N01, N02, N03)
+    if len(numbers) != 6:  # noqa: PLR2004 — 로또 번호는 정확히 6개
+        raise ValueError(f"번호는 정확히 6개여야 합니다. 현재: {len(numbers)}개")
+    if any(n < 1 or n > 45 for n in numbers):  # noqa: B905, PLR2004 — 1~45 범위
+        raise ValueError("번호는 1~45 범위여야 합니다.")
+    if len(set(numbers)) != 6:  # noqa: PLR2004 — 중복 없는 6개
+        raise ValueError("중복된 번호가 있습니다.")
+
+    sorted_numbers = sorted(numbers)
+    user_set = set(sorted_numbers)
+
+    grade_counts: dict[str, int] = dict.fromkeys(_COMBO_GRADES, 0)
+
+    # 빈 회차 처리 (REQ-SIM-S01)
+    if not draws:
+        return {
+            "numbers": sorted_numbers,
+            "summary": {
+                "total_rounds": 0,
+                "grade_counts": grade_counts,
+                "grade_percentages": dict.fromkeys(_COMBO_GRADES, 0.0),
+            },
+            "rounds": [],
+            "fitness": {"fitness_score": 0.0, "grade": "D"},
+            "disclaimer": _COMBO_DISCLAIMER,
+        }
+
+    rounds_detail: list[dict[str, Any]] = []
+    for draw in draws:
+        # REQ-SIM-N04: 보너스는 match_count에 포함하지 않음
+        match_count = len(user_set & set(draw.numbers()))
+        bonus_match = draw.bonus in user_set
+        grade = _judge_grade(match_count, bonus_match)
+        grade_counts[grade] += 1
+        rounds_detail.append({
+            "draw_no": draw.drwNo,
+            "date": str(draw.date),
+            "match_count": match_count,
+            "bonus_match": bonus_match,
+            "grade": grade,
+        })
+
+    total = len(draws)
+    grade_percentages = {
+        g: round(grade_counts[g] / total * 100, 2) for g in _COMBO_GRADES
+    }
+
+    # REQ-SIM-U06: 동일 조합의 적합도 점수 계산
+    fitness_raw = get_fitness_score(sorted_numbers, draws)
+    fitness = {
+        "fitness_score": fitness_raw["fitness_score"],
+        "grade": fitness_raw["grade"],
+    }
+
+    return {
+        "numbers": sorted_numbers,
+        "summary": {
+            "total_rounds": total,
+            "grade_counts": grade_counts,
+            "grade_percentages": grade_percentages,
+        },
+        "rounds": rounds_detail,
+        "fitness": fitness,
+        "disclaimer": _COMBO_DISCLAIMER,
+    }
