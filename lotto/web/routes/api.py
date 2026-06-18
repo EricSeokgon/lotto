@@ -3299,3 +3299,24 @@ async def simulate_combo_route(body: SimulateRequest) -> dict[str, Any]:
 
     draws = wd.get_draws()
     return wd.get_combo_simulation(body.numbers, draws)
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-103 — 보너스 번호 분석 공개 API
+# @MX:SPEC: SPEC-LOTTO-103 REQ-BON-E01
+@router.get("/stats/bonus")
+async def bonus_analysis_route(
+    recent_n: int = Query(
+        default=50,
+        ge=1,
+        le=500,
+        description="최근 추세 윈도우 크기 (1~500, 기본 50)",
+    ),
+) -> dict[str, Any]:
+    """역대 보너스 번호의 빈도·비율·동시출현·최근추세를 반환합니다 (SPEC-LOTTO-103).
+
+    - recent_n: 1~500. 범위 초과 시 FastAPI가 자동으로 422를 반환한다 (REQ-BON-N01).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0, REQ-BON-S01).
+    """
+    from lotto.web import data as wd
+
+    return wd.get_bonus_analysis(wd.get_draws(), recent_n=recent_n)

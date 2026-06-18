@@ -1863,3 +1863,27 @@ async def simulate_combo_page(request: Request) -> TemplateResponse:
     return _render(request, "simulate_combo.html", {
         "active_tab": "combo_simulate",
     })
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-103 — 보너스 번호 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-103 REQ-BON-E03
+@router.get("/stats/bonus")
+async def bonus_page(
+    request: Request,
+    recent_n: int = Query(default=50, ge=1, le=500),
+) -> TemplateResponse:
+    """보너스 번호 분석 페이지 — 빈도·비율·동시출현·최근추세 시각화 (SPEC-LOTTO-103).
+
+    - top10 강조, recent_n 선택기, 번호별 테이블(번호/총 횟수/비율/최근 횟수/상태)
+    - recent_n 쿼리로 최근 윈도우를 조정한다 (REQ-BON-E04).
+    - 데이터 부재 시에도 200 (빈 상태를 자연스럽게 렌더링).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    analysis = wd.get_bonus_analysis(wd.get_draws(), recent_n=recent_n)
+    return _render(request, "bonus_analysis.html", {
+        "active_tab": "bonus",
+        "analysis": analysis,
+        "recent_n": recent_n,
+    })

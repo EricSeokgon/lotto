@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-103: 보너스 번호 분석 — 보너스 빈도/비율/동시출현/최근추세 (서버 렌더링, JS 비의존) #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">보너스 번호 분석</h2>
+    </div>
+
+    <p class="text-sm text-muted dark:text-gray-400">
+        역대 추첨의 보너스 번호(bonus ball)에 대한 회고 분석입니다.
+        본번호 6개와 별도로 추첨되는 보너스 번호의 출현 빈도·비율·본번호와의 동시 출현·최근 추세를 제공합니다.
+        {{ analysis.disclaimer }}
+    </p>
+
+    {# recent_n 선택기 — 50/100/200 프리셋 (서버 렌더링 폼, GET) #}
+    <form method="get" class="flex items-center gap-3">
+        <label for="recent_n" class="text-sm text-muted dark:text-gray-400">최근 추세 윈도우</label>
+        <select id="recent_n" name="recent_n" onchange="this.form.submit()"
+            class="border border-border dark:border-gray-700 rounded px-2 py-1 text-sm bg-card dark:bg-gray-800 text-ink dark:text-gray-100">
+            <option value="50"{% if recent_n == 50 %} selected{% endif %}>최근 50회</option>
+            <option value="100"{% if recent_n == 100 %} selected{% endif %}>최근 100회</option>
+            <option value="200"{% if recent_n == 200 %} selected{% endif %}>최근 200회</option>
+            {% if recent_n not in [50, 100, 200] %}
+            <option value="{{ recent_n }}" selected>최근 {{ recent_n }}회</option>
+            {% endif %}
+        </select>
+        <noscript><button type="submit" class="text-sm border border-border dark:border-gray-700 rounded px-3 py-1">적용</button></noscript>
+    </form>
+
+    {% if analysis.total_draws == 0 %}
+    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+    </div>
+    {% else %}
+    {# 요약 카드 #}
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">총 회차</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ analysis.total_draws }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">최근 윈도우</p>
+            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{ analysis.recent_count }}회</p>
+        </div>
+        {% if analysis.top_bonus %}
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">최다 보너스 번호</p>
+            <p class="text-xl font-bold text-amber-600 dark:text-amber-400">{{ analysis.top_bonus[0].number }}번 ({{ analysis.top_bonus[0].count }}회)</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {# Top 10 보너스 번호 강조 #}
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">상위 10개 보너스 번호</h3>
+        <div class="flex flex-wrap gap-3">
+            {% for item in analysis.top_bonus %}
+            <div class="flex flex-col items-center justify-center w-20 px-2 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                <span class="text-lg font-bold text-amber-700 dark:text-amber-300">{{ item.number }}</span>
+                <span class="text-xs text-muted dark:text-gray-400">{{ item.count }}회 ({{ item.percentage }}%)</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    {# 번호별 테이블: 번호 | 총 횟수 | 비율 | 최근 횟수 | 상태 #}
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">번호별 보너스 출현 (1~45)</h3>
+        <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="py-2 pr-4">번호</th>
+                    <th class="py-2 pr-4 text-right">총 횟수</th>
+                    <th class="py-2 pr-4 text-right">비율</th>
+                    <th class="py-2 pr-4 text-right">최근 횟수</th>
+                    <th class="py-2 pl-4">상태</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for n in range(1, 46) %}
+                <tr class="border-b border-border dark:border-gray-700">
+                    <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">{{ n }}</td>
+                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ analysis.bonus_frequency[n] }}</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ analysis.bonus_percentage[n] }}%</td>
+                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ analysis.recent_bonus.frequency[n] }}</td>
+                    <td class="py-2 pl-4">
+                        {% set status = analysis.hot_cold[n] %}
+                        {% if status == 'hot' %}
+                        <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">HOT</span>
+                        {% elif status == 'cold' %}
+                        <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">COLD</span>
+                        {% else %}
+                        <span class="inline-block px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">NORMAL</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    {# 동시 출현: top_bonus 상위 번호별 본번호 동반 출현 상위 5 #}
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">보너스-본번호 동시 출현 (상위 보너스 번호별 동반 본번호 Top 5)</h3>
+        <div class="space-y-3">
+            {% for item in analysis.top_bonus %}
+            {% set partners = analysis.cooccurrence[item.number] %}
+            {% if partners %}
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 font-bold text-sm">{{ item.number }}</span>
+                <span class="text-xs text-muted dark:text-gray-400">→</span>
+                {% for p in partners %}
+                <span class="inline-block px-2 py-0.5 rounded text-xs bg-gray-100 dark:bg-gray-700 text-ink dark:text-gray-100">{{ p.number }} ({{ p.count }}회)</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

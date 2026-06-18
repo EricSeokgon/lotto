@@ -20,6 +20,7 @@ import tempfile
 # (lotto.web.data.time)로 time.time을 패치하므로 명시적 재노출로 처리한다 (런타임 동작 무관).
 import time as time
 import warnings
+from collections import Counter
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -8950,4 +8951,144 @@ def get_combo_simulation(
         "rounds": rounds_detail,
         "fitness": fitness,
         "disclaimer": _COMBO_DISCLAIMER,
+    }
+
+
+# ─── SPEC-LOTTO-103: 보너스 번호 분석 ─────────────────────────────────────────
+
+# SPEC-LOTTO-103 REQ-BON-N03: 회고 분석임을 명시하는 면책 고지
+_BONUS_DISCLAIMER = (
+    "이 분석은 과거 회차 보너스 번호에 대한 회고 분석이며 "
+    "미래 보너스 번호를 예측하지 않습니다."
+)
+
+# SPEC-LOTTO-103 REQ-BON-S03: hot/cold 판정 배율 (평균 대비)
+_BONUS_HOT_RATIO = 1.2
+_BONUS_COLD_RATIO = 0.8
+# SPEC-LOTTO-103 REQ-BON-U04/U06: top/cooccurrence 반환 개수 한계
+_BONUS_TOP_LIMIT = 10
+_BONUS_COOC_LIMIT = 5
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-103 보너스 번호 분석 단일 진입점
+# @MX:REASON: /api/stats/bonus API와 /stats/bonus 페이지가 모두 의존하는 순수 분석 함수
+# @MX:SPEC: SPEC-LOTTO-103 REQ-BON-U01
+def get_bonus_analysis(
+    draws: list[DrawResult] | None,
+    recent_n: int = 50,
+) -> dict[str, Any]:
+    """역대 보너스 번호의 빈도·비율·동시출현·최근추세를 분석한다 (SPEC-LOTTO-103).
+
+    본번호 6개(n1~n6)는 동시 출현(cooccurrence) 계산에만 사용하고,
+    1차 분석 대상은 보너스 번호(draw.bonus)이다. 본번호 분포와 보너스 분포는
+    엄격히 분리된다(REQ-BON-N02).
+
+    hot/cold/normal 판정은 방식 A(전체 기준)를 채택한다: 번호별 전체 보너스
+    빈도를 평균 빈도(total_draws/45)와 비교하여 평균*1.2 초과는 "hot",
+    평균*0.8 미만은 "cold", 그 외는 "normal"로 분류한다(REQ-BON-S03).
+
+    Args:
+        draws: 추첨 결과 리스트. None 또는 빈 리스트면 0 채움 결과를 반환한다.
+        recent_n: 최근 추세 윈도우 크기 (기본 50). 전체보다 크면 전체를 사용한다.
+
+    Returns:
+        {
+          "total_draws", "recent_n", "recent_count",
+          "bonus_frequency", "bonus_percentage",
+          "top_bonus", "recent_bonus", "cooccurrence",
+          "hot_cold", "disclaimer"
+        }
+    """
+    # REQ-BON-S01: None/빈 데이터 가드 — 1~45 키를 0/0.0/빈 값으로 채운다
+    if not draws:
+        zero_freq = dict.fromkeys(range(1, 46), 0)
+        zero_pct = dict.fromkeys(range(1, 46), 0.0)
+        empty_cooc: dict[int, list[dict[str, int]]] = {
+            n: [] for n in range(1, 46)
+        }
+        all_normal = dict.fromkeys(range(1, 46), "normal")
+        return {
+            "total_draws": 0,
+            "recent_n": recent_n,
+            "recent_count": 0,
+            "bonus_frequency": zero_freq,
+            "bonus_percentage": zero_pct,
+            "top_bonus": [],
+            "recent_bonus": {"frequency": dict.fromkeys(range(1, 46), 0), "recent_count": 0},
+            "cooccurrence": empty_cooc,
+            "hot_cold": all_normal,
+            "disclaimer": _BONUS_DISCLAIMER,
+        }
+
+    total_draws = len(draws)
+
+    # REQ-BON-U02: 전체 보너스 빈도 (1~45 전체 키, 0채움)
+    bonus_frequency = dict.fromkeys(range(1, 46), 0)
+    for draw in draws:
+        bonus_frequency[draw.bonus] += 1
+
+    # REQ-BON-U03: 보너스 비율 (소수 2자리)
+    bonus_percentage = {
+        n: round(bonus_frequency[n] / total_draws * 100, 2) for n in range(1, 46)
+    }
+
+    # REQ-BON-U04: top_bonus — 빈도 내림차순, 동률 시 작은 번호 우선, 상위 10
+    sorted_numbers = sorted(
+        range(1, 46), key=lambda n: (-bonus_frequency[n], n)
+    )
+    top_bonus = [
+        {
+            "number": n,
+            "count": bonus_frequency[n],
+            "percentage": bonus_percentage[n],
+        }
+        for n in sorted_numbers[:_BONUS_TOP_LIMIT]
+    ]
+
+    # REQ-BON-U05: 최근 추세 — 회차 오름차순 정렬 후 최근 N개 슬라이싱
+    sorted_draws = sorted(draws, key=lambda d: d.drwNo)
+    recent_slice = sorted_draws[-recent_n:]
+    recent_count = len(recent_slice)
+    recent_freq = dict.fromkeys(range(1, 46), 0)
+    for draw in recent_slice:
+        recent_freq[draw.bonus] += 1
+    recent_bonus = {"frequency": recent_freq, "recent_count": recent_count}
+
+    # REQ-BON-U06: 동시 출현 — 보너스별 본번호 카운트 후 상위 5 (보너스 자기 제외)
+    cooc_counters: dict[int, Counter[int]] = {n: Counter() for n in range(1, 46)}
+    for draw in draws:
+        b = draw.bonus
+        for main in draw.numbers():  # numbers()는 메서드 (본번호만)
+            cooc_counters[b][main] += 1
+    cooccurrence: dict[int, list[dict[str, int]]] = {}
+    for n in range(1, 46):
+        # 동률 시 작은 번호 우선: (-count, number)로 정렬
+        items = sorted(
+            cooc_counters[n].items(), key=lambda kv: (-kv[1], kv[0])
+        )[:_BONUS_COOC_LIMIT]
+        cooccurrence[n] = [{"number": num, "count": cnt} for num, cnt in items]
+
+    # REQ-BON-S03: hot/cold/normal 판정 (방식 A — 전체 빈도 vs 평균 빈도)
+    average = total_draws / 45
+    hot_cold: dict[int, str] = {}
+    for n in range(1, 46):
+        count = bonus_frequency[n]
+        if count > average * _BONUS_HOT_RATIO:
+            hot_cold[n] = "hot"
+        elif count < average * _BONUS_COLD_RATIO:
+            hot_cold[n] = "cold"
+        else:
+            hot_cold[n] = "normal"
+
+    return {
+        "total_draws": total_draws,
+        "recent_n": recent_n,
+        "recent_count": recent_count,
+        "bonus_frequency": bonus_frequency,
+        "bonus_percentage": bonus_percentage,
+        "top_bonus": top_bonus,
+        "recent_bonus": recent_bonus,
+        "cooccurrence": cooccurrence,
+        "hot_cold": hot_cold,
+        "disclaimer": _BONUS_DISCLAIMER,
     }
