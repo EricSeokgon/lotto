@@ -6,6 +6,30 @@
 
 ---
 
+## [1.63.0] - 2026-06-18
+
+### Added
+- SPEC-LOTTO-103: 보너스 번호 분석 (Bonus Number Analysis)
+  - 한국 로또 6/45 보너스 번호에 대한 역대 패턴 5가지 관점 분석 기능
+  - `lotto/web/data.py`: `get_bonus_analysis()` 함수 추가 (@MX:ANCHOR)
+    - 보너스 빈도(bonus_frequency): 1~45 전체 번호 출현 횟수
+    - 보너스 비율(bonus_percentage): 회차 대비 비율(소수 2자리)
+    - Top 10 보너스 번호: 빈도 내림차순, 동률 시 작은 번호 우선
+    - 최근 보너스 추세(recent_bonus): 최근 N회차 창(기본 50) 한정 분포
+    - 동시 출현(cooccurrence): 보너스 번호별 함께 나온 본번호 상위 5개
+    - Hot/Cold/Normal 판정: 평균(100/45 ≈ 2.22%) 기준 분류
+    - 회고 분석 면책 고지(disclaimer) 포함, 결정적 결과 보장
+  - `GET /api/stats/bonus`: 보너스 분석 API (recent_n 1~500, 위반 시 HTTP 422)
+  - `GET /stats/bonus`: 보너스 분석 웹 페이지 (`bonus_analysis.html`)
+    - top10 강조 표시, recent_n 선택기(50/100/200 프리셋), 번호별 테이블
+    - 번호 | 전체 횟수 | 비율 | 최근 횟수 | 상태 컬럼 + 동시출현 섹션
+    - 서버 렌더링 기반(클라이언트 JS 비의존 핵심 테이블)
+  - `base.html` 내비게이션에 "보너스 분석" 탭 추가 (`/stats/bonus`, tab=`bonus`)
+  - 본번호/보너스 분포 완전 분리, Python 3.9 호환 (match/case·zip strict 미사용)
+  - 테스트 37개 추가 (2828 → 2865)
+
+---
+
 ## [1.62.0] - 2026-06-18
 
 ### Added
