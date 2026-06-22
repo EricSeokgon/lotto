@@ -6,6 +6,28 @@
 
 ---
 
+## [1.68.0] - 2026-06-22
+
+### Added
+- SPEC-LOTTO-108: 번호 월별 출현 분포 분석 (Monthly Distribution Analysis)
+  - 추첨일의 달(`draw.date.month`, 1=1월 … 12=12월) 기준으로 회차를 그룹화하여
+    각 월에서 번호(1~45)의 출현 빈도를 분석하는 기능. 회차 인덱스 기준(rolling/period_trend)이
+    아니라 달력 기반(1~12월) 주기성 패턴을 관찰한다.
+  - `lotto/web/data.py`: `get_monthly_distribution()` 함수 추가 (@MX:ANCHOR)
+    - monthly_summary: 12개월 `{month, month_name(Jan~Dec), draw_count}` (index 0 = 1월)
+    - top_numbers_by_month: 각 월("1"~"12")의 상위 top_n 번호
+      (count 내림차순, 동률 시 번호 오름차순, `{number, count, pct}`)
+    - top_months_by_number: 번호 1~45의 최빈 월
+      (`{number, best_month, best_month_count, best_month_pct}`, 동률 시 가장 빠른 달)
+    - 빈/None 입력 시 0 채움 구조(모든 월 빈 리스트, 미출현 번호 best_month=0), 면책 고지 포함
+    - 기존 period_trend(초기/중기/최근 3구간)·rolling(회차 인덱스 윈도우)과 달리 달력 월 단위 분석 제공
+  - `GET /api/stats/monthly`: 월별 분포 분석 JSON API (`top_n` 1~45, 기본 5, 범위 초과 시 422)
+  - `GET /stats/monthly`: 월별 분포 웹 페이지 (`monthly_distribution.html`)
+    - 월별 회차 요약 테이블, 월별 상위 번호 카드, 번호별 최빈 월 표, top_n 선택기(3/5/10),
+      서버 렌더링·JS 비의존, 다크모드 지원
+  - `base.html`: '월별 분포' 내비게이션 탭 추가
+  - 테스트 23개 추가 (총 2974 → 2997), Python 3.9 호환, 코어 모듈 불변
+
 ## [1.67.0] - 2026-06-22
 
 ### Added
