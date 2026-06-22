@@ -421,6 +421,10 @@ _period_trend_cache: dict[str, Any] = {}
 # top_n에 따라 top_numbers_by_month 각 월 리스트 길이가 달라지므로 키에 top_n을 포함한다.
 _monthly_dist_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-109: 번호 출현 간격 상세 분포 캐시. top_n 파라미터가 없으므로
+# 키는 회차 수만 사용한다(항상 45개 번호 전부 반환).
+_gap_dist_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -529,6 +533,7 @@ def invalidate_cache() -> None:
     _cross_pattern_cache.clear()  # SPEC-LOTTO-106: 조합 매트릭스 캐시 무효화
     _period_trend_cache.clear()  # SPEC-LOTTO-107: 기간별 추이 캐시 무효화
     _monthly_dist_cache.clear()  # SPEC-LOTTO-108: 월별 분포 캐시 무효화
+    _gap_dist_cache.clear()  # SPEC-LOTTO-109: 간격 분포 캐시 무효화
 
 
 def interpolate_color(t: float) -> str:
@@ -9867,4 +9872,208 @@ def get_monthly_distribution(
         "disclaimer": _MONTHLY_DIST_DISCLAIMER,
     }
     _monthly_dist_cache[cache_key] = result
+    return result
+
+
+# ─── SPEC-LOTTO-109: 번호 출현 간격 상세 분포(gap distribution) 분석 ───────────
+# 각 번호의 연속 출현 간격(drwNo 차이) 표본 전체의 min/max/avg/median/std와
+# 6버킷 히스토그램을 산출한다. cycle_analysis(047, 비율 추정)·recency_analysis
+# (104, 마지막 출현·평균 간격)와 별개 기능으로, 간격의 "분포"(std·히스토그램)에
+# 초점을 둔다. 코어 모듈 불변.
+_GAP_DIST_DISCLAIMER = (
+    "이 분석은 과거 회차에서 각 번호의 연속 출현 간격을 회고적으로 집계한 "
+    "분포 요약이며 미래 출현을 예측하지 않습니다. 특정 번호의 간격이 짧거나 "
+    "길었다는 사실이 다음 회차의 선택을 정당화하지 않습니다."
+)
+
+# 본번호 범위 1~45.
+_GAP_NUMBER_MAX = 45
+
+# REQ-GAP-003: 간격 히스토그램 버킷 라벨(고정 순서). 51 이상은 "51+".
+_GAP_BUCKET_LABELS = ["1-10", "11-20", "21-30", "31-40", "41-50", "51+"]
+
+
+def _empty_gap_histogram() -> dict[str, int]:
+    """REQ-GAP-003/006: 모든 버킷이 0인 히스토그램을 생성한다."""
+    return dict.fromkeys(_GAP_BUCKET_LABELS, 0)
+
+
+def _gap_bucket_label(gap: int) -> str:
+    """간격값을 6버킷 중 하나의 라벨로 매핑한다(1~10, …, 41~50, 51+)."""
+    if gap <= 10:  # noqa: PLR2004
+        return "1-10"
+    if gap <= 20:  # noqa: PLR2004
+        return "11-20"
+    if gap <= 30:  # noqa: PLR2004
+        return "21-30"
+    if gap <= 40:  # noqa: PLR2004
+        return "31-40"
+    if gap <= 50:  # noqa: PLR2004
+        return "41-50"
+    return "51+"
+
+
+def _gap_histogram(gaps: list[int]) -> dict[str, int]:
+    """REQ-GAP-003: 간격 리스트를 6버킷 히스토그램으로 집계한다."""
+    histogram = _empty_gap_histogram()
+    for gap in gaps:
+        histogram[_gap_bucket_label(gap)] += 1
+    return histogram
+
+
+def _build_gap_number_item(
+    number: int,
+    gaps: list[int],
+    appearance_count: int,
+) -> dict[str, Any]:
+    """REQ-GAP-002/003/006: 한 번호의 간격 통계 항목을 생성한다.
+
+    count = len(gaps) = max(appearance_count - 1, 0). count=0이면 모든 통계 None.
+    표본이 1개(count=1)면 표본 표준편차 계산 불가 → std_gap=None.
+    """
+    count = len(gaps)
+    if count == 0:
+        return {
+            "number": number,
+            "appearance_count": appearance_count,
+            "count": 0,
+            "gaps": [],
+            "avg_gap": None,
+            "median_gap": None,
+            "min_gap": None,
+            "max_gap": None,
+            "std_gap": None,
+            "gap_histogram": _empty_gap_histogram(),
+        }
+    # statistics.stdev는 표본 1개에서 StatisticsError를 던지므로 분기한다.
+    std_gap = round(statistics.stdev(gaps), 2) if count > 1 else None
+    return {
+        "number": number,
+        "appearance_count": appearance_count,
+        "count": count,
+        "gaps": gaps,
+        "avg_gap": round(statistics.mean(gaps), 2),
+        "median_gap": round(statistics.median(gaps), 2),
+        "min_gap": min(gaps),
+        "max_gap": max(gaps),
+        "std_gap": std_gap,
+        "gap_histogram": _gap_histogram(gaps),
+    }
+
+
+def _empty_gap_overall_summary() -> dict[str, Any]:
+    """REQ-GAP-004/005: 간격이 하나도 없을 때의 None 채움 요약."""
+    return {
+        "avg_gap_all": None,
+        "max_gap_ever": None,
+        "max_gap_number": None,
+        "min_gap_ever": None,
+        "min_gap_number": None,
+    }
+
+
+def _gap_overall_summary(
+    all_gaps_with_owner: list[tuple[int, int]],
+) -> dict[str, Any]:
+    """REQ-GAP-004: 전체 간격 표본으로 요약을 계산한다.
+
+    all_gaps_with_owner: (gap, number) 쌍 리스트. 번호 1→45 순으로 누적되므로
+    동률(같은 gap)일 때 더 작은 번호가 먼저 등장한다. 더 큰/작은 값에서만
+    갱신하면 동률은 자연히 가장 작은 번호가 유지된다.
+    """
+    if not all_gaps_with_owner:
+        return _empty_gap_overall_summary()
+
+    gap_values = [gap for gap, _ in all_gaps_with_owner]
+    max_gap_ever, max_gap_number = all_gaps_with_owner[0]
+    min_gap_ever, min_gap_number = all_gaps_with_owner[0]
+    for gap, number in all_gaps_with_owner:
+        if gap > max_gap_ever:
+            max_gap_ever, max_gap_number = gap, number
+        if gap < min_gap_ever:
+            min_gap_ever, min_gap_number = gap, number
+    return {
+        "avg_gap_all": round(statistics.mean(gap_values), 2),
+        "max_gap_ever": max_gap_ever,
+        "max_gap_number": max_gap_number,
+        "min_gap_ever": min_gap_ever,
+        "min_gap_number": min_gap_number,
+    }
+
+
+# @MX:ANCHOR: [AUTO] 번호 출현 간격 분포 분석 — API/페이지 라우트의 단일 진입점
+# @MX:REASON: api.py·pages.py에서 호출되는 SPEC-LOTTO-109 공개 데이터 함수
+# @MX:SPEC: SPEC-LOTTO-109
+def get_gap_distribution(draws: list[DrawResult] | None) -> dict[str, Any]:
+    """번호 1~45의 연속 출현 간격(drwNo 차이) 상세 분포를 분석한다.
+
+    번호 X가 연속한 두 회차 A, B(그 사이에 X 없음)에서 출현하면
+    gap = B.drwNo - A.drwNo 이다. 번호별로 모든 간격을 모아 min/max/avg/median/
+    std와 6버킷 히스토그램을 산출하고, 전체 간격 표본으로 역대 최대·최소 간격
+    요약을 만든다. cycle_analysis(047)·recency_analysis(104)를 호출·수정하지
+    않으며, 간격의 분포(다양성)에 초점을 둔다.
+
+    Args:
+        draws: 추첨 결과 리스트. None/빈 리스트면 0 채움 구조를 반환한다.
+               drwNo 오름차순을 가정하나 내부에서도 안전하게 정렬한다.
+
+    Returns:
+        {
+          "total_draws": int,
+          "overall_summary": {avg_gap_all, max_gap_ever, max_gap_number,
+                              min_gap_ever, min_gap_number},
+          "numbers": [{number, appearance_count, count, gaps, avg_gap,
+                       median_gap, min_gap, max_gap, std_gap, gap_histogram},
+                      ...] (45개, index 0 = 번호 1),
+          "disclaimer": "..."
+        }
+    """
+    # 프로세스 수명 캐시 — top_n 파라미터가 없으므로 키는 회차 수만 사용한다.
+    cache_key = str(0 if not draws else len(draws))
+    cached: dict[str, Any] | None = _gap_dist_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    # REQ-GAP-005: None/빈 데이터 가드 — 45개 None/0 채움 항목을 반환한다.
+    if not draws:
+        empty_result = {
+            "total_draws": 0,
+            "overall_summary": _empty_gap_overall_summary(),
+            "numbers": [
+                _build_gap_number_item(n, [], 0)
+                for n in range(1, _GAP_NUMBER_MAX + 1)
+            ],
+            "disclaimer": _GAP_DIST_DISCLAIMER,
+        }
+        _gap_dist_cache[cache_key] = empty_result
+        return empty_result
+
+    # REQ-GAP-001: drwNo 오름차순 정렬로 간격(차이)의 부호를 보장한다.
+    sorted_draws = sorted(draws, key=lambda d: d.drwNo)
+    total_draws = len(sorted_draws)
+
+    # 번호별 출현 drwNo를 단일 패스로 수집한다. numbers()는 메서드(본번호 6개).
+    occ: dict[int, list[int]] = {n: [] for n in range(1, _GAP_NUMBER_MAX + 1)}
+    for draw in sorted_draws:
+        for n in draw.numbers():
+            occ[n].append(draw.drwNo)
+
+    # REQ-GAP-001/002/004: 번호별 항목 생성 + 전체 간격(번호 소유주 포함) 누적.
+    # 번호 1→45 순으로 누적하므로 동률 간격은 더 작은 번호가 먼저 등장한다.
+    numbers: list[dict[str, Any]] = []
+    all_gaps_with_owner: list[tuple[int, int]] = []
+    for n in range(1, _GAP_NUMBER_MAX + 1):
+        drwnos = occ[n]
+        gaps = [drwnos[i + 1] - drwnos[i] for i in range(len(drwnos) - 1)]
+        numbers.append(_build_gap_number_item(n, gaps, len(drwnos)))
+        for gap in gaps:
+            all_gaps_with_owner.append((gap, n))
+
+    result = {
+        "total_draws": total_draws,
+        "overall_summary": _gap_overall_summary(all_gaps_with_owner),
+        "numbers": numbers,
+        "disclaimer": _GAP_DIST_DISCLAIMER,
+    }
+    _gap_dist_cache[cache_key] = result
     return result

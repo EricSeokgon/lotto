@@ -2004,3 +2004,22 @@ async def monthly_distribution_page(
         "result": result,
         "top_n": top_n,
     })
+
+
+@router.get("/stats/gap-distribution")
+async def gap_distribution_page(request: Request) -> TemplateResponse:
+    """간격 분포 페이지 — 번호별 연속 출현 간격(drwNo 차이) 상세 분포 (SPEC-LOTTO-109).
+
+    - 전체 요약(역대 최대·최소 간격), 45개 번호 테이블(간격 수/avg/min/max/std/
+      6버킷 히스토그램), disclaimer. 서버 렌더링·JS 비의존.
+    - top_n 파라미터 없음 — 항상 45개 번호 전부 렌더링한다.
+    - 데이터 부재 시에도 200 (빈 상태를 자연스럽게 렌더링).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    result = wd.get_gap_distribution(wd.get_draws())
+    return _render(request, "gap_distribution.html", {
+        "active_tab": "gap_dist",
+        "result": result,
+    })

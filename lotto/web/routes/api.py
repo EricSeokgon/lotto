@@ -3428,3 +3428,18 @@ async def monthly_distribution_route(
     from lotto.web import data as wd
 
     return wd.get_monthly_distribution(wd.get_draws(), top_n=top_n)
+
+
+@router.get("/stats/gap-distribution")
+async def gap_distribution_route() -> dict[str, Any]:
+    """번호별 연속 출현 간격(drwNo 차이)의 상세 분포를 반환합니다 (SPEC-LOTTO-109).
+
+    - 각 번호 1~45의 모든 연속 출현 간격을 수집해 min/max/avg/median/std와
+      6버킷 히스토그램(1-10/11-20/21-30/31-40/41-50/51+)을 산출한다.
+    - overall_summary: 전체 간격 평균, 역대 최대·최소 간격과 해당 번호.
+    - top_n 파라미터 없음 — 항상 45개 번호 전부 반환한다 (REQ-GAP-007).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0, REQ-GAP-005).
+    """
+    from lotto.web import data as wd
+
+    return wd.get_gap_distribution(wd.get_draws())
