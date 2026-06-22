@@ -6,6 +6,26 @@
 
 ---
 
+## [1.67.0] - 2026-06-22
+
+### Added
+- SPEC-LOTTO-107: 기간별 번호 빈도 추이 분석 (Period Trend Analysis)
+  - 전체 회차 이력을 초기·중기·최근 3구간으로 균등 분할(슬라이스 공식 `early=draws[0:n//3]`,
+    `middle=draws[n//3:2*n//3]`, `recent=draws[2*n//3:]`)하여 번호별 구간 출현 추이를 분석하는 기능
+  - `lotto/web/data.py`: `get_period_trend()` 함수 추가 (@MX:ANCHOR)
+    - numbers: 번호 1~45의 구간별 출현 횟수(count_early/middle/recent)·비율(pct, 빈 구간 0.0)·
+      델타(count_recent − count_early)·추세(rising/falling/stable)
+    - top_rising: 델타 상위(델타 내림차순, 동률 시 번호 오름차순) top_n 번호
+    - top_falling: 델타 하위(델타 오름차순, 동률 시 번호 내림차순) top_n 번호
+    - period_sizes: 구간별 실제 회차 수, 빈/None 입력 시 0 채움 구조, 결정적 결과, 면책 고지 포함
+    - 기존 hot_cold_analysis(최근 N회 vs 전체 단순 비교)와 달리 3구간 시계열 변화 추이 제공
+  - `GET /api/stats/period-trend`: 기간별 추이 분석 JSON API (`top_n` 1~45, 기본 10, 범위 초과 시 422)
+  - `GET /stats/period-trend`: 추이 분석 웹 페이지 (`period_trend.html`)
+    - 구간 요약 카드, 상승/하락 상위 번호 테이블, 전체 번호 추이 표, top_n 선택기(5/10/20),
+      서버 렌더링·JS 비의존, 다크모드 지원
+  - `base.html`: '추이 분석' 내비게이션 탭 추가
+  - 테스트 22개 추가 (총 2952 → 2974), Python 3.9 호환, 코어 모듈 불변
+
 ## [1.66.0] - 2026-06-22
 
 ### Added
