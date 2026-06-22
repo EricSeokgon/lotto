@@ -6,6 +6,26 @@
 
 ---
 
+## [1.70.0] - 2026-06-22
+
+### Added
+- SPEC-LOTTO-110: 번호 연도별 출현 분포 분석 (Yearly Distribution Analysis)
+  - `draw.date.year`(달력 연도) 기준으로 회차를 그룹화하여 각 번호(1~45)의 연도별
+    출현 횟수·비율을 집계한다. period_trend(107, 회차 인덱스 3등분)·monthly(108,
+    달력 월 1~12)와 달리 실제 달력 연도(2002~현재, 가변 개수)를 축으로 장기 추세를 본다.
+  - `lotto/web/data.py`: `get_yearly_distribution()` 함수 추가 (@MX:ANCHOR)
+    - yearly_summary: 연도별 회차 수 `{year, draw_count}` (연도 오름차순), total_years
+    - top_numbers_by_year: 연도별 상위 N 번호 (count 내림차순, 동률 시 번호 오름차순)
+    - top_years_by_number: 번호별 최빈 연도 `{number, best_year, best_year_count,
+      best_year_pct}` (동률 시 이른 연도 우선, 미출현 번호 best_year=None)
+    - 빈/None 입력 시 0 채움 구조, 면책 고지 포함, 캐시 키에 top_n 포함
+  - `GET /api/stats/yearly`: 연도별 분포 분석 JSON API (top_n 1~45, 기본 5)
+  - `GET /stats/yearly`: 연도별 분포 웹 페이지 (`yearly_distribution.html`)
+    - 연도별 회차 요약 테이블, 연도별 상위 번호 카드, 번호별 최빈 연도 테이블,
+      top_n 선택기(3/5/10), 서버 렌더링·JS 비의존, 다크모드 지원
+  - `base.html`: '연도별 분포' 내비게이션 탭 추가
+  - 테스트 21개 추가 (총 3020 → 3041), Python 3.9 호환, 코어 모듈 불변
+
 ## [1.69.0] - 2026-06-22
 
 ### Added

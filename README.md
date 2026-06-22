@@ -1,7 +1,7 @@
 # 로또 번호 추천 프로그램
 
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-3020-green)](./tests/)
+[![Tests](https://img.shields.io/badge/Tests-3041-green)](./tests/)
 [![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen)](#)
 
 통계 분석 기반의 로또 번호 추천 CLI 도구 및 웹 대시보드입니다. 동행복권 공식 데이터를 수집하여 다각적인 통계 분석을 수행하고, 가중치 기반 알고리즘으로 추천 번호를 생성합니다. 또한 과거 데이터에 대한 백테스팅으로 알고리즘의 유효성을 검증합니다.
@@ -34,6 +34,7 @@
 - **기간별 번호 빈도 추이 분석**: 전체 회차를 초기·중기·최근 3구간으로 균등 분할하여 번호별 구간 출현 횟수·비율·델타·추세(상승/하락/유지) 산출, 상승/하락 상위 번호 제공, `/stats/period-trend` 페이지 및 JSON API
 - **번호 월별 출현 분포 분석**: 추첨일의 달(1~12월) 기준으로 회차를 그룹화하여 번호별 월별 출현 횟수·비율 집계, 월별 상위 번호·번호별 최빈 월 제공, `/stats/monthly` 페이지 및 JSON API
 - **번호 출현 간격 상세 분포 분석**: 각 번호의 연속 출현 간격(회차 차이)을 모두 수집하여 min/max/평균/중앙값/표준편차와 6구간 히스토그램(1-10/…/51+), 역대 최대·최소 간격 요약 제공, `/stats/gap-distribution` 페이지 및 JSON API
+- **번호 연도별 출현 분포 분석**: 추첨일의 연도(달력 연도) 기준으로 회차를 그룹화하여 번호별 연도별 출현 횟수·비율 집계, 연도별 상위 번호·번호별 최빈 연도·연도별 회차 수 요약 제공, `/stats/yearly` 페이지 및 JSON API
 - **AC(산술 복잡도) 분석**: 당첨 조합의 쌍별 차이 다양성 지표(AC 0~10) 분포·평균·고/저복잡도 비율 분석, `/stats/ac` 페이지 및 JSON API
 - **소수/합성수 분포 분석**: 본번호 6개 중 소수·합성수·숫자1 개수별 분포·평균·비율 분석, `/stats/prime` 페이지 및 JSON API
 - **웹 대시보드**: 브라우저 기반 대시보드 (FastAPI + Jinja2, 다크모드 지원)
@@ -119,6 +120,7 @@ http://localhost:8000 에서 확인 가능합니다.
 | `GET` | `/api/stats/period-trend` | 기간별 번호 빈도 추이 통계 | `top_n` (1~45, 기본 10) |
 | `GET` | `/api/stats/monthly` | 번호 월별 출현 분포 통계 | `top_n` (1~45, 기본 5) |
 | `GET` | `/api/stats/gap-distribution` | 번호 출현 간격 상세 분포 통계 | 없음 (45번호 전부) |
+| `GET` | `/api/stats/yearly` | 번호 연도별 출현 분포 통계 | `top_n` (1~45, 기본 5) |
 | `GET` | `/api/recommendations` | 번호 추천 목록 | `count`, `strategy` |
 | `GET` | `/api/simulation` | 시뮬레이션 결과 | `rounds` |
 | `GET` | `/api/report/pdf` | PDF 리포트 다운로드 | — |
