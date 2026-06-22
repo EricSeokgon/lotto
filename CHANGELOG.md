@@ -6,6 +6,29 @@
 
 ---
 
+## [1.65.0] - 2026-06-22
+
+### Added
+- SPEC-LOTTO-105: 번호 위치별 분포 분석 (Number Position Distribution Analysis)
+  - 한국 로또 6/45 당첨번호 본번호 6개를 오름차순 정렬 시 각 위치(1~6번째)의 번호 분포 통계 분석 기능
+  - `lotto/web/data.py`: `get_position_distribution()` 함수 추가 (@MX:ANCHOR)
+    - avg: 해당 위치에 등장한 번호들의 산술평균 (소수 2자리)
+    - median: 중앙값 (소수 2자리)
+    - min_ever / max_ever: 해당 위치에 등장한 최솟값/최댓값
+    - std: 표본 표준편차 (statistics.stdev, 소수 2자리)
+    - top_numbers: 해당 위치에서 가장 자주 나온 top_n 번호 (빈도 내림차순, 동률 시 작은 번호 우선, 비율 포함)
+    - 결정적 결과 보장, 면책 고지(disclaimer) 포함
+  - `GET /api/stats/position?top_n=5`: 위치별 분포 분석 API (top_n 범위 1~45, 위반 시 HTTP 422)
+  - `GET /stats/position`: 위치별 분포 웹 페이지 (`position_distribution.html`)
+    - 6위치 테이블 (위치 | avg | median | min_ever | max_ever | std | 상위 번호)
+    - top_n 선택기 (3/5/10 프리셋), 서버 렌더링 기반 (핵심 테이블 JS 비의존), 다크모드 지원
+  - `base.html` 내비게이션에 "위치 분포" 탭 추가 (`/stats/position`, tab=`position`)
+  - 기존 `number_stats()`의 `by_position` 필드(번호 중심)와 다른 위치 중심(per-position) 집계 — 별개 기능
+  - Python 3.9 호환 (match/case·zip strict 미사용), 코어 모듈 불변
+  - 테스트 28개 추가 (2902 → 2930)
+
+---
+
 ## [1.64.0] - 2026-06-22
 
 ### Added
