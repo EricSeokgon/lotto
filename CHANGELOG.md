@@ -6,6 +6,29 @@
 
 ---
 
+## [1.69.0] - 2026-06-22
+
+### Added
+- SPEC-LOTTO-109: 번호 출현 간격 상세 분포 분석 (Appearance Gap Distribution Analysis)
+  - 각 번호(1~45)가 연속으로 출현한 두 회차 사이의 간격(`drwNo` 차이)을 모두 수집하여
+    상세 통계(min/max/avg/median/std)와 간격 구간별 분포(히스토그램)를 제공한다.
+    cycle_analysis(047, 비율 추정)·recency_analysis(104, 마지막 출현·평균 간격)와
+    별개로, 간격 표본의 다양성과 분포(표준편차·히스토그램)에 초점을 둔다.
+  - `lotto/web/data.py`: `get_gap_distribution()` 함수 추가 (@MX:ANCHOR)
+    - numbers: 번호 1~45의 `{number, appearance_count, count, gaps, avg_gap,
+      median_gap, min_gap, max_gap, std_gap, gap_histogram}` (index 0 = 번호 1)
+    - gap_histogram: 6개 버킷 `{1-10, 11-20, 21-30, 31-40, 41-50, 51+}`
+    - overall_summary: 전체 간격 평균(avg_gap_all), 역대 최대·최소 간격과 해당 번호
+      (동률 시 작은 번호 우선)
+    - 1회 이하 출현 번호는 count=0·통계 None·히스토그램 0, 빈/None 입력 시 0 채움 구조
+    - 면책 고지 포함, top_n 파라미터 없음(항상 45개 번호 전부 반환)
+  - `GET /api/stats/gap-distribution`: 간격 분포 분석 JSON API (파라미터 없음)
+  - `GET /stats/gap-distribution`: 간격 분포 웹 페이지 (`gap_distribution.html`)
+    - 전체 요약 카드(역대 최대·최소 간격), 45개 번호 테이블(간격 수/avg/min/max/std/
+      히스토그램 막대), 서버 렌더링·JS 비의존, 다크모드 지원
+  - `base.html`: '간격 분포' 내비게이션 탭 추가
+  - 테스트 23개 추가 (총 2997 → 3020), Python 3.9 호환, 코어 모듈 불변
+
 ## [1.68.0] - 2026-06-22
 
 ### Added
