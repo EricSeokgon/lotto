@@ -1959,3 +1959,26 @@ async def cross_pattern_page(
         "result": result,
         "top_n": top_n,
     })
+
+
+@router.get("/stats/period-trend")
+async def period_trend_page(
+    request: Request,
+    top_n: int = Query(default=10, ge=1, le=45),
+) -> TemplateResponse:
+    """추이 분석 페이지 — 초기/중기/최근 3구간 번호별 빈도 추이 (SPEC-LOTTO-107).
+
+    - 구간 요약(early/middle/recent 회차 수), 상승/하락 상위 번호 테이블,
+      top_n 선택기(5/10/20), disclaimer.
+    - top_n 쿼리로 상위 번호 개수를 조정한다 (REQ-PT-008, 서버 렌더링·JS 비의존).
+    - 데이터 부재 시에도 200 (빈 상태를 자연스럽게 렌더링).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    result = wd.get_period_trend(wd.get_draws(), top_n=top_n)
+    return _render(request, "period_trend.html", {
+        "active_tab": "period_trend",
+        "result": result,
+        "top_n": top_n,
+    })

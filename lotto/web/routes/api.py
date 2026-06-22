@@ -3385,3 +3385,24 @@ async def cross_pattern_route(
     from lotto.web import data as wd
 
     return wd.get_cross_pattern_stats(wd.get_draws(), top_n=top_n)
+
+
+@router.get("/stats/period-trend")
+async def period_trend_route(
+    top_n: int = Query(
+        default=10,
+        ge=1,
+        le=45,
+        description="상승/하락 상위 번호 개수 (1~45, 기본 10)",
+    ),
+) -> dict[str, Any]:
+    """전체 회차를 초기/중기/최근 3구간으로 나눈 번호별 빈도 추이를 반환합니다 (SPEC-LOTTO-107).
+
+    - 번호 1~45의 구간별 출현 횟수·비율·델타·추세(rising/falling/stable),
+      delta 기준 상승/하락 상위 top_n, period_sizes(구간별 회차 수).
+    - top_n: 1~45. 범위 초과 시 FastAPI가 자동으로 422를 반환한다 (REQ-PT-007).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0, REQ-PT-004).
+    """
+    from lotto.web import data as wd
+
+    return wd.get_period_trend(wd.get_draws(), top_n=top_n)

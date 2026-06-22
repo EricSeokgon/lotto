@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-107: 기간별 번호 빈도 추이 분석 — 초기/중기/최근 3구간 출현 추이 (서버 렌더링, JS 비의존) #}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">기간별 추이 분석</h2>
+    </div>
+
+    <p class="text-sm text-muted dark:text-gray-400">
+        전체 회차 이력을 초기·중기·최근 3구간으로 균등 분할하여 각 번호(1~45)의 구간별 출현
+        횟수와 비율을 비교합니다. 최근 구간이 초기 구간보다 많이 출현하면 상승(rising),
+        적게 출현하면 하락(falling), 같으면 유지(stable)로 분류합니다.
+        {{ result.disclaimer }}
+    </p>
+
+    {# top_n 선택기 — 5/10/20 프리셋 (서버 렌더링 폼, GET) #}
+    <form method="get" class="flex items-center gap-3">
+        <label for="top_n" class="text-sm text-muted dark:text-gray-400">상위 번호</label>
+        <select id="top_n" name="top_n" onchange="this.form.submit()"
+            class="border border-border dark:border-gray-700 rounded px-2 py-1 text-sm bg-card dark:bg-gray-800 text-ink dark:text-gray-100">
+            <option value="5"{% if top_n == 5 %} selected{% endif %}>상위 5개</option>
+            <option value="10"{% if top_n == 10 %} selected{% endif %}>상위 10개</option>
+            <option value="20"{% if top_n == 20 %} selected{% endif %}>상위 20개</option>
+            {% if top_n not in [5, 10, 20] %}
+            <option value="{{ top_n }}" selected>상위 {{ top_n }}개</option>
+            {% endif %}
+        </select>
+        <noscript><button type="submit" class="text-sm border border-border dark:border-gray-700 rounded px-3 py-1">적용</button></noscript>
+    </form>
+
+    {% if result.total_draws == 0 %}
+    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+    </div>
+    {% else %}
+    {# 구간 요약 카드 #}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">총 회차</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ result.total_draws }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">초기 구간</p>
+            <p class="text-xl font-bold text-data-blue dark:text-data-muted">{{ result.period_sizes.early }}회</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">중기 구간</p>
+            <p class="text-xl font-bold text-data-blue dark:text-data-muted">{{ result.period_sizes.middle }}회</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">최근 구간</p>
+            <p class="text-xl font-bold text-data-blue dark:text-data-muted">{{ result.period_sizes.recent }}회</p>
+        </div>
+    </div>
+
+    {# 상승 상위 번호 #}
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700 overflow-x-auto">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-1">빈도 상승 번호 (상위 {{ result.top_n }})</h3>
+        <p class="text-xs text-muted dark:text-gray-400 mb-3">최근 구간이 초기 구간보다 자주 출현한 번호 (델타 = 최근 − 초기)</p>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="px-3 py-2">순위</th>
+                    <th class="px-3 py-2">번호</th>
+                    <th class="px-3 py-2">초기</th>
+                    <th class="px-3 py-2">중기</th>
+                    <th class="px-3 py-2">최근</th>
+                    <th class="px-3 py-2">델타</th>
+                    <th class="px-3 py-2">추세</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in result.top_rising %}
+                <tr class="border-b border-border/50 dark:border-gray-700/50">
+                    <td class="px-3 py-2 text-muted dark:text-gray-400">{{ loop.index }}</td>
+                    <td class="px-3 py-2 font-semibold text-ink dark:text-gray-100">{{ r.number }}</td>
+                    <td class="px-3 py-2 text-ink dark:text-gray-200">{{ r.count_early }}</td>
+                    <td class="px-3 py-2 text-ink dark:text-gray-200">{{ r.count_middle }}</td>
+                    <td class="px-3 py-2 text-ink dark:text-gray-200">{{ r.count_recent }}</td>
+                    <td class="px-3 py-2 font-semibold text-data-blue dark:text-data-muted">+{{ r.delta }}</td>
+                    <td class="px-3 py-2">
+                        {% if r.trend == 'rising' %}
+                        <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">상승</span>
+                        {% elif r.trend == 'falling' %}
+                        <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">하락</span>
+                        {% else %}
+                        <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">유지</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="px-3 py-4 text-center text-muted dark:text-gray-500">상승 번호가 없습니다.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {# 하락 상위 번호 #}
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700 overflow-x-auto">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-1">빈도 하락 번호 (상위 {{ result.top_n }})</h3>
+        <p class="text-xs text-muted dark:text-gray-400 mb-3">최근 구간이 초기 구간보다 적게 출현한 번호 (델타 = 최근 − 초기)</p>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="px-3 py-2">순위</th>
+                    <th class="px-3 py-2">번호</th>
+                    <th class="px-3 py-2">초기</th>
+                    <th class="px-3 py-2">중기</th>
+                    <th class="px-3 py-2">최근</th>
+                    <th class="px-3 py-2">델타</th>
+                    <th class="px-3 py-2">추세</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in result.top_falling %}
+                <tr class="border-b border-border/50 dark:border-gray-700/50">
+                    <td class="px-3 py-2 text-muted dark:text-gray-400">{{ loop.index }}</td>
+                    <td class="px-3 py-2 font-semibold text-ink dark:text-gray-100">{{ f.number }}</td>
+                    <td class="px-3 py-2 text-ink dark:text-gray-200">{{ f.count_early }}</td>
+                    <td class="px-3 py-2 text-ink dark:text-gray-200">{{ f.count_middle }}</td>
+                    <td class="px-3 py-2 text-ink dark:text-gray-200">{{ f.count_recent }}</td>
+                    <td class="px-3 py-2 font-semibold text-rose-600 dark:text-rose-400">{{ f.delta }}</td>
+                    <td class="px-3 py-2">
+                        {% if f.trend == 'rising' %}
+                        <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">상승</span>
+                        {% elif f.trend == 'falling' %}
+                        <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">하락</span>
+                        {% else %}
+                        <span class="inline-block px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">유지</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="7" class="px-3 py-4 text-center text-muted dark:text-gray-500">하락 번호가 없습니다.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {# 전체 번호 추이 (1~45) #}
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700 overflow-x-auto">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">전체 번호 추이 (1~45)</h3>
+        <table class="min-w-full text-sm text-center">
+            <thead>
+                <tr class="text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="px-2 py-2 text-left">번호</th>
+                    <th class="px-2 py-2">초기</th>
+                    <th class="px-2 py-2">중기</th>
+                    <th class="px-2 py-2">최근</th>
+                    <th class="px-2 py-2">델타</th>
+                    <th class="px-2 py-2">추세</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in result.numbers %}
+                <tr class="border-b border-border/50 dark:border-gray-700/50">
+                    <td class="px-2 py-1.5 text-left font-semibold text-ink dark:text-gray-100">{{ item.number }}</td>
+                    <td class="px-2 py-1.5 text-ink dark:text-gray-200">{{ item.count_early }}</td>
+                    <td class="px-2 py-1.5 text-ink dark:text-gray-200">{{ item.count_middle }}</td>
+                    <td class="px-2 py-1.5 text-ink dark:text-gray-200">{{ item.count_recent }}</td>
+                    <td class="px-2 py-1.5 {% if item.delta > 0 %}text-emerald-600 dark:text-emerald-400{% elif item.delta < 0 %}text-rose-600 dark:text-rose-400{% else %}text-muted dark:text-gray-400{% endif %}">{{ item.delta }}</td>
+                    <td class="px-2 py-1.5">
+                        {% if item.trend == 'rising' %}<span class="text-emerald-600 dark:text-emerald-400">▲</span>
+                        {% elif item.trend == 'falling' %}<span class="text-rose-600 dark:text-rose-400">▼</span>
+                        {% else %}<span class="text-muted dark:text-gray-500">—</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <p class="text-xs text-muted dark:text-gray-500">{{ result.disclaimer }}</p>
+</div>
+{% endblock %}

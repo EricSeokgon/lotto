@@ -413,6 +413,10 @@ _position_cache: dict[str, Any] = {}
 # top_n에 따라 top_combinations 개수가 달라지므로 캐시 키에 top_n을 포함한다.
 _cross_pattern_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-107: 기간별 번호 빈도 추이 캐시. 키는 f"{len(draws)}:{top_n}".
+# top_n에 따라 top_rising/top_falling 개수가 달라지므로 캐시 키에 top_n을 포함한다.
+_period_trend_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -519,6 +523,7 @@ def invalidate_cache() -> None:
     _quartile_dist_cache.clear()
     _position_cache.clear()  # SPEC-LOTTO-105: 위치별 분포 캐시 무효화
     _cross_pattern_cache.clear()  # SPEC-LOTTO-106: 조합 매트릭스 캐시 무효화
+    _period_trend_cache.clear()  # SPEC-LOTTO-107: 기간별 추이 캐시 무효화
 
 
 def interpolate_color(t: float) -> str:
@@ -9506,4 +9511,175 @@ def get_cross_pattern_stats(
         "disclaimer": _CROSS_DISCLAIMER,
     }
     _cross_pattern_cache[cache_key] = result
+    return result
+
+
+# REQ-PT-001/REQ-PT-NFR-002: 본번호 범위 1~45.
+_PERIOD_NUMBER_MAX = 45
+
+_PERIOD_TREND_DISCLAIMER = (
+    "본 분석은 과거 당첨 데이터를 초기·중기·최근 3구간으로 나누어 번호별 출현 추이를 "
+    "통계적으로 관찰하기 위한 참고 자료이며, 미래 당첨 번호의 예측력을 보장하지 않습니다. "
+    "로또는 매 회차 독립적인 무작위 추첨입니다."
+)
+
+
+def _empty_period_numbers() -> list[dict[str, Any]]:
+    """번호 1~45를 0/0.0/stable로 채운 추이 항목 리스트를 생성한다."""
+    return [
+        {
+            "number": num,
+            "count_early": 0,
+            "count_middle": 0,
+            "count_recent": 0,
+            "pct_early": 0.0,
+            "pct_middle": 0.0,
+            "pct_recent": 0.0,
+            "delta": 0,
+            "trend": "stable",
+        }
+        for num in range(1, _PERIOD_NUMBER_MAX + 1)
+    ]
+
+
+def _count_period(period: list[DrawResult]) -> list[int]:
+    """구간 내 회차들에서 번호 1~45 출현 횟수를 집계한다(index 0 = 번호 1)."""
+    counts = [0] * _PERIOD_NUMBER_MAX
+    for draw in period:
+        # numbers()는 메서드 호출이며 오름차순 본번호 6개를 반환한다(보너스 제외).
+        for n in draw.numbers():
+            counts[n - 1] += 1
+    return counts
+
+
+def _period_pct(count: int, period_size: int) -> float:
+    """구간 출현 횟수를 비율(%)로 변환한다. 빈 구간이면 0.0."""
+    if period_size == 0:
+        return 0.0
+    return round(count / period_size * 100, 2)
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-107 — 기간별 번호 빈도 추이 분석 공개 함수
+# @MX:REASON: API·페이지 두 라우트가 호출하는 진입점(fan_in>=2)이며 구간 분할 슬라이스
+#             공식과 정렬 규칙(rising/falling)이 결과 계약의 핵심 불변식이다.
+def get_period_trend(
+    draws: list[DrawResult] | None,
+    top_n: int = 10,
+) -> dict[str, Any]:
+    """전체 회차를 초기/중기/최근 3구간으로 균등 분할하여 번호별 출현 추이를 분석한다.
+
+    n=len(draws)일 때 슬라이스 공식을 엄격히 적용한다:
+    early=draws[0:n//3], middle=draws[n//3:2*n//3], recent=draws[2*n//3:].
+    각 번호(1~45)에 대해 구간별 출현 횟수·비율(pct)·델타(count_recent-count_early)·
+    추세(rising/falling/stable)를 산출하고, 델타 기준 상위 상승/하락 top_n 번호를 제공한다.
+    기존 hot_cold_analysis(최근 N회 vs 전체 단순 비교)와 달리 3구간 시계열 추이를 본다
+    (코어 모듈 불변).
+
+    Args:
+        draws: 추첨 결과 리스트. None/빈 리스트면 0 채움 결과를 반환한다.
+        top_n: 상승/하락 상위 번호 개수 (기본 10). 라우트에서 1~45로 검증된다.
+
+    Returns:
+        {
+          "total_draws", "top_n",
+          "period_sizes": {"early":int, "middle":int, "recent":int},
+          "numbers": [{number, count_early, count_middle, count_recent,
+                       pct_early, pct_middle, pct_recent, delta, trend}, ...] (45개),
+          "top_rising": [...],   # delta desc, number asc
+          "top_falling": [...],  # delta asc, number desc
+          "disclaimer": "..."
+        }
+    """
+    # 프로세스 수명 캐시 — invalidate_cache로 무효화(conftest autouse fixture가 호출).
+    cache_key = f"{0 if not draws else len(draws)}:{top_n}"
+    cached: dict[str, Any] | None = _period_trend_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    # REQ-PT-004: None/빈 데이터 가드 — 0 채움 구조 반환.
+    if not draws:
+        empty_result = {
+            "total_draws": 0,
+            "top_n": top_n,
+            "period_sizes": {"early": 0, "middle": 0, "recent": 0},
+            "numbers": _empty_period_numbers(),
+            "top_rising": [],
+            "top_falling": [],
+            "disclaimer": _PERIOD_TREND_DISCLAIMER,
+        }
+        _period_trend_cache[cache_key] = empty_result
+        return empty_result
+
+    total_draws = len(draws)
+
+    # REQ-PT-001/005/006: 구간 분할 슬라이스 공식(단일 진실 원천).
+    third = total_draws // 3
+    two_thirds = 2 * total_draws // 3
+    early = draws[0:third]
+    middle = draws[third:two_thirds]
+    recent = draws[two_thirds:]
+    period_sizes = {
+        "early": len(early),
+        "middle": len(middle),
+        "recent": len(recent),
+    }
+
+    early_counts = _count_period(early)
+    middle_counts = _count_period(middle)
+    recent_counts = _count_period(recent)
+
+    numbers: list[dict[str, Any]] = []
+    for idx in range(_PERIOD_NUMBER_MAX):
+        count_early = early_counts[idx]
+        count_middle = middle_counts[idx]
+        count_recent = recent_counts[idx]
+        delta = count_recent - count_early
+        # REQ-PT-001: 추세 분류(파이썬 3.9 호환 — match/case 미사용).
+        if delta > 0:
+            trend = "rising"
+        elif delta < 0:
+            trend = "falling"
+        else:
+            trend = "stable"
+        numbers.append(
+            {
+                "number": idx + 1,
+                "count_early": count_early,
+                "count_middle": count_middle,
+                "count_recent": count_recent,
+                "pct_early": _period_pct(count_early, period_sizes["early"]),
+                "pct_middle": _period_pct(count_middle, period_sizes["middle"]),
+                "pct_recent": _period_pct(count_recent, period_sizes["recent"]),
+                "delta": delta,
+                "trend": trend,
+            }
+        )
+
+    # REQ-PT-002: 상위 상승/하락 — top_rising은 delta desc, number asc;
+    #             top_falling은 delta asc, number desc.
+    def _top_item(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "number": item["number"],
+            "count_early": item["count_early"],
+            "count_middle": item["count_middle"],
+            "count_recent": item["count_recent"],
+            "delta": item["delta"],
+            "trend": item["trend"],
+        }
+
+    rising_sorted = sorted(numbers, key=lambda x: (-x["delta"], x["number"]))
+    falling_sorted = sorted(numbers, key=lambda x: (x["delta"], -x["number"]))
+    top_rising = [_top_item(x) for x in rising_sorted[:top_n]]
+    top_falling = [_top_item(x) for x in falling_sorted[:top_n]]
+
+    result = {
+        "total_draws": total_draws,
+        "top_n": top_n,
+        "period_sizes": period_sizes,
+        "numbers": numbers,
+        "top_rising": top_rising,
+        "top_falling": top_falling,
+        "disclaimer": _PERIOD_TREND_DISCLAIMER,
+    }
+    _period_trend_cache[cache_key] = result
     return result
