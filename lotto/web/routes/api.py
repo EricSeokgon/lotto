@@ -3363,3 +3363,25 @@ async def position_distribution_route(
     from lotto.web import data as wd
 
     return wd.get_position_distribution(wd.get_draws(), top_n=top_n)
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-106 — 홀짝·고저 조합 매트릭스 분석 공개 API
+# @MX:SPEC: SPEC-LOTTO-106 REQ-CROSS-010
+@router.get("/stats/cross-pattern")
+async def cross_pattern_route(
+    top_n: int = Query(
+        default=10,
+        ge=1,
+        le=49,
+        description="상위 조합 개수 (1~49, 기본 10)",
+    ),
+) -> dict[str, Any]:
+    """홀짝 개수×고번호(>23) 개수 교차 빈도 매트릭스를 반환합니다 (SPEC-LOTTO-106).
+
+    - 49개(7×7) (odd_count 0-6)×(high_count 0-6) 조합별 회차 수, 상위 조합, 주변합, 평균.
+    - top_n: 1~49. 범위 초과 시 FastAPI가 자동으로 422를 반환한다 (REQ-CROSS-010).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0, REQ-CROSS-008).
+    """
+    from lotto.web import data as wd
+
+    return wd.get_cross_pattern_stats(wd.get_draws(), top_n=top_n)

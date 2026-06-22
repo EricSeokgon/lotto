@@ -409,6 +409,10 @@ _quartile_dist_cache: dict[str, Any] = {}
 # top_n에 따라 top_numbers가 달라지므로 캐시 키에 top_n을 포함한다.
 _position_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-106: 홀짝·고저 조합 매트릭스 캐시. 키는 f"{len(draws)}:{top_n}".
+# top_n에 따라 top_combinations 개수가 달라지므로 캐시 키에 top_n을 포함한다.
+_cross_pattern_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -514,6 +518,7 @@ def invalidate_cache() -> None:
     _zone_coverage_cache.clear()
     _quartile_dist_cache.clear()
     _position_cache.clear()  # SPEC-LOTTO-105: 위치별 분포 캐시 무효화
+    _cross_pattern_cache.clear()  # SPEC-LOTTO-106: 조합 매트릭스 캐시 무효화
 
 
 def interpolate_color(t: float) -> str:
@@ -9372,4 +9377,133 @@ def get_position_distribution(
         "disclaimer": _POSITION_DISCLAIMER,
     }
     _position_cache[cache_key] = result
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-106: 홀짝·고저 조합 매트릭스 분석
+# ---------------------------------------------------------------------------
+
+# REQ-CROSS-001: 고번호 경계 — 번호 > 23(24~45)이 고번호.
+_CROSS_HIGH_THRESHOLD = 23
+# REQ-CROSS-003: 본번호 6개 기준 odd_count/high_count 범위는 0~6.
+_CROSS_AXIS_MAX = 6
+
+_CROSS_DISCLAIMER = (
+    "본 분석은 과거 당첨 데이터의 홀짝·고저 결합 분포를 통계적으로 관찰하기 위한 "
+    "참고 자료이며, 미래 당첨 번호의 예측력을 보장하지 않습니다. 로또는 매 회차 "
+    "독립적인 무작위 추첨입니다."
+)
+
+
+def _empty_cross_matrix() -> dict[str, int]:
+    """49개(7×7) 키를 0으로 채운 교차 매트릭스를 생성한다."""
+    return {
+        f"odd_{i}_high_{j}": 0
+        for i in range(_CROSS_AXIS_MAX + 1)
+        for j in range(_CROSS_AXIS_MAX + 1)
+    }
+
+
+def _empty_cross_marginal() -> dict[str, int]:
+    """0~6 키를 0으로 채운 주변합 매핑을 생성한다."""
+    return {str(i): 0 for i in range(_CROSS_AXIS_MAX + 1)}
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-106 — 홀짝·고저 조합 매트릭스 분석 공개 함수
+# @MX:SPEC: SPEC-LOTTO-106 REQ-CROSS-001
+def get_cross_pattern_stats(
+    draws: list[DrawResult] | None,
+    top_n: int = 10,
+) -> dict[str, Any]:
+    """본번호 6개의 홀수 개수×고번호(>23) 개수 교차 빈도 매트릭스를 분석한다.
+
+    각 회차에 대해 odd_count(홀수 개수 0~6)와 high_count(고번호 개수 0~6)를 구하고,
+    (odd_count, high_count) 조합별 회차 수를 49개(7×7) 매트릭스로 집계한다. 상위 빈도
+    조합(top_combinations), 각 축의 주변합(marginal_odd/high), 평균(avg_odd/high)을 함께
+    제공한다. 기존 홀짝·고저 분석과 달리 두 축의 결합 분포를 하나로 본다(코어 모듈 불변).
+
+    Args:
+        draws: 추첨 결과 리스트. None/빈 리스트면 0 채움 결과를 반환한다.
+        top_n: 상위 조합 개수 (기본 10). 라우트에서 1~49로 검증된다.
+
+    Returns:
+        {
+          "total_draws", "top_n",
+          "matrix": {"odd_{i}_high_{j}": int, ...} (49개),
+          "top_combinations": [{odd_count, high_count, count, pct}, ...],
+          "marginal_odd": {"0":int, ..., "6":int},
+          "marginal_high": {"0":int, ..., "6":int},
+          "avg_odd": float, "avg_high": float,
+          "disclaimer": "..."
+        }
+    """
+    # 프로세스 수명 캐시 — invalidate_cache로 무효화(conftest autouse fixture가 호출).
+    cache_key = f"{0 if not draws else len(draws)}:{top_n}"
+    cached: dict[str, Any] | None = _cross_pattern_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    # REQ-CROSS-008: None/빈 데이터 가드 — 0 채움 구조 반환.
+    if not draws:
+        empty_result = {
+            "total_draws": 0,
+            "top_n": top_n,
+            "matrix": _empty_cross_matrix(),
+            "top_combinations": [],
+            "marginal_odd": _empty_cross_marginal(),
+            "marginal_high": _empty_cross_marginal(),
+            "avg_odd": 0.0,
+            "avg_high": 0.0,
+            "disclaimer": _CROSS_DISCLAIMER,
+        }
+        _cross_pattern_cache[cache_key] = empty_result
+        return empty_result
+
+    total_draws = len(draws)
+
+    matrix = _empty_cross_matrix()
+    marginal_odd = _empty_cross_marginal()
+    marginal_high = _empty_cross_marginal()
+    odd_sum = 0
+    high_sum = 0
+    # REQ-CROSS-002/003: 회차별 odd_count·high_count 집계.
+    # numbers()는 메서드 호출이며 오름차순 본번호 6개를 반환한다(보너스 제외).
+    for draw in draws:
+        nums = draw.numbers()
+        odd_count = sum(1 for n in nums if n % 2 == 1)
+        high_count = sum(1 for n in nums if n > _CROSS_HIGH_THRESHOLD)
+        matrix[f"odd_{odd_count}_high_{high_count}"] += 1
+        marginal_odd[str(odd_count)] += 1
+        marginal_high[str(high_count)] += 1
+        odd_sum += odd_count
+        high_sum += high_count
+
+    # REQ-CROSS-004: 빈도 상위 top_n 조합. count desc, 동률은 odd asc → high asc.
+    combos = [
+        {
+            "odd_count": i,
+            "high_count": j,
+            "count": matrix[f"odd_{i}_high_{j}"],
+            "pct": round(matrix[f"odd_{i}_high_{j}"] / total_draws * 100, 2),
+        }
+        for i in range(_CROSS_AXIS_MAX + 1)
+        for j in range(_CROSS_AXIS_MAX + 1)
+        if matrix[f"odd_{i}_high_{j}"] > 0
+    ]
+    combos.sort(key=lambda c: (-c["count"], c["odd_count"], c["high_count"]))
+    top_combinations = combos[:top_n]
+
+    result = {
+        "total_draws": total_draws,
+        "top_n": top_n,
+        "matrix": matrix,
+        "top_combinations": top_combinations,
+        "marginal_odd": marginal_odd,
+        "marginal_high": marginal_high,
+        "avg_odd": round(odd_sum / total_draws, 2),
+        "avg_high": round(high_sum / total_draws, 2),
+        "disclaimer": _CROSS_DISCLAIMER,
+    }
+    _cross_pattern_cache[cache_key] = result
     return result

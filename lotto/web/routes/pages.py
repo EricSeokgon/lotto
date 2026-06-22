@@ -1935,3 +1935,27 @@ async def position_page(
         "result": result,
         "top_n": top_n,
     })
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-106 — 홀짝·고저 조합 매트릭스 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-106 REQ-CROSS-011
+@router.get("/stats/cross-pattern")
+async def cross_pattern_page(
+    request: Request,
+    top_n: int = Query(default=10, ge=1, le=49),
+) -> TemplateResponse:
+    """조합 매트릭스 페이지 — 홀짝 개수×고번호(>23) 개수 7×7 교차 빈도 (SPEC-LOTTO-106).
+
+    - 7×7 매트릭스 테이블, 상위 조합 강조, 주변합 행/열, top_n 선택기(5/10/20), disclaimer.
+    - top_n 쿼리로 상위 조합 개수를 조정한다 (REQ-CROSS-010, 서버 렌더링·JS 비의존).
+    - 데이터 부재 시에도 200 (빈 상태를 자연스럽게 렌더링).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    result = wd.get_cross_pattern_stats(wd.get_draws(), top_n=top_n)
+    return _render(request, "cross_pattern.html", {
+        "active_tab": "cross_pattern",
+        "result": result,
+        "top_n": top_n,
+    })

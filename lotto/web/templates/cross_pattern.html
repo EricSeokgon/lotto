@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-106: 홀짝·고저 조합 매트릭스 분석 — odd_count(0~6)×high_count(0~6) 7×7 교차 빈도 (서버 렌더링, JS 비의존) #}
+{% block content %}
+{# 상위 조합 키 집합 — 매트릭스 셀 강조용 #}
+{% set top_keys = [] %}
+{% for c in result.top_combinations %}{% set _ = top_keys.append('odd_' ~ c.odd_count ~ '_high_' ~ c.high_count) %}{% endfor %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">조합 매트릭스 (홀짝·고저)</h2>
+    </div>
+
+    <p class="text-sm text-muted dark:text-gray-400">
+        각 회차 본번호 6개의 홀수 개수(odd, 0~6)와 고번호(번호 &gt; 23, 24~45) 개수(high, 0~6)를
+        동시에 집계한 7×7 교차 빈도 매트릭스입니다. 두 축의 결합 분포로 회차별 번호 구성 패턴을 관찰합니다.
+        {{ result.disclaimer }}
+    </p>
+
+    {# top_n 선택기 — 5/10/20 프리셋 (서버 렌더링 폼, GET) #}
+    <form method="get" class="flex items-center gap-3">
+        <label for="top_n" class="text-sm text-muted dark:text-gray-400">상위 조합</label>
+        <select id="top_n" name="top_n" onchange="this.form.submit()"
+            class="border border-border dark:border-gray-700 rounded px-2 py-1 text-sm bg-card dark:bg-gray-800 text-ink dark:text-gray-100">
+            <option value="5"{% if top_n == 5 %} selected{% endif %}>상위 5개</option>
+            <option value="10"{% if top_n == 10 %} selected{% endif %}>상위 10개</option>
+            <option value="20"{% if top_n == 20 %} selected{% endif %}>상위 20개</option>
+            {% if top_n not in [5, 10, 20] %}
+            <option value="{{ top_n }}" selected>상위 {{ top_n }}개</option>
+            {% endif %}
+        </select>
+        <noscript><button type="submit" class="text-sm border border-border dark:border-gray-700 rounded px-3 py-1">적용</button></noscript>
+    </form>
+
+    {% if result.total_draws == 0 %}
+    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
+        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+    </div>
+    {% else %}
+    {# 요약 카드 #}
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">총 회차</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ result.total_draws }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">평균 홀수 개수</p>
+            <p class="text-xl font-bold text-data-blue dark:text-data-muted">{{ result.avg_odd }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">평균 고번호 개수</p>
+            <p class="text-xl font-bold text-data-blue dark:text-data-muted">{{ result.avg_high }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">상위 조합</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ result.top_combinations | length }}개</p>
+        </div>
+    </div>
+
+    {# 7×7 교차 매트릭스 테이블 (행=홀수 개수, 열=고번호 개수). 상위 조합 셀은 강조. #}
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700 overflow-x-auto">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-1">교차 빈도 매트릭스</h3>
+        <p class="text-xs text-muted dark:text-gray-400 mb-3">행 = 홀수 개수(odd) · 열 = 고번호 개수(high) · 강조 셀 = 상위 조합</p>
+        <table class="min-w-full text-sm text-center">
+            <thead>
+                <tr class="text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="px-3 py-2 text-left">홀수＼고저</th>
+                    {% for j in range(7) %}
+                    <th class="px-3 py-2">고{{ j }}</th>
+                    {% endfor %}
+                    <th class="px-3 py-2 font-semibold">합계</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in range(7) %}
+                <tr class="border-b border-border/50 dark:border-gray-700/50">
+                    <td class="px-3 py-2 text-left font-semibold text-ink dark:text-gray-100">홀{{ i }}</td>
+                    {% for j in range(7) %}
+                    {% set key = 'odd_' ~ i ~ '_high_' ~ j %}
+                    {% set val = result.matrix[key] %}
+                    {% if key in top_keys %}
+                    <td class="px-3 py-2 font-bold bg-data-blue/15 text-data-blue dark:bg-data-muted/15 dark:text-data-muted rounded">{{ val }}</td>
+                    {% elif val > 0 %}
+                    <td class="px-3 py-2 text-ink dark:text-gray-200">{{ val }}</td>
+                    {% else %}
+                    <td class="px-3 py-2 text-muted/40 dark:text-gray-600">·</td>
+                    {% endif %}
+                    {% endfor %}
+                    <td class="px-3 py-2 font-semibold text-ink dark:text-gray-100">{{ result.marginal_odd[i | string] }}</td>
+                </tr>
+                {% endfor %}
+                {# 주변합 행 (열 합계 = 고번호 개수별 빈도) #}
+                <tr class="border-t-2 border-border dark:border-gray-700">
+                    <td class="px-3 py-2 text-left font-semibold text-ink dark:text-gray-100">합계</td>
+                    {% for j in range(7) %}
+                    <td class="px-3 py-2 font-semibold text-ink dark:text-gray-100">{{ result.marginal_high[j | string] }}</td>
+                    {% endfor %}
+                    <td class="px-3 py-2 font-bold text-ink dark:text-gray-100">{{ result.total_draws }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    {# 상위 조합 목록 #}
+    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700 overflow-x-auto">
+        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">상위 조합 (상위 {{ result.top_n }})</h3>
+        <table class="min-w-full text-sm">
+            <thead>
+                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
+                    <th class="px-3 py-2">순위</th>
+                    <th class="px-3 py-2">홀수 개수</th>
+                    <th class="px-3 py-2">고번호 개수</th>
+                    <th class="px-3 py-2">횟수</th>
+                    <th class="px-3 py-2">비율</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in result.top_combinations %}
+                <tr class="border-b border-border/50 dark:border-gray-700/50">
+                    <td class="px-3 py-2 text-muted dark:text-gray-400">{{ loop.index }}</td>
+                    <td class="px-3 py-2 font-semibold text-ink dark:text-gray-100">홀 {{ c.odd_count }}개</td>
+                    <td class="px-3 py-2 font-semibold text-ink dark:text-gray-100">고 {{ c.high_count }}개</td>
+                    <td class="px-3 py-2 text-ink dark:text-gray-200">{{ c.count }}회</td>
+                    <td class="px-3 py-2 text-data-blue dark:text-data-muted">{{ c.pct }}%</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="px-3 py-4 text-center text-muted dark:text-gray-500">조합 데이터가 없습니다.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+
+    <p class="text-xs text-muted dark:text-gray-500">{{ result.disclaimer }}</p>
+</div>
+{% endblock %}
