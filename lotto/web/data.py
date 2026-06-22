@@ -14,6 +14,7 @@ import logging
 import math
 import os
 import random
+import statistics
 import tempfile
 
 # SPEC-LOTTO-045: 명시적 재노출(redundant-alias). 테스트가 모듈 네임스페이스
@@ -404,6 +405,10 @@ _ZONE_COV_KEYS = ["1", "2", "3", "4", "5", "6"]
 # SPEC-LOTTO-099: 번호 사분위 분포 캐시. invalidate_cache로 무효화.
 _quartile_dist_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-105: 번호 위치별 분포 캐시. 키는 f"{len(draws)}:{top_n}".
+# top_n에 따라 top_numbers가 달라지므로 캐시 키에 top_n을 포함한다.
+_position_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -508,6 +513,7 @@ def invalidate_cache() -> None:
     _gap_median_dist_cache.clear()
     _zone_coverage_cache.clear()
     _quartile_dist_cache.clear()
+    _position_cache.clear()  # SPEC-LOTTO-105: 위치별 분포 캐시 무효화
 
 
 def interpolate_color(t: float) -> str:
@@ -9231,3 +9237,139 @@ def get_recency_analysis(
         "recent": recent,
         "disclaimer": _RECENCY_DISCLAIMER,
     }
+
+
+# ─── SPEC-LOTTO-105: 번호 위치별 분포(position distribution) 분석 ──────────────
+# SPEC-LOTTO-105 REQ-POS-... : 정렬된 본번호의 위치(1~6)별 통계 요약.
+# 회고 분석임을 명시하는 면책 고지 (도박사의 오류 경계).
+_POSITION_DISCLAIMER = (
+    "이 분석은 과거 회차의 정렬된 당첨번호에 대한 회고적 위치 분포 요약이며 "
+    "미래 출현을 예측하지 않습니다. 특정 위치에 작은/큰 수가 자주 나왔다는 사실이 "
+    "다음 회차의 선택을 정당화하지 않습니다."
+)
+
+# SPEC-LOTTO-105 REQ-POS-003: 본번호는 6개이므로 위치 인덱스는 0~5 고정.
+_POSITION_COUNT = 6
+
+
+def _empty_position_item(position: int) -> dict[str, Any]:
+    """REQ-POS-014: 빈/None 입력 시 한 위치의 0 채움 항목을 생성한다."""
+    return {
+        "position": position,
+        "avg": 0.0,
+        "median": 0.0,
+        "min_ever": 0,
+        "max_ever": 0,
+        "std": 0.0,
+        "top_numbers": [],
+    }
+
+
+def _build_position_item(
+    position: int,
+    values: list[int],
+    total_draws: int,
+    top_n: int,
+) -> dict[str, Any]:
+    """한 위치의 관측 번호 리스트로부터 위치 통계 항목을 생성한다.
+
+    REQ-POS-006: avg/median/std는 소수 2자리 반올림.
+    REQ-POS-007/008: top_numbers는 빈도 내림차순·동률 작은 번호 우선, pct 계산.
+    표본이 1개면 표본 표준편차 계산 불가 → std=0.0.
+    """
+    avg = round(sum(values) / len(values), 2)
+    median = round(statistics.median(values), 2)
+    # statistics.stdev는 표본 1개에서 StatisticsError를 던지므로 분기한다.
+    std = round(statistics.stdev(values), 2) if len(values) > 1 else 0.0
+
+    # 빈도 집계 후 (빈도 내림차순, 번호 오름차순)으로 정렬해 상위 top_n개 선택.
+    counts = Counter(values)
+    ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))[:top_n]
+    top_numbers = [
+        {
+            "number": number,
+            "count": count,
+            "pct": round(count / total_draws * 100, 2),
+        }
+        for number, count in ordered
+    ]
+
+    return {
+        "position": position,
+        "avg": avg,
+        "median": median,
+        "min_ever": min(values),
+        "max_ever": max(values),
+        "std": std,
+        "top_numbers": top_numbers,
+    }
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-105 — 위치별 분포 분석 단일 진입점
+# @MX:REASON: /api/stats/position 과 /stats/position 양쪽에서 호출됨
+# @MX:SPEC: SPEC-LOTTO-105 REQ-POS-001
+def get_position_distribution(
+    draws: list[DrawResult] | None,
+    top_n: int = 5,
+) -> dict[str, Any]:
+    """정렬된 본번호의 위치(1~6)별 평균·중앙값·최소·최대·표준편차·최빈 번호를 분석한다.
+
+    기존 number_stats(SPEC-LOTTO-030)의 by_position(번호 중심: 특정 번호가 각
+    위치에 나온 횟수)과는 집계 축이 다른 별개 기능이다. 본 함수는 위치를 고정하고
+    그 위치에 나타난 번호들의 분포를 통계 요약한다(위치 중심). number_stats를
+    호출·수정하지 않는다.
+
+    Args:
+        draws: 추첨 결과 리스트. None/빈 리스트면 0 채움 결과를 반환한다.
+        top_n: 위치별 최빈 번호 개수 (기본 5). 라우트에서 1~45로 검증된다.
+
+    Returns:
+        {
+          "total_draws", "top_n",
+          "positions": [{position, avg, median, min_ever,
+                         max_ever, std, top_numbers}, ...] (6개),
+          "disclaimer": "..."
+        }
+    """
+    # NFR-POS-006: f"{len(draws)}:{top_n}" 캐시 키로 프로세스 수명 캐시 재사용.
+    cache_key = f"{0 if not draws else len(draws)}:{top_n}"
+    cached: dict[str, Any] | None = _position_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    # REQ-POS-014: None/빈 데이터 가드 — 6개 위치를 0으로 채운다.
+    if not draws:
+        empty_result = {
+            "total_draws": 0,
+            "top_n": top_n,
+            "positions": [
+                _empty_position_item(pos) for pos in range(1, _POSITION_COUNT + 1)
+            ],
+            "disclaimer": _POSITION_DISCLAIMER,
+        }
+        _position_cache[cache_key] = empty_result
+        return empty_result
+
+    total_draws = len(draws)
+
+    # REQ-POS-002/003: 본번호(numbers())만 오름차순 정렬해 위치 인덱스로 펼친다.
+    # numbers()는 메서드 호출이며 이미 오름차순 정렬된 본번호 6개를 반환한다.
+    position_values: list[list[int]] = [[] for _ in range(_POSITION_COUNT)]
+    for draw in draws:
+        sorted_numbers = sorted(draw.numbers())  # 방어적 재정렬 (보너스 제외)
+        for idx in range(_POSITION_COUNT):
+            position_values[idx].append(sorted_numbers[idx])
+
+    positions = [
+        _build_position_item(idx + 1, position_values[idx], total_draws, top_n)
+        for idx in range(_POSITION_COUNT)
+    ]
+
+    result = {
+        "total_draws": total_draws,
+        "top_n": top_n,
+        "positions": positions,
+        "disclaimer": _POSITION_DISCLAIMER,
+    }
+    _position_cache[cache_key] = result
+    return result

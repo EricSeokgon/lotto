@@ -1911,3 +1911,27 @@ async def recency_page(
         "analysis": analysis,
         "top_n": top_n,
     })
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-105 — 번호 위치별 분포 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-105 REQ-POS-011
+@router.get("/stats/position")
+async def position_page(
+    request: Request,
+    top_n: int = Query(default=5, ge=1, le=45),
+) -> TemplateResponse:
+    """위치별 분포 분석 페이지 — 위치(1~6)별 avg/median/min/max/std/최빈 번호 (SPEC-LOTTO-105).
+
+    - 6개 위치 테이블, top_n 선택기(3/5/10), disclaimer 노출 (서버 렌더링, JS 비의존).
+    - top_n 쿼리로 위치별 최빈 번호 개수를 조정한다 (REQ-POS-012).
+    - 데이터 부재 시에도 200 (빈 상태를 자연스럽게 렌더링).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    result = wd.get_position_distribution(wd.get_draws(), top_n=top_n)
+    return _render(request, "position_distribution.html", {
+        "active_tab": "position",
+        "result": result,
+        "top_n": top_n,
+    })

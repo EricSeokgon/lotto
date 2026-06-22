@@ -3341,3 +3341,25 @@ async def recency_analysis_route(
     from lotto.web import data as wd
 
     return wd.get_recency_analysis(wd.get_draws(), top_n=top_n)
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-105 — 번호 위치별 분포 분석 공개 API
+# @MX:SPEC: SPEC-LOTTO-105 REQ-POS-010
+@router.get("/stats/position")
+async def position_distribution_route(
+    top_n: int = Query(
+        default=5,
+        ge=1,
+        le=45,
+        description="위치별 최빈 번호 개수 (1~45, 기본 5)",
+    ),
+) -> dict[str, Any]:
+    """정렬된 본번호의 위치(1~6)별 통계 요약을 반환합니다 (SPEC-LOTTO-105).
+
+    - 위치별 평균·중앙값·최소·최대·표준편차·최빈 번호를 제공한다.
+    - top_n: 1~45. 범위 초과 시 FastAPI가 자동으로 422를 반환한다 (REQ-POS-015).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0, REQ-POS-014).
+    """
+    from lotto.web import data as wd
+
+    return wd.get_position_distribution(wd.get_draws(), top_n=top_n)
