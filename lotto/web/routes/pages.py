@@ -1982,3 +1982,25 @@ async def period_trend_page(
         "result": result,
         "top_n": top_n,
     })
+
+
+@router.get("/stats/monthly")
+async def monthly_distribution_page(
+    request: Request,
+    top_n: int = Query(default=5, ge=1, le=45),
+) -> TemplateResponse:
+    """월별 분포 페이지 — 추첨일의 달(1~12월) 기준 번호별 출현 분포 (SPEC-LOTTO-108).
+
+    - 12개월 요약(회차 수), 월별 상위 번호, 번호별 최빈 월, top_n 선택기(3/5/10), disclaimer.
+    - top_n 쿼리로 월별 상위 번호 개수를 조정한다 (REQ-MD-007, 서버 렌더링·JS 비의존).
+    - 데이터 부재 시에도 200 (빈 상태를 자연스럽게 렌더링).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    result = wd.get_monthly_distribution(wd.get_draws(), top_n=top_n)
+    return _render(request, "monthly_distribution.html", {
+        "active_tab": "monthly",
+        "result": result,
+        "top_n": top_n,
+    })

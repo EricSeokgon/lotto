@@ -417,6 +417,10 @@ _cross_pattern_cache: dict[str, Any] = {}
 # top_n에 따라 top_rising/top_falling 개수가 달라지므로 캐시 키에 top_n을 포함한다.
 _period_trend_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-108: 월별 출현 분포 캐시. 키는 f"{len(draws)}:{top_n}".
+# top_n에 따라 top_numbers_by_month 각 월 리스트 길이가 달라지므로 키에 top_n을 포함한다.
+_monthly_dist_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -524,6 +528,7 @@ def invalidate_cache() -> None:
     _position_cache.clear()  # SPEC-LOTTO-105: 위치별 분포 캐시 무효화
     _cross_pattern_cache.clear()  # SPEC-LOTTO-106: 조합 매트릭스 캐시 무효화
     _period_trend_cache.clear()  # SPEC-LOTTO-107: 기간별 추이 캐시 무효화
+    _monthly_dist_cache.clear()  # SPEC-LOTTO-108: 월별 분포 캐시 무효화
 
 
 def interpolate_color(t: float) -> str:
@@ -9682,4 +9687,184 @@ def get_period_trend(
         "disclaimer": _PERIOD_TREND_DISCLAIMER,
     }
     _period_trend_cache[cache_key] = result
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-108: 번호 월별 출현 분포 분석 (Monthly Distribution Analysis)
+# ---------------------------------------------------------------------------
+
+# REQ-MD-001/004: 월(1~12) → 약어. index 0 = 1월(Jan).
+_MONTH_NAMES = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+]
+_MONTHLY_NUMBER_MAX = 45  # 본번호 범위 1~45
+
+_MONTHLY_DIST_DISCLAIMER = (
+    "본 분석은 과거 당첨 데이터를 추첨일의 달(1~12월) 기준으로 그룹화하여 번호별 출현 "
+    "빈도를 통계적으로 관찰하기 위한 참고 자료이며, 미래 당첨 번호의 예측력을 보장하지 "
+    "않습니다. 로또는 매 회차 독립적인 무작위 추첨입니다."
+)
+
+
+def _empty_monthly_summary() -> list[dict[str, Any]]:
+    """월 1~12를 draw_count=0으로 채운 요약 리스트를 생성한다(index 0 = 1월)."""
+    return [
+        {"month": m, "month_name": _MONTH_NAMES[m - 1], "draw_count": 0}
+        for m in range(1, 13)
+    ]
+
+
+def _empty_top_numbers_by_month() -> dict[str, list[dict[str, Any]]]:
+    """월 "1"~"12"를 빈 리스트로 채운 매핑을 생성한다."""
+    return {str(m): [] for m in range(1, 13)}
+
+
+def _empty_top_months_by_number() -> list[dict[str, Any]]:
+    """번호 1~45를 best_month=0/0/0.0으로 채운 리스트를 생성한다(index 0 = 번호 1)."""
+    return [
+        {
+            "number": num,
+            "best_month": 0,
+            "best_month_count": 0,
+            "best_month_pct": 0.0,
+        }
+        for num in range(1, _MONTHLY_NUMBER_MAX + 1)
+    ]
+
+
+def _monthly_pct(count: int, draw_count: int) -> float:
+    """월 출현 횟수를 비율(%)로 변환한다. 회차 없는 월이면 0.0."""
+    if draw_count == 0:
+        return 0.0
+    return round(count / draw_count * 100, 2)
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-108 — 번호 월별 출현 분포 분석 공개 함수
+# @MX:REASON: API·페이지 두 라우트가 호출하는 진입점(fan_in>=2)이며 draw.date.month
+#             그룹화·정렬 규칙(count desc/number asc, 동률 시 작은 월)이 결과 계약의
+#             핵심 불변식이다.
+def get_monthly_distribution(
+    draws: list[DrawResult] | None,
+    top_n: int = 5,
+) -> dict[str, Any]:
+    """추첨일의 달(1~12월)을 축으로 번호(1~45)의 출현 빈도를 분석한다.
+
+    `draw.date.month`(속성, 1=1월 … 12=12월)로 회차를 월별 그룹화하고, 각 월에서
+    번호별 출현 횟수·비율을 집계한다. 회차 인덱스 기준(rolling/period_trend)이 아니라
+    달력 기반 주기성을 본다(코어 모듈 불변).
+
+    Args:
+        draws: 추첨 결과 리스트. None/빈 리스트면 0 채움 구조를 반환한다.
+        top_n: 월별 상위 번호 개수 (기본 5). 라우트에서 1~45로 검증된다.
+
+    Returns:
+        {
+          "total_draws", "top_n",
+          "monthly_summary": [{month, month_name, draw_count}, ...] (12개, index0=1월),
+          "top_numbers_by_month": {"1": [{number, count, pct}, ...], ..., "12": [...]},
+          "top_months_by_number": [{number, best_month, best_month_count,
+                                     best_month_pct}, ...] (45개),
+          "disclaimer": "..."
+        }
+    """
+    # 프로세스 수명 캐시 — invalidate_cache로 무효화(conftest autouse fixture가 호출).
+    cache_key = f"{0 if not draws else len(draws)}:{top_n}"
+    cached: dict[str, Any] | None = _monthly_dist_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    # REQ-MD-005/012: None/빈 데이터 가드 — 0 채움 구조 반환.
+    if not draws:
+        empty_result = {
+            "total_draws": 0,
+            "top_n": top_n,
+            "monthly_summary": _empty_monthly_summary(),
+            "top_numbers_by_month": _empty_top_numbers_by_month(),
+            "top_months_by_number": _empty_top_months_by_number(),
+            "disclaimer": _MONTHLY_DIST_DISCLAIMER,
+        }
+        _monthly_dist_cache[cache_key] = empty_result
+        return empty_result
+
+    total_draws = len(draws)
+
+    # REQ-MD-001: 월별 회차 수와 월별 번호 카운트 누적.
+    # month_draw_count[m] = 월 m(1~12)의 회차 수.
+    # month_number_counts[m] = 월 m의 번호별 출현 횟수 리스트(index 0 = 번호 1).
+    month_draw_count = dict.fromkeys(range(1, 13), 0)
+    month_number_counts = {
+        m: [0] * _MONTHLY_NUMBER_MAX for m in range(1, 13)
+    }
+    for draw in draws:
+        # draw.date.month는 속성 접근(int, 1~12). numbers()는 메서드 호출(본번호 6개).
+        month = draw.date.month
+        month_draw_count[month] += 1
+        for n in draw.numbers():
+            month_number_counts[month][n - 1] += 1
+
+    # REQ-MD-004: monthly_summary(12개, index 0 = 1월).
+    monthly_summary = [
+        {
+            "month": m,
+            "month_name": _MONTH_NAMES[m - 1],
+            "draw_count": month_draw_count[m],
+        }
+        for m in range(1, 13)
+    ]
+
+    # REQ-MD-002/009: 월별 상위 top_n 번호 — count desc, 동률은 number asc.
+    #                 출현 없는(count=0) 번호는 제외한다.
+    top_numbers_by_month: dict[str, list[dict[str, Any]]] = {}
+    for m in range(1, 13):
+        draw_count = month_draw_count[m]
+        counts = month_number_counts[m]
+        appeared = [
+            {
+                "number": idx + 1,
+                "count": counts[idx],
+                "pct": _monthly_pct(counts[idx], draw_count),
+            }
+            for idx in range(_MONTHLY_NUMBER_MAX)
+            if counts[idx] > 0
+        ]
+        appeared.sort(key=lambda x: (-x["count"], x["number"]))
+        top_numbers_by_month[str(m)] = appeared[:top_n]
+
+    # REQ-MD-003/011: 번호별 최빈 월 — count 최대 월(동률 시 가장 작은 월).
+    #                 미출현 번호는 best_month=0.
+    top_months_by_number: list[dict[str, Any]] = []
+    for idx in range(_MONTHLY_NUMBER_MAX):
+        best_month = 0
+        best_count = 0
+        # 월 1~12 오름차순 순회 — 더 큰 count일 때만 갱신하므로 동률은 작은 월이 유지된다.
+        for m in range(1, 13):
+            count = month_number_counts[m][idx]
+            if count > best_count:
+                best_count = count
+                best_month = m
+        best_pct = (
+            _monthly_pct(best_count, month_draw_count[best_month])
+            if best_month != 0
+            else 0.0
+        )
+        top_months_by_number.append(
+            {
+                "number": idx + 1,
+                "best_month": best_month,
+                "best_month_count": best_count,
+                "best_month_pct": best_pct,
+            }
+        )
+
+    result = {
+        "total_draws": total_draws,
+        "top_n": top_n,
+        "monthly_summary": monthly_summary,
+        "top_numbers_by_month": top_numbers_by_month,
+        "top_months_by_number": top_months_by_number,
+        "disclaimer": _MONTHLY_DIST_DISCLAIMER,
+    }
+    _monthly_dist_cache[cache_key] = result
     return result

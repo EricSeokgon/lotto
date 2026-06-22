@@ -3406,3 +3406,25 @@ async def period_trend_route(
     from lotto.web import data as wd
 
     return wd.get_period_trend(wd.get_draws(), top_n=top_n)
+
+
+@router.get("/stats/monthly")
+async def monthly_distribution_route(
+    top_n: int = Query(
+        default=5,
+        ge=1,
+        le=45,
+        description="월별 상위 번호 개수 (1~45, 기본 5)",
+    ),
+) -> dict[str, Any]:
+    """추첨일의 달(1~12월) 기준 번호별 출현 분포를 반환합니다 (SPEC-LOTTO-108).
+
+    - draw.date.month로 회차를 월별 그룹화하여 번호 1~45의 월별 출현 횟수·비율,
+      월별 상위 top_n 번호(top_numbers_by_month), 번호별 최빈 월(top_months_by_number),
+      12개월 요약(monthly_summary)을 산출한다.
+    - top_n: 1~45. 범위 초과 시 FastAPI가 자동으로 422를 반환한다 (REQ-MD-006).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0, REQ-MD-005/012).
+    """
+    from lotto.web import data as wd
+
+    return wd.get_monthly_distribution(wd.get_draws(), top_n=top_n)
