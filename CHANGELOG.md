@@ -6,6 +6,29 @@
 
 ---
 
+## [1.66.0] - 2026-06-22
+
+### Added
+- SPEC-LOTTO-106: 홀짝·고저 조합 매트릭스 분석 (Odd-Even × High-Low Cross Matrix Analysis)
+  - 각 회차 본번호 6개의 홀수 개수(odd_count, 0~6)와 고번호(번호 > 23, 24~45) 개수(high_count, 0~6)를
+    동시에 집계해 (odd_count, high_count) 2차원 교차 빈도 매트릭스를 생성하는 기능
+  - `lotto/web/data.py`: `get_cross_pattern_stats()` 함수 추가 (@MX:NOTE)
+    - matrix: 49개(7×7) `"odd_{i}_high_{j}"` 조합별 회차 수
+    - top_combinations: 빈도 상위 top_n 조합 (count 내림차순, 동률 시 odd_count→high_count 오름차순, pct 포함)
+    - marginal_odd / marginal_high: 각 축(0~6)의 주변 빈도
+    - avg_odd / avg_high: 전체 회차 평균 홀수·고번호 개수 (소수 2자리)
+    - 빈/None 입력 시 0 채움 구조 반환, 결정적 결과, 면책 고지(disclaimer) 포함
+  - `GET /api/stats/cross-pattern?top_n=10`: 교차 패턴 분석 API (top_n 범위 1~49, 위반 시 HTTP 422)
+  - `GET /stats/cross-pattern`: 조합 매트릭스 웹 페이지 (`cross_pattern.html`)
+    - 7×7 매트릭스 테이블(행=홀수 개수, 열=고번호 개수), 상위 조합 셀 강조, 주변합 행/열
+    - top_n 선택기 (5/10/20 프리셋), 서버 렌더링 기반 (JS 비의존), 다크모드 지원
+  - `base.html` 내비게이션에 "조합 매트릭스" 탭 추가 (`/stats/cross-pattern`, tab=`cross_pattern`)
+  - 기존 홀짝(odd-even)·고저(high-low) 단일 축 분석과 달리 두 축의 결합 분포를 하나의 매트릭스로 제시 — 별개 기능
+  - Python 3.9 호환 (match/case·zip strict 미사용), `draw.numbers()` 메서드 호출, 코어 모듈 불변
+  - 테스트 22개 추가 (2930 → 2952)
+
+---
+
 ## [1.65.0] - 2026-06-22
 
 ### Added

@@ -1,7 +1,7 @@
 # 로또 번호 추천 프로그램
 
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue)](https://www.python.org/)
-[![Tests](https://img.shields.io/badge/Tests-2930-green)](./tests/)
+[![Tests](https://img.shields.io/badge/Tests-2952-green)](./tests/)
 [![Coverage](https://img.shields.io/badge/Coverage-100%25-brightgreen)](#)
 
 통계 분석 기반의 로또 번호 추천 CLI 도구 및 웹 대시보드입니다. 동행복권 공식 데이터를 수집하여 다각적인 통계 분석을 수행하고, 가중치 기반 알고리즘으로 추천 번호를 생성합니다. 또한 과거 데이터에 대한 백테스팅으로 알고리즘의 유효성을 검증합니다.
@@ -30,6 +30,7 @@
 - **번호 간격 패턴 분석**: 인접 번호 간 간격(소·중·대) 분포, 최빈 간격 top 10, 위치별 평균 간격 분석, `/stats/gap` 페이지 및 JSON API
 - **번호 출현 주기 분석**: 1~45 각 번호의 마지막 출현 경과·출현 간격(평균/최대/최소) 통계 분석, overdue 상위 N 목록, 최근 회차 출현 배지, `/stats/recency` 페이지 및 JSON API
 - **번호 위치별 분포 분석**: 정렬된 당첨번호 6개의 위치(1~6번째)별 평균·중앙값·표준편차·역대 최솟/최댓값 및 상위 N 번호 통계, `/stats/position` 페이지 및 JSON API
+- **홀짝·고저 조합 매트릭스 분석**: 회차별 홀수 개수(0~6)×고번호(>23) 개수(0~6) 7×7 교차 빈도 매트릭스, 상위 조합·주변합·평균 통계, `/stats/cross-pattern` 페이지 및 JSON API
 - **AC(산술 복잡도) 분석**: 당첨 조합의 쌍별 차이 다양성 지표(AC 0~10) 분포·평균·고/저복잡도 비율 분석, `/stats/ac` 페이지 및 JSON API
 - **소수/합성수 분포 분석**: 본번호 6개 중 소수·합성수·숫자1 개수별 분포·평균·비율 분석, `/stats/prime` 페이지 및 JSON API
 - **웹 대시보드**: 브라우저 기반 대시보드 (FastAPI + Jinja2, 다크모드 지원)
@@ -111,6 +112,7 @@ http://localhost:8000 에서 확인 가능합니다.
 | `GET` | `/api/stats` | 통계 분석 결과 (보너스 빈도 포함) | — |
 | `GET` | `/api/stats/recency` | 번호 출현 주기·간격 분석 | `top_n` (1~45, 기본 10) |
 | `GET` | `/api/stats/position` | 번호 위치별 분포 통계 | `top_n` (1~45, 기본 5) |
+| `GET` | `/api/stats/cross-pattern` | 홀짝·고저 조합 매트릭스 통계 | `top_n` (1~49, 기본 10) |
 | `GET` | `/api/recommendations` | 번호 추천 목록 | `count`, `strategy` |
 | `GET` | `/api/simulation` | 시뮬레이션 결과 | `rounds` |
 | `GET` | `/api/report/pdf` | PDF 리포트 다운로드 | — |
