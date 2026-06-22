@@ -6,6 +6,32 @@
 
 ---
 
+## [1.64.0] - 2026-06-22
+
+### Added
+- SPEC-LOTTO-104: 번호 출현 주기 분석 (Number Recency / Interval Analysis)
+  - 한국 로또 6/45 본번호 1~45 각각에 대한 마지막 출현 경과 및 출현 간격 통계 분석 기능
+  - `lotto/web/data.py`: `get_recency_analysis()` 함수 추가 (@MX:ANCHOR)
+    - last_seen_ago: 가장 최근 회차 기준 각 번호의 마지막 출현 경과 회차 수 (최근=0, 미출현=None)
+    - avg_interval: 연속 출현 간격들의 산술평균 (출현 ≤1회면 None, round 소수 2자리)
+    - max_interval / min_interval: 출현 간격 표본의 최댓값/최솟값 (간격 없으면 None)
+    - appearance_count: 본번호로 등장한 총 횟수 (보너스 출현 미포함)
+    - overdue: last_seen_ago 내림차순 상위 top_n (미출현=None 최우선, 동률 시 작은 번호 우선)
+    - recent: 가장 최근 회차 본번호 6개 오름차순 목록
+    - 결정적 결과 보장, 면책 고지(disclaimer) 포함
+  - `GET /api/stats/recency?top_n=10`: 주기 분석 API (top_n 범위 1~45, 위반 시 HTTP 422)
+  - `GET /stats/recency`: 주기 분석 웹 페이지 (`recency_analysis.html`)
+    - 45번호 테이블 (번호 | last_seen_ago | avg_interval | max/min_interval | appearance_count)
+    - overdue 강조 + recent 배지 + top_n 선택기 (5/10/20 프리셋)
+    - last_seen_ago > avg_interval * 1.5 시각적 연체 강조 표시
+    - 서버 렌더링 기반 (핵심 테이블 JS 비의존)
+  - `base.html` 내비게이션에 "주기 분석" 탭 추가 (`/stats/recency`, tab=`recency`)
+  - SPEC-LOTTO-047 `cycle_analysis`(당첨 주기, /numbers/cycle)와 별개 공존: 간격 표본 평균(avg_interval) vs 비율 기반 추정치(avg_cycle) 차별화
+  - Python 3.9 호환 (match/case·zip strict 미사용), 코어 모듈 불변
+  - 테스트 37개 추가 (2865 → 2902)
+
+---
+
 ## [1.63.0] - 2026-06-18
 
 ### Added
