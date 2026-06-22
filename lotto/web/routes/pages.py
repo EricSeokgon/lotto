@@ -1887,3 +1887,27 @@ async def bonus_page(
         "analysis": analysis,
         "recent_n": recent_n,
     })
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-104 — 번호 출현 주기 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-104 REQ-REC-E03
+@router.get("/stats/recency")
+async def recency_page(
+    request: Request,
+    top_n: int = Query(default=10, ge=1, le=45),
+) -> TemplateResponse:
+    """번호 주기 분석 페이지 — last_seen_ago·간격(평균/최대/최소)·연체·최근 (SPEC-LOTTO-104).
+
+    - 45개 번호 테이블, overdue 강조, recent 배지, top_n 선택기
+    - top_n 쿼리로 연체 목록 크기를 조정한다 (REQ-REC-E04).
+    - 데이터 부재 시에도 200 (빈 상태를 자연스럽게 렌더링).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    analysis = wd.get_recency_analysis(wd.get_draws(), top_n=top_n)
+    return _render(request, "recency_analysis.html", {
+        "active_tab": "recency",
+        "analysis": analysis,
+        "top_n": top_n,
+    })

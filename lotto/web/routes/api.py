@@ -3320,3 +3320,24 @@ async def bonus_analysis_route(
     from lotto.web import data as wd
 
     return wd.get_bonus_analysis(wd.get_draws(), recent_n=recent_n)
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-104 — 번호 출현 주기 분석 공개 API
+# @MX:SPEC: SPEC-LOTTO-104 REQ-REC-E01
+@router.get("/stats/recency")
+async def recency_analysis_route(
+    top_n: int = Query(
+        default=10,
+        ge=1,
+        le=45,
+        description="연체(overdue) 상위 N (1~45, 기본 10)",
+    ),
+) -> dict[str, Any]:
+    """번호 1~45의 마지막 출현 경과·출현 간격 통계를 반환합니다 (SPEC-LOTTO-104).
+
+    - top_n: 1~45. 범위 초과 시 FastAPI가 자동으로 422를 반환한다 (REQ-REC-N01).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0, REQ-REC-S01).
+    """
+    from lotto.web import data as wd
+
+    return wd.get_recency_analysis(wd.get_draws(), top_n=top_n)

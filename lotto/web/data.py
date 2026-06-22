@@ -9092,3 +9092,142 @@ def get_bonus_analysis(
         "hot_cold": hot_cold,
         "disclaimer": _BONUS_DISCLAIMER,
     }
+
+
+# ─── SPEC-LOTTO-104: 번호 출현 주기(recency / interval) 분석 ──────────────────
+
+# SPEC-LOTTO-104 REQ-REC-N03: 회고 분석임을 명시하는 면책 고지 (도박사의 오류 경계)
+_RECENCY_DISCLAIMER = (
+    "이 분석은 과거 회차에 대한 회고 분석이며 미래 출현을 예측하지 않습니다. "
+    "오래 미출현한 번호가 곧 나올 확률이 높아지는 것은 아닙니다."
+)
+
+
+def _build_recency_number_item(
+    number: int,
+    occ_idx: list[int],
+    last_idx: int,
+) -> dict[str, Any]:
+    """한 번호의 출현 인덱스 리스트로부터 주기 통계 항목을 생성한다.
+
+    출현이 없으면 모든 통계는 None/0, 1회면 간격 통계만 None.
+    """
+    appearance_count = len(occ_idx)
+    if appearance_count == 0:
+        # REQ-REC-S01/U03: 미출현 → last_seen_ago=None, 간격 None
+        return {
+            "number": number,
+            "last_seen_ago": None,
+            "avg_interval": None,
+            "max_interval": None,
+            "min_interval": None,
+            "appearance_count": 0,
+        }
+
+    # REQ-REC-U03: 가장 최근 회차(last_idx) 기준 마지막 출현까지 경과 회차
+    last_seen_ago = last_idx - occ_idx[-1]
+
+    # REQ-REC-U04/U05: 연속 출현 사이 실제 간격 표본
+    gaps = [occ_idx[i + 1] - occ_idx[i] for i in range(appearance_count - 1)]
+    if gaps:
+        avg_interval: float | None = round(sum(gaps) / len(gaps), 2)
+        max_interval: int | None = max(gaps)
+        min_interval: int | None = min(gaps)
+    else:
+        # REQ-REC-S02: 1회 출현 → 간격 표본 없음 → None (0이 아님)
+        avg_interval = None
+        max_interval = None
+        min_interval = None
+
+    return {
+        "number": number,
+        "last_seen_ago": last_seen_ago,
+        "avg_interval": avg_interval,
+        "max_interval": max_interval,
+        "min_interval": min_interval,
+        "appearance_count": appearance_count,
+    }
+
+
+def _recency_overdue_key(item: dict[str, Any]) -> tuple[float, int]:
+    """overdue 정렬 키 — None(미출현)을 가장 연체된 것으로 취급 (Python 3.9 호환).
+
+    last_seen_ago 내림차순이 되도록 (-값, 번호) 오름차순 정렬 키를 만든다.
+    None은 math.inf로 환산해 최상단, 동률은 작은 번호 우선 (REQ-REC-U07).
+    """
+    last = item["last_seen_ago"]
+    val = math.inf if last is None else float(last)
+    return (-val, item["number"])
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-104 — 번호 주기 분석 단일 진입점
+# @MX:REASON: /api/stats/recency 와 /stats/recency 양쪽에서 호출됨
+# @MX:SPEC: SPEC-LOTTO-104 REQ-REC-U01
+def get_recency_analysis(
+    draws: list[DrawResult] | None,
+    top_n: int = 10,
+) -> dict[str, Any]:
+    """번호 1~45의 마지막 출현 경과·출현 간격(평균/최대/최소) 통계를 분석한다.
+
+    SPEC-LOTTO-047 cycle_analysis와는 별개 기능이다. cycle_analysis는
+    avg_cycle = total_draws / appearances(비율 추정치)를 쓰지만, 본 함수는
+    avg_interval = mean(연속 출현 사이 실제 간격들)(간격 표본 평균)을 쓴다.
+    본 함수는 cycle_analysis를 호출·수정하지 않는다.
+
+    Args:
+        draws: 추첨 결과 리스트. None/빈 리스트면 None 채움 결과를 반환한다.
+        top_n: overdue 상위 N (기본 10). 라우트에서 1~45로 검증된다.
+
+    Returns:
+        {
+          "total_draws", "top_n",
+          "numbers": [{number, last_seen_ago, avg_interval,
+                       max_interval, min_interval, appearance_count}, ...] (45개),
+          "overdue": [...], "recent": [...], "disclaimer": "..."
+        }
+    """
+    # REQ-REC-S01: None/빈 데이터 가드 — 45개 항목을 None/0으로 채운다
+    if not draws:
+        empty_numbers = [
+            _build_recency_number_item(n, [], 0) for n in range(1, 46)
+        ]
+        return {
+            "total_draws": 0,
+            "top_n": top_n,
+            "numbers": empty_numbers,
+            "overdue": [],
+            "recent": [],
+            "disclaimer": _RECENCY_DISCLAIMER,
+        }
+
+    # REQ-REC-U03: 회차 오름차순 정렬로 인덱스 기준을 명시한다
+    sorted_draws = sorted(draws, key=lambda d: d.drwNo)
+    total_draws = len(sorted_draws)
+    last_idx = total_draws - 1
+
+    # REQ-REC-U06/N02: 본번호(numbers())만 단일 패스로 출현 인덱스 수집
+    occ_idx: dict[int, list[int]] = {n: [] for n in range(1, 46)}
+    for idx, draw in enumerate(sorted_draws):
+        for n in draw.numbers():  # numbers()는 메서드 (본번호만, 보너스 제외)
+            occ_idx[n].append(idx)
+
+    # REQ-REC-U02: 1~45 모든 항목을 번호 오름차순으로 생성
+    numbers = [
+        _build_recency_number_item(n, occ_idx[n], last_idx)
+        for n in range(1, 46)
+    ]
+
+    # REQ-REC-U07: overdue — None 최우선, last_seen_ago 내림차순, 동률 작은 번호
+    overdue = sorted(numbers, key=_recency_overdue_key)[:top_n]
+
+    # REQ-REC-U08: recent — 가장 최근 회차 본번호 (오름차순)
+    recent = list(sorted_draws[-1].numbers())
+
+    return {
+        "total_draws": total_draws,
+        "top_n": top_n,
+        "numbers": numbers,
+        "overdue": overdue,
+        "recent": recent,
+        "disclaimer": _RECENCY_DISCLAIMER,
+    }
