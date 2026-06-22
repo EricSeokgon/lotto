@@ -3430,6 +3430,28 @@ async def monthly_distribution_route(
     return wd.get_monthly_distribution(wd.get_draws(), top_n=top_n)
 
 
+@router.get("/stats/yearly")
+async def yearly_distribution_route(
+    top_n: int = Query(
+        default=5,
+        ge=1,
+        le=45,
+        description="연도별 상위 번호 개수 (1~45, 기본 5)",
+    ),
+) -> dict[str, Any]:
+    """추첨일의 연도(달력 연도) 기준 번호별 출현 분포를 반환합니다 (SPEC-LOTTO-110).
+
+    - draw.date.year로 회차를 연도별 그룹화하여 번호 1~45의 연도별 출현 횟수·비율,
+      연도별 상위 top_n 번호(top_numbers_by_year), 번호별 최빈 연도(top_years_by_number),
+      연도별 회차 수 요약(yearly_summary)을 산출한다.
+    - top_n: 1~45. 범위 초과 시 FastAPI가 자동으로 422를 반환한다 (REQ-YD-008).
+    - 데이터 부재 시에도 200 으로 정상 응답 (total_draws=0, REQ-YD-006).
+    """
+    from lotto.web import data as wd
+
+    return wd.get_yearly_distribution(wd.get_draws(), top_n=top_n)
+
+
 @router.get("/stats/gap-distribution")
 async def gap_distribution_route() -> dict[str, Any]:
     """번호별 연속 출현 간격(drwNo 차이)의 상세 분포를 반환합니다 (SPEC-LOTTO-109).

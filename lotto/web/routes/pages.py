@@ -2006,6 +2006,29 @@ async def monthly_distribution_page(
     })
 
 
+@router.get("/stats/yearly")
+async def yearly_distribution_page(
+    request: Request,
+    top_n: int = Query(default=5, ge=1, le=45),
+) -> TemplateResponse:
+    """연도별 분포 페이지 — 추첨일의 연도(달력 연도) 기준 번호별 출현 분포 (SPEC-LOTTO-110).
+
+    - 연도별 요약(회차 수), 연도별 상위 번호, 번호별 최빈 연도, top_n 선택기(3/5/10),
+      disclaimer.
+    - top_n 쿼리로 연도별 상위 번호 개수를 조정한다 (REQ-YD-009, 서버 렌더링·JS 비의존).
+    - 데이터 부재 시에도 200 (빈 상태를 자연스럽게 렌더링).
+    """
+    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    from lotto.web import data as wd
+
+    result = wd.get_yearly_distribution(wd.get_draws(), top_n=top_n)
+    return _render(request, "yearly_distribution.html", {
+        "active_tab": "yearly",
+        "result": result,
+        "top_n": top_n,
+    })
+
+
 @router.get("/stats/gap-distribution")
 async def gap_distribution_page(request: Request) -> TemplateResponse:
     """간격 분포 페이지 — 번호별 연속 출현 간격(drwNo 차이) 상세 분포 (SPEC-LOTTO-109).

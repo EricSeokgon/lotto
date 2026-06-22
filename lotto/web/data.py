@@ -425,6 +425,10 @@ _monthly_dist_cache: dict[str, Any] = {}
 # 키는 회차 수만 사용한다(항상 45개 번호 전부 반환).
 _gap_dist_cache: dict[str, Any] = {}
 
+# SPEC-LOTTO-110: 번호 연도별 출현 분포 캐시. 키는 f"{len(draws)}:{top_n}".
+# top_n에 따라 top_numbers_by_year 각 연도 리스트 길이가 달라지므로 키에 top_n을 포함한다.
+_yearly_dist_cache: dict[str, Any] = {}
+
 
 def invalidate_cache() -> None:
     """get_draws/get_stats/백테스트/동시출현/롤링의 메모리 캐시를 비웁니다.
@@ -534,6 +538,7 @@ def invalidate_cache() -> None:
     _period_trend_cache.clear()  # SPEC-LOTTO-107: 기간별 추이 캐시 무효화
     _monthly_dist_cache.clear()  # SPEC-LOTTO-108: 월별 분포 캐시 무효화
     _gap_dist_cache.clear()  # SPEC-LOTTO-109: 간격 분포 캐시 무효화
+    _yearly_dist_cache.clear()  # SPEC-LOTTO-110: 연도별 분포 캐시 무효화
 
 
 def interpolate_color(t: float) -> str:
@@ -9872,6 +9877,170 @@ def get_monthly_distribution(
         "disclaimer": _MONTHLY_DIST_DISCLAIMER,
     }
     _monthly_dist_cache[cache_key] = result
+    return result
+
+
+# ─── SPEC-LOTTO-110: 번호 연도별 출현 분포(yearly distribution) 분석 ───────────
+# draw.date.year(속성, int)로 회차를 달력 연도(2002~현재)별로 그룹화하여 각 연도에서
+# 번호(1~45)의 출현 횟수·비율을 집계한다. period_trend(107, 회차 인덱스 3등분)나
+# monthly(108, 달력 월 1~12 고정 버킷)와 달리 실제 달력 연도(가변 개수)를 축으로
+# 장기 추세를 본다. 세 기능은 절대 병합하지 않는다. 코어 모듈 불변.
+_YEARLY_NUMBER_MAX = 45  # 본번호 범위 1~45
+
+_YEARLY_DIST_DISCLAIMER = (
+    "본 분석은 과거 당첨 데이터를 추첨일의 연도(달력 연도) 기준으로 그룹화하여 번호별 "
+    "출현 빈도를 통계적으로 관찰하기 위한 참고 자료이며, 미래 당첨 번호의 예측력을 "
+    "보장하지 않습니다. 로또는 매 회차 독립적인 무작위 추첨입니다."
+)
+
+
+def _empty_top_years_by_number() -> list[dict[str, Any]]:
+    """번호 1~45를 best_year=None/0/0.0으로 채운 리스트를 생성한다(index 0 = 번호 1)."""
+    return [
+        {
+            "number": num,
+            "best_year": None,
+            "best_year_count": 0,
+            "best_year_pct": 0.0,
+        }
+        for num in range(1, _YEARLY_NUMBER_MAX + 1)
+    ]
+
+
+def _yearly_pct(count: int, draw_count: int) -> float:
+    """연도 출현 횟수를 비율(%)로 변환한다. 회차 없는 연도면 0.0."""
+    if draw_count == 0:
+        return 0.0
+    return round(count / draw_count * 100, 2)
+
+
+# @MX:ANCHOR: [AUTO] SPEC-LOTTO-110 — 번호 연도별 출현 분포 분석 공개 함수
+# @MX:REASON: API·페이지 두 라우트가 호출하는 진입점(fan_in>=2)이며 draw.date.year
+#             그룹화·정렬 규칙(count desc/number asc, 동률 시 이른 연도)이 결과 계약의
+#             핵심 불변식이다.
+def get_yearly_distribution(
+    draws: list[DrawResult] | None,
+    top_n: int = 5,
+) -> dict[str, Any]:
+    """추첨일의 연도(달력 연도)를 축으로 번호(1~45)의 출현 빈도를 분석한다.
+
+    `draw.date.year`(속성, int)로 회차를 연도별 그룹화하고, 각 연도에서 번호별 출현
+    횟수·비율을 집계한다. 회차 인덱스 기준(period_trend)이나 달력 월(monthly)이 아니라
+    실제 달력 연도(가변 개수)를 축으로 삼아 장기 추세 패턴을 관찰한다(코어 모듈 불변).
+
+    Args:
+        draws: 추첨 결과 리스트. None/빈 리스트면 0 채움 구조를 반환한다.
+        top_n: 연도별 상위 번호 개수 (기본 5). 라우트에서 1~45로 검증된다.
+
+    Returns:
+        {
+          "total_draws", "total_years", "top_n",
+          "yearly_summary": [{year, draw_count}, ...] (연도 오름차순),
+          "top_numbers_by_year": {"2002": [{number, count, pct}, ...], ...},
+          "top_years_by_number": [{number, best_year, best_year_count,
+                                    best_year_pct}, ...] (45개, index0=번호1),
+          "disclaimer": "..."
+        }
+    """
+    # 프로세스 수명 캐시 — invalidate_cache로 무효화(conftest autouse fixture가 호출).
+    cache_key = f"{0 if not draws else len(draws)}:{top_n}"
+    cached: dict[str, Any] | None = _yearly_dist_cache.get(cache_key)
+    if cached is not None:
+        return cached
+
+    # REQ-YD-006: None/빈 데이터 가드 — 0 채움 구조 반환.
+    if not draws:
+        empty_result = {
+            "total_draws": 0,
+            "total_years": 0,
+            "top_n": top_n,
+            "yearly_summary": [],
+            "top_numbers_by_year": {},
+            "top_years_by_number": _empty_top_years_by_number(),
+            "disclaimer": _YEARLY_DIST_DISCLAIMER,
+        }
+        _yearly_dist_cache[cache_key] = empty_result
+        return empty_result
+
+    total_draws = len(draws)
+
+    # REQ-YD-001: 연도별 회차 수와 연도별 번호 카운트 누적.
+    # year_draw_count[y] = 연도 y의 회차 수.
+    # year_number_counts[y] = 연도 y의 번호별 출현 횟수 리스트(index 0 = 번호 1).
+    year_draw_count: dict[int, int] = {}
+    year_number_counts: dict[int, list[int]] = {}
+    for draw in draws:
+        # draw.date.year는 속성 접근(int). numbers()는 메서드 호출(본번호 6개).
+        year = draw.date.year
+        if year not in year_draw_count:
+            year_draw_count[year] = 0
+            year_number_counts[year] = [0] * _YEARLY_NUMBER_MAX
+        year_draw_count[year] += 1
+        counts = year_number_counts[year]
+        for n in draw.numbers():
+            counts[n - 1] += 1
+
+    sorted_years = sorted(year_draw_count)  # 연도 오름차순
+
+    # REQ-YD-004/005: yearly_summary(연도 오름차순)와 total_years.
+    yearly_summary = [
+        {"year": y, "draw_count": year_draw_count[y]} for y in sorted_years
+    ]
+
+    # REQ-YD-002: 연도별 상위 top_n 번호 — count desc, 동률은 number asc.
+    #             출현 없는(count=0) 번호는 제외한다.
+    top_numbers_by_year: dict[str, list[dict[str, Any]]] = {}
+    for y in sorted_years:
+        draw_count = year_draw_count[y]
+        counts = year_number_counts[y]
+        appeared = [
+            {
+                "number": idx + 1,
+                "count": counts[idx],
+                "pct": _yearly_pct(counts[idx], draw_count),
+            }
+            for idx in range(_YEARLY_NUMBER_MAX)
+            if counts[idx] > 0
+        ]
+        appeared.sort(key=lambda x: (-x["count"], x["number"]))
+        top_numbers_by_year[str(y)] = appeared[:top_n]
+
+    # REQ-YD-003/007: 번호별 최빈 연도 — count 최대 연도(동률 시 가장 이른 연도).
+    #                 미출현 번호는 best_year=None.
+    top_years_by_number: list[dict[str, Any]] = []
+    for idx in range(_YEARLY_NUMBER_MAX):
+        best_year: int | None = None
+        best_count = 0
+        # 연도 오름차순 순회 — 더 큰 count일 때만 갱신하므로 동률은 이른 연도가 유지된다.
+        for y in sorted_years:
+            count = year_number_counts[y][idx]
+            if count > best_count:
+                best_count = count
+                best_year = y
+        best_pct = (
+            _yearly_pct(best_count, year_draw_count[best_year])
+            if best_year is not None
+            else 0.0
+        )
+        top_years_by_number.append(
+            {
+                "number": idx + 1,
+                "best_year": best_year,
+                "best_year_count": best_count,
+                "best_year_pct": best_pct,
+            }
+        )
+
+    result = {
+        "total_draws": total_draws,
+        "total_years": len(sorted_years),
+        "top_n": top_n,
+        "yearly_summary": yearly_summary,
+        "top_numbers_by_year": top_numbers_by_year,
+        "top_years_by_number": top_years_by_number,
+        "disclaimer": _YEARLY_DIST_DISCLAIMER,
+    }
+    _yearly_dist_cache[cache_key] = result
     return result
 
 
