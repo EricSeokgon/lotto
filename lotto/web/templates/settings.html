@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 
-{# SPEC-LOTTO-027 REQ-SET-001: 설정 현황 페이지 — 마스킹된 상태 카드 + 테스트 발송 #}
+{# SPEC-LOTTO-027 REQ-SET-001: 설정 현황 페이지 — 편집 가능한 폼 + 테스트 발송 #}
+{# SPEC-LOTTO-113: 웹 UI에서 알림 설정 저장/즉시 반영 #}
 
 {% block content %}
 <div class="space-y-6">
@@ -8,102 +9,153 @@
         <div>
             <h2 class="text-2xl font-bold text-ink dark:text-gray-100 mb-1">설정</h2>
             <p class="text-muted dark:text-gray-400 text-sm">
-                알림 채널과 자동 수집 스케줄러의 현재 설정 상태입니다.
-                실제 값은 보안을 위해 마스킹되어 표시됩니다.
+                알림 채널 설정을 저장합니다. 저장 즉시 서버 재시작 없이 반영됩니다.
             </p>
         </div>
     </div>
 
-    {% if not any_configured %}
-    <!-- 빈 상태 안내 -->
-    <section class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-8 shadow-sm text-center">
-        <p class="text-muted dark:text-gray-400">설정된 항목이 없습니다</p>
-        <p class="text-xs text-muted dark:text-gray-500 mt-2">
-            환경 변수(LOTTO_NOTIFY_*, LOTTO_SCHEDULE_*)로 알림/스케줄러를 설정할 수 있습니다.
-        </p>
-    </section>
-    {% endif %}
+    <!-- 설정 폼 -->
+    <form id="settings-form" class="space-y-6">
 
-    <!-- 설정 상태 카드 그리드 -->
-    <section class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <!-- Webhook 카드 -->
-        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm"
-             data-testid="settings-webhook">
-            <div class="flex items-center justify-between mb-3">
+        <!-- Webhook 섹션 -->
+        <section class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm"
+                 data-testid="settings-webhook">
+            <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-semibold text-ink dark:text-gray-100">Webhook</h3>
-                {% if settings_status.webhook_enabled %}
-                <span class="px-2 py-1 text-xs font-medium rounded bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200">활성</span>
-                {% else %}
-                <span class="px-2 py-1 text-xs font-medium rounded bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">비활성</span>
-                {% endif %}
+                <span id="webhook-status-badge"
+                      class="px-2 py-1 text-xs font-medium rounded
+                             {% if settings_status.webhook_enabled %}bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200{% else %}bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300{% endif %}">
+                    {% if settings_status.webhook_enabled %}활성{% else %}비활성{% endif %}
+                </span>
             </div>
-            <p class="text-sm text-muted dark:text-gray-400 break-all">
-                URL: <span class="font-mono">{{ settings_status.webhook_url_masked or '미설정' }}</span>
-            </p>
+            <div class="space-y-3">
+                <div>
+                    <label for="notify_webhook_url" class="block text-sm font-medium text-ink dark:text-gray-200 mb-1">
+                        Webhook URL
+                    </label>
+                    <input type="url" id="notify_webhook_url" name="notify_webhook_url"
+                           placeholder="https://hooks.slack.com/..."
+                           class="w-full px-3 py-2 text-sm rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-data-blue" />
+                </div>
+            </div>
             <div class="mt-4">
                 <button type="button" data-testid="test-webhook-btn"
-                        {% if not settings_status.webhook_enabled %}disabled{% endif %}
                         class="px-4 py-2 text-sm font-medium rounded bg-data-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">
                     테스트 발송
                 </button>
             </div>
-        </div>
+        </section>
 
-        <!-- Email 카드 -->
-        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm"
-             data-testid="settings-email">
-            <div class="flex items-center justify-between mb-3">
+        <!-- 이메일 섹션 -->
+        <section class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm"
+                 data-testid="settings-email">
+            <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-semibold text-ink dark:text-gray-100">이메일</h3>
-                {% if settings_status.email_enabled %}
-                <span class="px-2 py-1 text-xs font-medium rounded bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200">활성</span>
-                {% else %}
-                <span class="px-2 py-1 text-xs font-medium rounded bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">비활성</span>
-                {% endif %}
+                <span id="email-status-badge"
+                      class="px-2 py-1 text-xs font-medium rounded
+                             {% if settings_status.email_enabled %}bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200{% else %}bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300{% endif %}">
+                    {% if settings_status.email_enabled %}활성{% else %}비활성{% endif %}
+                </span>
             </div>
-            <p class="text-sm text-muted dark:text-gray-400 break-all">
-                수신: <span class="font-mono">{{ settings_status.email_to_masked or '미설정' }}</span>
-            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                    <label for="notify_email_to" class="block text-sm font-medium text-ink dark:text-gray-200 mb-1">
+                        수신 이메일
+                    </label>
+                    <input type="email" id="notify_email_to" name="notify_email_to"
+                           placeholder="to@example.com"
+                           class="w-full px-3 py-2 text-sm rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-data-blue" />
+                </div>
+                <div>
+                    <label for="notify_email_from" class="block text-sm font-medium text-ink dark:text-gray-200 mb-1">
+                        발신 이메일
+                    </label>
+                    <input type="email" id="notify_email_from" name="notify_email_from"
+                           placeholder="from@example.com"
+                           class="w-full px-3 py-2 text-sm rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-data-blue" />
+                </div>
+                <div>
+                    <label for="notify_smtp_host" class="block text-sm font-medium text-ink dark:text-gray-200 mb-1">
+                        SMTP 호스트
+                    </label>
+                    <input type="text" id="notify_smtp_host" name="notify_smtp_host"
+                           placeholder="smtp.gmail.com"
+                           class="w-full px-3 py-2 text-sm rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-data-blue" />
+                </div>
+                <div>
+                    <label for="notify_smtp_port" class="block text-sm font-medium text-ink dark:text-gray-200 mb-1">
+                        SMTP 포트
+                    </label>
+                    <input type="number" id="notify_smtp_port" name="notify_smtp_port"
+                           value="587" min="1" max="65535"
+                           class="w-full px-3 py-2 text-sm rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-data-blue" />
+                </div>
+                <div>
+                    <label for="notify_smtp_user" class="block text-sm font-medium text-ink dark:text-gray-200 mb-1">
+                        SMTP 사용자
+                    </label>
+                    <input type="text" id="notify_smtp_user" name="notify_smtp_user"
+                           placeholder="user@example.com"
+                           class="w-full px-3 py-2 text-sm rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-data-blue" />
+                </div>
+                <div>
+                    <label for="notify_smtp_pass" class="block text-sm font-medium text-ink dark:text-gray-200 mb-1">
+                        SMTP 비밀번호
+                    </label>
+                    <input type="password" id="notify_smtp_pass" name="notify_smtp_pass"
+                           placeholder="••••••••"
+                           class="w-full px-3 py-2 text-sm rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-data-blue" />
+                </div>
+            </div>
             <div class="mt-4">
                 <button type="button" data-testid="test-email-btn"
-                        {% if not settings_status.email_enabled %}disabled{% endif %}
                         class="px-4 py-2 text-sm font-medium rounded bg-data-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">
                     테스트 발송
                 </button>
             </div>
-        </div>
+        </section>
 
-        <!-- 스케줄러 카드 -->
-        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm"
-             data-testid="settings-scheduler">
-            <div class="flex items-center justify-between mb-3">
-                <h3 class="text-lg font-semibold text-ink dark:text-gray-100">자동 수집 스케줄러</h3>
-                {% if settings_status.scheduler_enabled %}
-                <span class="px-2 py-1 text-xs font-medium rounded bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200">활성</span>
-                {% else %}
-                <span class="px-2 py-1 text-xs font-medium rounded bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">비활성</span>
-                {% endif %}
-            </div>
-            <p class="text-sm text-muted dark:text-gray-400">
-                크론: <span class="font-mono">{{ settings_status.collect_cron or '미설정' }}</span>
-            </p>
-        </div>
-
-        <!-- 알림 임계값 카드 -->
-        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm"
-             data-testid="settings-threshold">
-            <div class="flex items-center justify-between mb-3">
+        <!-- 알림 임계값 섹션 -->
+        <section class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm"
+                 data-testid="settings-threshold">
+            <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-semibold text-ink dark:text-gray-100">알림 임계값</h3>
-                {% if settings_status.notify_threshold > 0 %}
-                <span class="px-2 py-1 text-xs font-medium rounded bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200">활성</span>
-                {% else %}
-                <span class="px-2 py-1 text-xs font-medium rounded bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">비활성</span>
-                {% endif %}
             </div>
-            <p class="text-sm text-muted dark:text-gray-400">
-                1등 당첨금 기준: <span class="font-mono">{{ "{:,}".format(settings_status.notify_threshold) }}원</span>
-            </p>
-            <p class="text-xs text-muted dark:text-gray-500 mt-1">0이면 알림이 비활성화됩니다.</p>
+            <div>
+                <label for="notify_prize_threshold" class="block text-sm font-medium text-ink dark:text-gray-200 mb-1">
+                    1등 당첨금 기준 (원, 0이면 비활성)
+                </label>
+                <input type="number" id="notify_prize_threshold" name="notify_prize_threshold"
+                       value="0" min="0"
+                       class="w-full md:w-64 px-3 py-2 text-sm rounded border border-border dark:border-gray-600 bg-white dark:bg-gray-900 text-ink dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-data-blue" />
+                <p class="text-xs text-muted dark:text-gray-500 mt-1">0이면 알림이 비활성화됩니다.</p>
+            </div>
+        </section>
+
+        <!-- 저장 버튼 -->
+        <div class="flex justify-end">
+            <button type="submit" id="save-btn"
+                    class="px-6 py-2 text-sm font-medium rounded bg-data-blue text-white hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed">
+                저장
+            </button>
         </div>
+    </form>
+
+    <!-- 스케줄러 상태 (읽기 전용) -->
+    <section class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm"
+             data-testid="settings-scheduler">
+        <div class="flex items-center justify-between mb-3">
+            <h3 class="text-lg font-semibold text-ink dark:text-gray-100">자동 수집 스케줄러</h3>
+            {% if settings_status.scheduler_enabled %}
+            <span class="px-2 py-1 text-xs font-medium rounded bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200">활성</span>
+            {% else %}
+            <span class="px-2 py-1 text-xs font-medium rounded bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">비활성</span>
+            {% endif %}
+        </div>
+        <p class="text-sm text-muted dark:text-gray-400">
+            크론: <span class="font-mono">{{ settings_status.collect_cron or '미설정' }}</span>
+        </p>
+        <p class="text-xs text-muted dark:text-gray-500 mt-1">스케줄러 설정은 환경 변수(LOTTO_SCHEDULE_*)로만 변경 가능합니다.</p>
     </section>
 </div>
 
@@ -113,9 +165,11 @@
 
 {% block scripts %}
 <script>
-// SPEC-LOTTO-027 REQ-SET-003,004: 테스트 발송 버튼 → POST 후 토스트 표시
+// SPEC-LOTTO-113: 설정 폼 로드/저장 + SPEC-LOTTO-027 REQ-SET-003,004: 테스트 발송
 (function() {
     var toast = document.getElementById('toast');
+    var form = document.getElementById('settings-form');
+    var saveBtn = document.getElementById('save-btn');
 
     function showToast(message, ok) {
         toast.textContent = message;
@@ -124,6 +178,58 @@
         setTimeout(function() { toast.classList.add('hidden'); }, 4000);
     }
 
+    // 저장된 설정값 로드하여 폼에 채우기
+    function loadValues() {
+        fetch('/api/settings/values')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                var fields = [
+                    'notify_webhook_url', 'notify_email_to', 'notify_email_from',
+                    'notify_smtp_host', 'notify_smtp_port', 'notify_smtp_user',
+                    'notify_smtp_pass', 'notify_prize_threshold'
+                ];
+                fields.forEach(function(name) {
+                    var el = document.getElementById(name);
+                    if (el && data[name] !== undefined && data[name] !== null) {
+                        el.value = data[name];
+                    }
+                });
+            })
+            .catch(function() { /* 로드 실패 시 기본값 유지 */ });
+    }
+
+    // 폼 저장
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        saveBtn.disabled = true;
+
+        var payload = {
+            notify_webhook_url: document.getElementById('notify_webhook_url').value,
+            notify_email_to: document.getElementById('notify_email_to').value,
+            notify_email_from: document.getElementById('notify_email_from').value,
+            notify_smtp_host: document.getElementById('notify_smtp_host').value,
+            notify_smtp_port: parseInt(document.getElementById('notify_smtp_port').value, 10) || 587,
+            notify_smtp_user: document.getElementById('notify_smtp_user').value,
+            notify_smtp_pass: document.getElementById('notify_smtp_pass').value,
+            notify_prize_threshold: parseInt(document.getElementById('notify_prize_threshold').value, 10) || 0
+        };
+
+        fetch('/api/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(function(res) { return res.json().then(function(body) { return { ok: res.ok, body: body }; }); })
+            .then(function(r) {
+                showToast(r.body.message || (r.ok ? '저장되었습니다.' : '저장 실패'), r.ok);
+            })
+            .catch(function(err) {
+                showToast('저장 오류: ' + err, false);
+            })
+            .finally(function() { saveBtn.disabled = false; });
+    });
+
+    // 테스트 발송 버튼
     function bindTest(btnTestId, endpoint, label) {
         var btn = document.querySelector('[data-testid="' + btnTestId + '"]');
         if (!btn) return;
@@ -148,6 +254,9 @@
 
     bindTest('test-webhook-btn', '/api/settings/test-webhook', 'Webhook');
     bindTest('test-email-btn', '/api/settings/test-email', '이메일');
+
+    // 페이지 로드 시 저장값 불러오기
+    loadValues();
 })();
 </script>
 {% endblock %}

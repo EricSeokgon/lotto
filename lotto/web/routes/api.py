@@ -3222,6 +3222,61 @@ async def get_settings() -> dict[str, Any]:
     return _notifier.get_full_settings_status()
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-113 — 웹 UI 설정 현재값 반환 (폼 초기값용)
+@router.get("/settings/values")
+async def get_settings_values() -> dict[str, Any]:
+    """웹 UI에서 저장된 설정값 반환 (폼 초기값용)."""
+    from lotto import user_settings as _us
+
+    return _us.load()
+
+
+class NotifySettingsUpdate(BaseModel):
+    """알림 설정 업데이트 요청 모델."""
+
+    notify_webhook_url: str = ""
+    notify_email_to: str = ""
+    notify_email_from: str = ""
+    notify_smtp_host: str = ""
+    notify_smtp_port: int = 587
+    notify_smtp_user: str = ""
+    notify_smtp_pass: str = ""
+    notify_prize_threshold: int = 0
+
+
+# @MX:WARN: [AUTO] 전역 settings 객체 인메모리 교체 — 멀티프로세스 환경 비호환
+# @MX:REASON: frozen dataclass 교체는 단일 프로세스 서버에서만 안전함
+@router.post("/settings", status_code=200)
+async def update_settings(body: NotifySettingsUpdate) -> dict[str, Any]:
+    """알림 설정을 저장하고 즉시 적용합니다 (서버 재시작 불필요)."""
+    import dataclasses
+
+    import lotto.config as _config
+    from lotto import user_settings as _us
+    from lotto.web import notifier as _notifier
+
+    data = {
+        "notify_webhook_url": body.notify_webhook_url,
+        "notify_email_to": body.notify_email_to,
+        "notify_email_from": body.notify_email_from,
+        "notify_smtp_host": body.notify_smtp_host,
+        "notify_smtp_port": body.notify_smtp_port,
+        "notify_smtp_user": body.notify_smtp_user,
+        "notify_smtp_pass": body.notify_smtp_pass,
+        "notify_prize_threshold": body.notify_prize_threshold,
+    }
+    _us.save(data)
+
+    # 메모리 내 settings 즉시 반영 (frozen dataclass → 새 인스턴스로 교체)
+    new_settings = dataclasses.replace(_config.settings, **data)
+    _config.settings = new_settings
+    _notifier.settings = new_settings
+
+    invalidate_cache()
+
+    return {"ok": True, "message": "설정이 저장되었습니다."}
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-027 REQ-SET-003 — Webhook 테스트 발송 API
 # @MX:SPEC: SPEC-LOTTO-027 REQ-SET-003
 @router.post("/settings/test-webhook", response_model=None)

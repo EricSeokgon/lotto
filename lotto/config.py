@@ -173,6 +173,43 @@ def _load_settings() -> Settings:
     notify_smtp_user = os.environ.get("LOTTO_NOTIFY_SMTP_USER", "")
     notify_smtp_pass = os.environ.get("LOTTO_NOTIFY_SMTP_PASS", "")
 
+    # 웹 UI 저장 설정 로드 (환경 변수가 없을 때만 적용)
+    _us_path = data_dir / "user_settings.json"
+    try:
+        import json as _json
+
+        if _us_path.exists():
+            _file = _json.loads(_us_path.read_text(encoding="utf-8"))
+            if isinstance(_file, dict):
+                if not notify_webhook_url:
+                    notify_webhook_url = str(_file.get("notify_webhook_url", ""))
+                if not notify_email_to:
+                    notify_email_to = str(_file.get("notify_email_to", ""))
+                if not notify_email_from:
+                    notify_email_from = str(_file.get("notify_email_from", ""))
+                if not notify_smtp_host:
+                    notify_smtp_host = str(_file.get("notify_smtp_host", ""))
+                if not os.environ.get("LOTTO_NOTIFY_SMTP_PORT"):
+                    _fp = _file.get("notify_smtp_port")
+                    if _fp is not None:
+                        try:
+                            notify_smtp_port = int(_fp)
+                        except (TypeError, ValueError):
+                            pass
+                if not notify_smtp_user:
+                    notify_smtp_user = str(_file.get("notify_smtp_user", ""))
+                if not notify_smtp_pass:
+                    notify_smtp_pass = str(_file.get("notify_smtp_pass", ""))
+                if not os.environ.get("LOTTO_NOTIFY_PRIZE_THRESHOLD"):
+                    _ft = _file.get("notify_prize_threshold")
+                    if _ft is not None:
+                        try:
+                            notify_prize_threshold = int(_ft)
+                        except (TypeError, ValueError):
+                            pass
+    except (OSError, ValueError):
+        pass
+
     return Settings(
         api_url=api_url,
         data_dir=data_dir,
