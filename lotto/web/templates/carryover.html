@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}이월 번호 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">이월 번호 분석</h2>
+  <p class="text-muted mb-4">전 회차 당첨 번호가 다음 회차에도 등장하는 비율과 분포를 분석합니다.</p>
+
+  {% if not data %}
+  <div class="alert alert-warning">분석에 필요한 데이터가 부족합니다 (최소 2회차 필요).</div>
+  {% else %}
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ '%.3f'|format(data.avg_carryover) }}</div>
+          <div class="text-muted small">평균 이월 번호 수</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.most_common }}개</div>
+          <div class="text-muted small">최빈 이월 번호 수</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-info">{{ data.total_pairs }}</div>
+          <div class="text-muted small">분석 회차 쌍 수</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          {% set zero_pct = (data.distribution[0] / data.total_pairs * 100) | round(1) %}
+          <div class="fs-2 fw-bold text-warning">{{ zero_pct }}%</div>
+          <div class="text-muted small">이월 없는 비율</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 분포 표 -->
+  <div class="card mb-4">
+    <div class="card-header fw-semibold">이월 번호 수별 분포</div>
+    <div class="card-body">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead>
+            <tr><th>이월 번호 수</th><th>회차 수</th><th>비율</th><th>막대</th></tr>
+          </thead>
+          <tbody>
+            {% for k in range(7) %}
+            {% set cnt = data.distribution[k] %}
+            {% set pct = (cnt / data.total_pairs * 100) | round(1) %}
+            <tr {% if k == data.most_common %}class="table-success"{% endif %}>
+              <td><strong>{{ k }}개</strong></td>
+              <td>{{ cnt }}</td>
+              <td>{{ pct }}%</td>
+              <td>
+                <div class="progress" style="height:16px;min-width:120px;">
+                  <div class="progress-bar" style="width:{{ pct }}%;">{{ pct }}%</div>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 최근 20회차 -->
+  <div class="card">
+    <div class="card-header fw-semibold">최근 20회차 이월 번호</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead>
+            <tr><th>회차</th><th>이월 번호 수</th><th>이월된 번호</th></tr>
+          </thead>
+          <tbody>
+            {% for item in data.recent %}
+            <tr>
+              <td>{{ item.drwNo }}회</td>
+              <td>
+                <span class="badge {% if item.count == 0 %}bg-secondary{% elif item.count >= 3 %}bg-danger{% else %}bg-primary{% endif %}">
+                  {{ item.count }}개
+                </span>
+              </td>
+              <td>
+                {% for n in item.numbers %}
+                <span class="badge bg-warning text-dark me-1">{{ n }}</span>
+                {% endfor %}
+                {% if not item.numbers %}<span class="text-muted">없음</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}

@@ -2089,3 +2089,13 @@ async def heatmap_page(request: Request) -> TemplateResponse:
         "active_tab": "heatmap",
         "heatmap_data": data,
     })
+
+
+@router.get("/stats/carryover")
+async def carryover_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-118: 이월 번호 분석."""
+    data = wd.get_carryover_analysis()
+    return _render(request, "carryover.html", {
+        "active_tab": "carryover",
+        "data": data,
+    })

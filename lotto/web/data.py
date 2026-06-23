@@ -10450,3 +10450,50 @@ def get_number_heatmap() -> list[dict[str, Any]] | None:
             }
         )
     return result
+
+
+def get_carryover_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-118: 이월 번호 분석.
+
+    전 회차 당첨 번호 중 다음 회차에도 등장한 번호(이월 번호) 수의 분포를 반환.
+    """
+    draws = get_draws()
+    if len(draws) < 2:
+        return None
+
+    # 연속 회차 쌍에서 이월 번호 수 계산
+    carryover_counts: list[int] = []
+    for i in range(1, len(draws)):
+        prev_nums = set(draws[i - 1].numbers())
+        curr_nums = set(draws[i].numbers())
+        overlap = len(prev_nums & curr_nums)
+        carryover_counts.append(overlap)
+
+    total = len(carryover_counts)
+    # 분포: 0개~6개
+    dist: dict[int, int] = {k: 0 for k in range(7)}
+    for c in carryover_counts:
+        dist[c] += 1
+
+    avg = sum(carryover_counts) / total if total > 0 else 0.0
+
+    # 최근 20회차 이월 번호 (draw_no, count 쌍) — 최신순
+    recent_pairs = []
+    for i in range(max(1, len(draws) - 20), len(draws)):
+        prev_nums = set(draws[i - 1].numbers())
+        curr_nums = set(draws[i].numbers())
+        overlap_nums = sorted(prev_nums & curr_nums)
+        recent_pairs.append({
+            "drwNo": draws[i].drwNo,
+            "count": len(overlap_nums),
+            "numbers": overlap_nums,
+        })
+    recent_pairs.reverse()  # 최신순
+
+    return {
+        "total_pairs": total,
+        "distribution": dist,
+        "avg_carryover": round(avg, 3),
+        "most_common": max(dist, key=lambda k: dist[k]),
+        "recent": recent_pairs,
+    }
