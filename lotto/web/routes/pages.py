@@ -2032,7 +2032,7 @@ async def yearly_distribution_page(
 @router.get("/stats/historic-match")
 async def historic_match_page(
     request: Request,
-    numbers: str | None = Query(None),
+    numbers: Optional[str] = Query(None),
 ) -> TemplateResponse:
     """SPEC-LOTTO-114: 역대 당첨 일치 이력 조회 페이지."""
     from lotto.web import data as wd
@@ -2078,4 +2078,14 @@ async def gap_distribution_page(request: Request) -> TemplateResponse:
     return _render(request, "gap_distribution.html", {
         "active_tab": "gap_dist",
         "result": result,
+    })
+
+
+@router.get("/stats/heatmap")
+async def heatmap_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-117: 번호별 통합 점수 히트맵."""
+    data = wd.get_number_heatmap()
+    return _render(request, "heatmap.html", {
+        "active_tab": "heatmap",
+        "heatmap_data": data,
     })

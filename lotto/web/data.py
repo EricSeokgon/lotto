@@ -10380,3 +10380,73 @@ def get_historic_match(
         "results": results[:200],
         "results_total": len(results),
     }
+
+
+def get_number_heatmap() -> list[dict[str, Any]] | None:
+    """1~45 번호별 통합 점수를 반환합니다.
+
+    각 번호에 대해 다음 4가지 지표를 [0, 1] 정규화 후 평균:
+    - freq_score: 전체 출현 빈도
+    - recent_score: 최근 20회차 출현 빈도
+    - gap_score: 출현 비율 (빈도/총회차)
+    - pair_score: 동반 쌍 점수 합계
+    """
+    draws = get_draws()
+    if not draws:
+        return None
+
+    import warnings  # noqa: PLC0415
+
+    from lotto.analyzer import LottoAnalyzer  # noqa: PLC0415
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        stats = LottoAnalyzer().analyze(draws)
+
+    # 원시 점수 수집
+    freq_raw: dict[int, float] = {
+        n: float(stats.frequency.absolute.get(n, 0)) for n in range(1, 46)
+    }
+    recent_raw: dict[int, float] = {
+        n: float(stats.recent_pattern.counts.get(n, 0)) for n in range(1, 46)
+    }
+
+    # gap_score: 출현 비율 = count / total_draws
+    total = len(draws)
+    gap_raw: dict[int, float] = {n: freq_raw[n] / total for n in range(1, 46)}
+
+    # pair_score: 해당 번호가 포함된 상위 쌍의 count 합산
+    pair_raw: dict[int, float] = dict.fromkeys(range(1, 46), 0.0)
+    for a, b, count in stats.pair_analysis.top_pairs:
+        pair_raw[a] = pair_raw.get(a, 0.0) + count
+        pair_raw[b] = pair_raw.get(b, 0.0) + count
+
+    def _normalize(d: dict[int, float]) -> dict[int, float]:
+        lo = min(d.values())
+        hi = max(d.values())
+        if hi == lo:
+            return dict.fromkeys(d, 0.5)
+        return {k: (v - lo) / (hi - lo) for k, v in d.items()}
+
+    freq_n = _normalize(freq_raw)
+    recent_n = _normalize(recent_raw)
+    gap_n = _normalize(gap_raw)
+    pair_n = _normalize(pair_raw)
+
+    result = []
+    for n in range(1, 46):
+        f = freq_n[n]
+        r = recent_n[n]
+        g = gap_n[n]
+        p = pair_n[n]
+        result.append(
+            {
+                "number": n,
+                "freq_score": round(f, 4),
+                "recent_score": round(r, 4),
+                "gap_score": round(g, 4),
+                "pair_score": round(p, 4),
+                "composite": round((f + r + g + p) / 4, 4),
+            }
+        )
+    return result

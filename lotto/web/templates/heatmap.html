@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}번호 히트맵{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2>번호별 통합 점수 히트맵</h2>
+  <p class="text-muted">빈도·최근출현·간격·동반쌍 점수를 종합한 히트맵입니다.</p>
+
+  {% if not heatmap_data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+  <!-- 범례 -->
+  <div class="d-flex align-items-center gap-2 mb-3">
+    <span>낮음</span>
+    <div style="width:200px;height:20px;background:linear-gradient(to right,hsl(240,80%,50%),hsl(120,80%,50%),hsl(0,80%,50%));border-radius:4px;"></div>
+    <span>높음</span>
+  </div>
+
+  <!-- 히트맵 그리드 -->
+  <div class="row g-2 mb-4" style="max-width:700px;">
+    {% for item in heatmap_data %}
+    {% set hue = (240 - item.composite * 240) | int %}
+    <div class="col-auto">
+      <div class="d-flex flex-column align-items-center justify-content-center rounded"
+           style="width:64px;height:64px;background:hsl({{ hue }},80%,50%);cursor:default;"
+           title="빈도:{{ '%.2f'|format(item.freq_score) }} 최근:{{ '%.2f'|format(item.recent_score) }} 간격:{{ '%.2f'|format(item.gap_score) }} 쌍:{{ '%.2f'|format(item.pair_score) }}">
+        <span class="fw-bold text-white fs-5">{{ item.number }}</span>
+        <span class="text-white" style="font-size:0.65rem;">{{ '%.2f'|format(item.composite) }}</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- 상세 테이블 -->
+  <h5 class="mt-4">상세 점수</h5>
+  <div class="table-responsive">
+    <table class="table table-sm table-hover">
+      <thead>
+        <tr>
+          <th>번호</th>
+          <th>빈도</th>
+          <th>최근출현</th>
+          <th>간격역수</th>
+          <th>동반쌍</th>
+          <th>종합점수</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in heatmap_data | sort(attribute='composite', reverse=True) %}
+        {% set hue = (240 - item.composite * 240) | int %}
+        <tr>
+          <td><span class="badge" style="background:hsl({{ hue }},80%,50%);">{{ item.number }}</span></td>
+          <td>{{ '%.3f'|format(item.freq_score) }}</td>
+          <td>{{ '%.3f'|format(item.recent_score) }}</td>
+          <td>{{ '%.3f'|format(item.gap_score) }}</td>
+          <td>{{ '%.3f'|format(item.pair_score) }}</td>
+          <td><strong>{{ '%.3f'|format(item.composite) }}</strong></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
