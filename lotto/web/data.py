@@ -823,22 +823,30 @@ def get_gen_history() -> list[dict[str, Any]]:
 
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-033 — 추천 결과를 이력에 append (저장 실패는 조용히 무시)
-def append_gen_history(strategy: str, numbers: list[int]) -> None:
+def append_gen_history(
+    strategy: str,
+    numbers: list[int],
+    target_drw_no: "Optional[int]" = None,  # noqa: UP045
+    source: str = "api",
+) -> None:
     """번호 생성 이력에 항목 1건을 추가합니다 (SPEC-LOTTO-033).
 
     최근 _GEN_HISTORY_MAX 건만 유지하며, 저장 실패 시 예외를 전파하지 않는다
     (호출자인 추천 API 응답은 정상 반환되어야 한다).
+    target_drw_no: 당첨 확인 목표 회차 (저장 시 최신 회차+1 자동 지정 권장)
     """
     import uuid
 
-    entry = {
+    entry: dict[str, Any] = {
         "id": uuid.uuid4().hex[:8],
         # SPEC-LOTTO-033: UTC ISO-8601 (Python 3.9 호환)
         "generated_at": datetime.datetime.now(tz=datetime.timezone.utc).isoformat(),  # noqa: UP017
         "strategy": strategy,
         "numbers": list(numbers),
-        "source": "api",
+        "source": source,
     }
+    if target_drw_no is not None:
+        entry["target_drw_no"] = target_drw_no
     try:
         history = get_gen_history()
         history.append(entry)
@@ -852,6 +860,44 @@ def append_gen_history(strategy: str, numbers: list[int]) -> None:
         )
     except Exception as exc:  # noqa: BLE001 — 이력 저장 실패는 추천 응답을 막지 않는다
         logger.warning("Failed to append gen_history: %s", exc, exc_info=True)
+
+
+def calc_prize_rank(numbers: list[int], n1: int, n2: int, n3: int, n4: int, n5: int, n6: int, bonus: int) -> dict[str, Any]:
+    """추천 번호 6개와 당첨 번호를 비교해 당첨 등수를 반환합니다.
+
+    Returns: {"rank": 0~5, "matched": 일치 개수, "bonus_matched": 보너스 일치 여부}
+    rank 0 = 미당첨, 1~5 = 해당 등수
+    """
+    winning = {n1, n2, n3, n4, n5, n6}
+    nums_set = set(numbers)
+    matched = len(nums_set & winning)
+    bonus_matched = bonus in nums_set
+
+    if matched == 6:
+        rank = 1
+    elif matched == 5 and bonus_matched:
+        rank = 2
+    elif matched == 5:
+        rank = 3
+    elif matched == 4:
+        rank = 4
+    elif matched == 3:
+        rank = 5
+    else:
+        rank = 0
+
+    return {"rank": rank, "matched": matched, "bonus_matched": bonus_matched}
+
+
+def get_draw_by_no(drw_no: int) -> "Optional[Any]":  # noqa: UP045
+    """drwNo로 단일 DrawResult를 반환합니다. 없으면 None."""
+    draws = get_draws()
+    if not draws:
+        return None
+    for d in draws:
+        if d.drwNo == drw_no:
+            return d
+    return None
 
 
 def clear_gen_history() -> int:

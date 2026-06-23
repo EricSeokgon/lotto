@@ -293,9 +293,17 @@ async def get_recommendation_list(
     # lotto.web.data 의 append_gen_history 를 patch 하는 테스트와 호환되도록 동적 호출
     from lotto.web import data as wd
 
+    # 당첨 확인을 위해 다음 회차를 자동 계산
+    _draws_for_drw = wd.get_draws()
+    _target_drw_no = (_draws_for_drw[-1].drwNo + 1) if _draws_for_drw else None
+
     for r in recs:
         try:
-            wd.append_gen_history(strategy=r.strategy_label, numbers=r.numbers)
+            wd.append_gen_history(
+                strategy=r.strategy_label,
+                numbers=r.numbers,
+                target_drw_no=_target_drw_no,
+            )
         except Exception as exc:  # noqa: BLE001 — 이력 저장 실패는 응답을 막지 않는다
             logger.warning("Failed to append gen_history: %s", exc, exc_info=True)
 
@@ -322,7 +330,7 @@ async def get_recommendation_list(
 
 @router.post("/recommendations/notify", status_code=200)
 async def notify_recommendations_now() -> dict[str, Any]:
-    """현재 추천 번호를 즉시 Webhook/이메일로 발송합니다.
+    """현재 추천 번호를 즉시 Webhook/이메일로 발송하고 생성이력에 저장합니다.
 
     추천 페이지에서 바로 알림을 보낼 때 사용합니다.
     settings.notify_recommend_count > 0 이어야 발송됩니다.
@@ -335,12 +343,35 @@ async def notify_recommendations_now() -> dict[str, Any]:
         raise HTTPException(status_code=503, detail="데이터가 없습니다.")
     if not _notifier.is_webhook_configured():
         raise HTTPException(status_code=400, detail="Webhook URL이 설정되지 않았습니다.")
+
+    target_drw_no = draws[-1].drwNo + 1
+
     results = _notifier.notify_recommendations(draws)
     if not results:
         raise HTTPException(
             status_code=400,
             detail="추천 번호 알림 개수가 0입니다. 설정에서 개수를 1 이상으로 설정하세요.",
         )
+
+    # 알림 발송된 번호를 생성이력에 저장 (source="notify")
+    from lotto.recommender import LottoRecommender
+    _stats = wd.get_stats()
+    if _stats is not None:
+        from lotto.config import settings as _cfg
+        count = _cfg.notify_recommend_count or 0
+        if count > 0:
+            try:
+                recs = LottoRecommender(_stats).recommend(count=count)
+                for r in recs:
+                    wd.append_gen_history(
+                        strategy=r.strategy_label,
+                        numbers=r.numbers,
+                        target_drw_no=target_drw_no,
+                        source="notify",
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("Failed to save notify history: %s", exc, exc_info=True)
+
     return {"ok": True, "sent": len([r for r in results if r])}
 
 
@@ -350,14 +381,32 @@ async def notify_recommendations_now() -> dict[str, Any]:
 async def list_gen_history() -> dict[str, Any]:
     """번호 생성 이력을 최신순 최대 50건 반환합니다 (SPEC-LOTTO-033).
 
-    Response: {total, items: [{id, generated_at, strategy, numbers}, ...]}
+    Response: {total, items: [{id, generated_at, strategy, numbers, target_drw_no, prize}, ...]}
+    prize: 당첨 결과 {"rank":1~5|0, "matched":int, "bonus_matched":bool} 또는 null (회차 미확인)
     """
     from lotto.web import data as wd
 
     history = wd.get_gen_history()
     # 최신순 (append 순서 역순) 후 최대 50건
     items = list(reversed(history))[:50]
-    return {"total": len(history), "items": items}
+
+    # 각 항목에 당첨 결과 추가
+    result_items = []
+    for item in items:
+        entry = dict(item)
+        target_no = item.get("target_drw_no")
+        nums = item.get("numbers") or []
+        prize = None
+        if target_no and nums:
+            draw = wd.get_draw_by_no(target_no)
+            if draw is not None:
+                prize = wd.calc_prize_rank(
+                    nums, draw.n1, draw.n2, draw.n3, draw.n4, draw.n5, draw.n6, draw.bonus
+                )
+        entry["prize"] = prize
+        result_items.append(entry)
+
+    return {"total": len(history), "items": result_items}
 
 
 # @MX:NOTE: [AUTO] SPEC-LOTTO-033 — 번호 생성 이력 전체 삭제 공개 API
