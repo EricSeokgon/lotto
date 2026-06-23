@@ -2,17 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
 import datetime
 import json
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-import requests
 
 from lotto.models import DrawResult
-
 
 # --- 헬퍼 함수 ---
 
@@ -203,7 +200,7 @@ async def test_fetch_draw_playwright_not_installed_returns_none(caplog):
     """PlaywrightCollector.fetch_draw() — Playwright 미설치 시 None 반환 + 경고."""
     import logging
 
-    with patch.dict("sys.modules", {"playwright": None, "playwright.async_api": None}):
+    with patch.dict("sys.modules", {"playwright": None, "playwright.async_api": None}):  # noqa: SIM117
         # 미설치 시뮬레이션: async_playwright import 오류
         with patch(
             "lotto.playwright_collector.async_playwright",
@@ -288,7 +285,7 @@ def test_collect_worker_playwright_fallback_after_html_errors():
         patch.object(LottoCollector, "load_existing", return_value=[]),
         patch.object(LottoCollector, "fetch_draw", side_effect=html_err_side_effects),
         patch.object(LottoCollector, "save_csv"),
-        patch.object(PlaywrightCollector, "fetch_draw_sync", return_value=draw_result) as mock_pw_sync,
+        patch.object(PlaywrightCollector, "fetch_draw_sync", return_value=draw_result) as mock_pw_sync,  # noqa: E501
         patch("lotto.web.routes.api._run_analyze_sync"),
         patch("lotto.web.routes.api.invalidate_cache"),
         patch("time.sleep"),

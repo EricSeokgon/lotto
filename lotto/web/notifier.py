@@ -21,7 +21,7 @@ import threading
 import uuid
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 # SPEC-LOTTO-045: 명시적 재노출(PEP 484 redundant-alias). 테스트가 모듈 네임스페이스
 # (lotto.web.notifier.settings)로 패치/참조하므로 명시적 재노출로 처리한다 (런타임 동작 무관).
@@ -353,7 +353,7 @@ def is_email_configured() -> bool:
 
 def _format_recommend_payload(
     recommendations: list[dict[str, Any]],
-    next_drw_no: Optional[int],
+    next_drw_no: int | None,
 ) -> dict[str, Any]:
     """SPEC-LOTTO-115 REQ-REC-002: 추천 번호 알림 Webhook 페이로드 생성."""
     drw_label = f"{next_drw_no}회차" if next_drw_no else "다음 회차"
@@ -368,7 +368,7 @@ def _format_recommend_payload(
 
 def send_webhook_recommend(
     recommendations: list[dict[str, Any]],
-    next_drw_no: Optional[int] = None,
+    next_drw_no: int | None = None,
 ) -> bool:
     """SPEC-LOTTO-115 REQ-REC-003: 추천 번호를 Webhook 으로 전송."""
     url = settings.notify_webhook_url.strip()
@@ -387,7 +387,7 @@ def send_webhook_recommend(
 
 def send_email_recommend(
     recommendations: list[dict[str, Any]],
-    next_drw_no: Optional[int] = None,
+    next_drw_no: int | None = None,
 ) -> bool:
     """SPEC-LOTTO-115 REQ-REC-004: 추천 번호를 이메일로 전송."""
     if not is_email_configured():
@@ -438,8 +438,8 @@ def notify_recommendations(draws: list[Any]) -> list[dict[str, Any]]:
         return []
 
     try:
-        from lotto.web import data as wd
         from lotto.recommender import LottoRecommender
+        from lotto.web import data as wd
 
         stats = wd.get_stats()
         if stats is None:
@@ -455,7 +455,7 @@ def notify_recommendations(draws: list[Any]) -> list[dict[str, Any]]:
             }
             for r in recs_raw
         ]
-        next_drw_no: Optional[int] = draws[-1].drwNo + 1 if draws else None
+        next_drw_no: int | None = draws[-1].drwNo + 1 if draws else None
     except Exception:  # noqa: BLE001
         logger.exception("추천 번호 생성 중 오류")
         return []

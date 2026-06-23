@@ -5,14 +5,11 @@ import os
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
 # ──────────────────────────────────────────────
 # 헬퍼 픽스처
 # ──────────────────────────────────────────────
 
-def _make_recommendation(numbers: list[int], label: str = "고빈도", desc: str = "설명") -> dict[str, Any]:
+def _make_recommendation(numbers: list[int], label: str = "고빈도", desc: str = "설명") -> dict[str, Any]:  # noqa: E501
     return {"numbers": numbers, "strategy_label": label, "strategy_desc": desc}
 
 
@@ -87,9 +84,8 @@ def test_send_webhook_recommend_success() -> None:
     mock_resp.status_code = 200
 
     recs = [_make_recommendation([1, 2, 3, 4, 5, 6])]
-    with patch.object(notifier_mod, "settings", s):
-        with patch("httpx.post", return_value=mock_resp):
-            result = notifier_mod.send_webhook_recommend(recs, next_drw_no=1001)
+    with patch.object(notifier_mod, "settings", s), patch("httpx.post", return_value=mock_resp):
+        result = notifier_mod.send_webhook_recommend(recs, next_drw_no=1001)
 
     assert result is True
 
@@ -103,9 +99,8 @@ def test_send_webhook_recommend_non_2xx() -> None:
     mock_resp.status_code = 500
 
     recs = [_make_recommendation([1, 2, 3, 4, 5, 6])]
-    with patch.object(notifier_mod, "settings", s):
-        with patch("httpx.post", return_value=mock_resp):
-            result = notifier_mod.send_webhook_recommend(recs, next_drw_no=1001)
+    with patch.object(notifier_mod, "settings", s), patch("httpx.post", return_value=mock_resp):
+        result = notifier_mod.send_webhook_recommend(recs, next_drw_no=1001)
 
     assert result is False
 
@@ -117,7 +112,7 @@ def test_send_webhook_recommend_exception() -> None:
     s = _make_settings(notify_webhook_url="https://hooks.example.com/test")
     recs = [_make_recommendation([1, 2, 3, 4, 5, 6])]
 
-    with patch.object(notifier_mod, "settings", s):
+    with patch.object(notifier_mod, "settings", s):  # noqa: SIM117
         with patch("httpx.post", side_effect=ConnectionError("timeout")):
             result = notifier_mod.send_webhook_recommend(recs, next_drw_no=1001)
 
@@ -132,7 +127,7 @@ def test_send_email_recommend_no_smtp() -> None:
     """SMTP 호스트가 비어있으면 False를 반환해야 한다."""
     import lotto.web.notifier as notifier_mod
 
-    s = _make_settings(notify_smtp_host="", notify_email_to="to@x.com", notify_email_from="from@x.com")
+    s = _make_settings(notify_smtp_host="", notify_email_to="to@x.com", notify_email_from="from@x.com")  # noqa: E501
     recs = [_make_recommendation([1, 2, 3, 4, 5, 6])]
 
     with patch.object(notifier_mod, "settings", s):
@@ -184,7 +179,7 @@ def test_notify_recommendations_no_webhook_no_email() -> None:
     mock_recommender = MagicMock()
     mock_recommender.recommend.return_value = [mock_rec, mock_rec, mock_rec]
 
-    with patch.object(notifier_mod, "settings", s):
+    with patch.object(notifier_mod, "settings", s):  # noqa: SIM117
         with patch("lotto.web.data.get_stats", return_value=mock_stats):
             with patch("lotto.recommender.LottoRecommender", return_value=mock_recommender):
                 result = notifier_mod.notify_recommendations(draws)
@@ -211,10 +206,10 @@ def test_notify_recommendations_webhook_sends() -> None:
     mock_recommender = MagicMock()
     mock_recommender.recommend.return_value = [mock_rec, mock_rec, mock_rec]
 
-    with patch.object(notifier_mod, "settings", s):
+    with patch.object(notifier_mod, "settings", s):  # noqa: SIM117
         with patch("lotto.web.data.get_stats", return_value=mock_stats):
             with patch("lotto.recommender.LottoRecommender", return_value=mock_recommender):
-                with patch.object(notifier_mod, "send_webhook_recommend", return_value=True) as mock_send:
+                with patch.object(notifier_mod, "send_webhook_recommend", return_value=True) as mock_send:  # noqa: E501
                     result = notifier_mod.notify_recommendations(draws)
 
     mock_send.assert_called_once()
@@ -230,6 +225,7 @@ def test_notify_recommendations_webhook_sends() -> None:
 def test_config_notify_recommend_count_default() -> None:
     """Settings 기본값에서 notify_recommend_count는 0이어야 한다."""
     import importlib
+
     import lotto.config as _config
 
     # 환경 변수가 없을 때 기본값 0 인지 확인
@@ -246,6 +242,7 @@ def test_config_notify_recommend_count_default() -> None:
 def test_config_notify_recommend_count_env() -> None:
     """LOTTO_NOTIFY_RECOMMEND_COUNT=5 이면 settings.notify_recommend_count == 5 이어야 한다."""
     import importlib
+
     import lotto.config as _config
 
     with patch.dict(os.environ, {"LOTTO_NOTIFY_RECOMMEND_COUNT": "5"}, clear=False):
@@ -275,10 +272,10 @@ def test_api_test_recommend_no_data() -> None:
 
 def test_api_test_recommend_no_webhook() -> None:
     """GET /api/settings/test-recommend: Webhook 미설정 시 400."""
-    import lotto.config as _config
-    import lotto.web.notifier as notifier_mod
     from fastapi.testclient import TestClient
 
+    import lotto.config as _config
+    import lotto.web.notifier as notifier_mod
     from lotto.web.app import app
 
     original_settings = _config.settings

@@ -23,7 +23,7 @@ import time as time
 import warnings
 from collections import Counter
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional  # noqa: UP045 — Python 3.9 런타임 호환
+from typing import TYPE_CHECKING, Any  # noqa: UP045 — Python 3.9 런타임 호환
 
 from lotto.config import settings
 
@@ -10250,8 +10250,8 @@ def get_gap_distribution(draws: list[DrawResult] | None) -> dict[str, Any]:
 
 def get_historic_match(
     numbers: list,
-    draws: Optional[list],
-) -> Optional[dict]:
+    draws: list | None,
+) -> dict | None:
     """SPEC-LOTTO-114: 입력 번호의 역대 당첨 일치 이력 조회.
 
     # @MX:ANCHOR: [AUTO] 역대 일치 이력 조회 진입점
@@ -10264,7 +10264,7 @@ def get_historic_match(
     nums_set = set(numbers)
     results = []
     rank_counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
-    main_match_dist = {i: 0 for i in range(7)}  # 0..6
+    main_match_dist = dict.fromkeys(range(7), 0)  # 0..6
 
     for d in draws:
         main = set(d.numbers())

@@ -6,9 +6,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-import pytest
-
-
 # ──────────────────────────────────────────────
 # user_settings 모듈 단위 테스트
 # ──────────────────────────────────────────────
@@ -113,9 +110,9 @@ def test_api_get_settings_values(tmp_path: Path) -> None:
 
 def test_api_update_settings(tmp_path: Path) -> None:
     """POST /api/settings 는 설정을 저장하고 {ok: True}를 반환해야 한다."""
-    import lotto.config as _config
     from fastapi.testclient import TestClient
 
+    import lotto.config as _config
     from lotto.web.app import app
 
     original_settings = _config.settings

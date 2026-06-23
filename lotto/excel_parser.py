@@ -2,7 +2,7 @@
 import datetime
 import re
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, List, Optional  # noqa: UP035
 
 import openpyxl
 
@@ -15,7 +15,7 @@ def _drw_no_to_date(drw_no: int) -> datetime.date:
     return origin + datetime.timedelta(days=(drw_no - 1) * 7)
 
 
-def _parse_prize_amount(raw: Any) -> Optional[int]:  # noqa: UP045 — Python 3.9 호환
+def _parse_prize_amount(raw: Any) -> Optional[int]:  # noqa: ANN401,UP045 — Python 3.9 호환
     """'3,519,759,000 원' 형태 문자열을 정수로 변환."""
     if raw is None:
         return None
@@ -26,7 +26,7 @@ def _parse_prize_amount(raw: Any) -> Optional[int]:  # noqa: UP045 — Python 3.
         return None
 
 
-def _parse_prize_winners(raw: Any) -> Optional[int]:  # noqa: UP045 — Python 3.9 호환
+def _parse_prize_winners(raw: Any) -> Optional[int]:  # noqa: ANN401,UP045 — Python 3.9 호환
     """'8 명' 형태 문자열을 정수로 변환."""
     if raw is None:
         return None

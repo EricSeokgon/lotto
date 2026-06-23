@@ -1,7 +1,6 @@
 """엑셀 파서 테스트 (SPEC-LOTTO-112)."""
 import datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -83,7 +82,7 @@ class TestParseExcel:
         assert len(results) > 0
         # 모든 항목이 DrawResult 필드를 올바르게 포함해야 합니다
         for draw in results:
-            assert 1 <= draw.drwNo
+            assert draw.drwNo >= 1
             assert 1 <= draw.n1 <= 45
             assert 1 <= draw.bonus <= 45
             assert isinstance(draw.date, datetime.date)
@@ -119,9 +118,9 @@ class TestParseExcel:
         wb = openpyxl.Workbook()
         ws = wb.active
         # 헤더 행
-        ws.append(["No", "회차", "당첨번호", None, None, None, None, None, "보너스", "순위", "당첨게임수", "1게임당 당첨금액"])
+        ws.append(["No", "회차", "당첨번호", None, None, None, None, None, "보너스", "순위", "당첨게임수", "1게임당 당첨금액"])  # noqa: E501
         # 유효한 행
-        ws.append([1, 1.0, 10.0, 23.0, 29.0, 33.0, 37.0, 40.0, 16.0, "1등", "8 명", "3,519,759,000 원"])
+        ws.append([1, 1.0, 10.0, 23.0, 29.0, 33.0, 37.0, 40.0, 16.0, "1등", "8 명", "3,519,759,000 원"])  # noqa: E501
         # 잘못된 행 (회차가 None)
         ws.append([2, None, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, "1등", "1 명", "1,000 원"])
         # 잘못된 행 (번호가 문자열)

@@ -2032,7 +2032,7 @@ async def yearly_distribution_page(
 @router.get("/stats/historic-match")
 async def historic_match_page(
     request: Request,
-    numbers: Optional[str] = Query(None),
+    numbers: str | None = Query(None),
 ) -> TemplateResponse:
     """SPEC-LOTTO-114: 역대 당첨 일치 이력 조회 페이지."""
     from lotto.web import data as wd

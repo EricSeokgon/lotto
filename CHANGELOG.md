@@ -6,6 +6,17 @@
 
 ---
 
+## [1.71.0] - 2026-06-23
+
+### Added (SPEC-LOTTO-115)
+- 추천 번호 자동 알림 기능 추가 (Webhook/이메일)
+  - 수집 완료 후 다음 회차 추천 번호 자동 발송
+  - `notify_recommend_count` 설정으로 발송 개수 제어 (0=비활성, 1~10)
+  - 환경 변수 `LOTTO_NOTIFY_RECOMMEND_COUNT` 지원
+  - 설정 화면에 추천 번호 알림 UI 추가 (개수 입력 + 테스트 버튼)
+  - `POST /api/settings/test-recommend` 테스트 엔드포인트 추가
+  - 채널별 독립 실패 처리 (Webhook 실패해도 이메일 발송 계속)
+
 ## [1.70.0] - 2026-06-22
 
 ### Added

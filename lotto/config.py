@@ -198,7 +198,7 @@ def _load_settings() -> Settings:
                 if not os.environ.get("LOTTO_NOTIFY_SMTP_PORT"):
                     _fp = _file.get("notify_smtp_port")
                     if _fp is not None:
-                        try:
+                        try:  # noqa: SIM105
                             notify_smtp_port = int(_fp)
                         except (TypeError, ValueError):
                             pass
@@ -209,14 +209,14 @@ def _load_settings() -> Settings:
                 if not os.environ.get("LOTTO_NOTIFY_RECOMMEND_COUNT"):
                     _fr = _file.get("notify_recommend_count")
                     if _fr is not None:
-                        try:
+                        try:  # noqa: SIM105
                             notify_recommend_count = int(_fr)
                         except (TypeError, ValueError):
                             pass
                 if not os.environ.get("LOTTO_NOTIFY_PRIZE_THRESHOLD"):
                     _ft = _file.get("notify_prize_threshold")
                     if _ft is not None:
-                        try:
+                        try:  # noqa: SIM105
                             notify_prize_threshold = int(_ft)
                         except (TypeError, ValueError):
                             pass

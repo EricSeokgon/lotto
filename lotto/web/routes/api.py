@@ -2085,7 +2085,7 @@ async def add_manual_draw(req: ManualDrawRequest) -> dict[str, Any]:
 
 
 @router.post("/draws/upload-excel", status_code=200)
-async def upload_excel_draws(file: UploadFile = File(...)) -> dict[str, Any]:
+async def upload_excel_draws(file: UploadFile = File(...)) -> dict[str, Any]:  # noqa: B008
     """엑셀 파일에서 당첨 번호를 증분 업로드합니다.
 
     동행복권 공식 엑셀 양식만 지원합니다.
@@ -3616,7 +3616,7 @@ async def yearly_distribution_route(
 @router.get("/stats/historic-match")
 async def api_historic_match(
     numbers: str = Query(..., description="쉼표 구분 6개 번호, 예: 1,7,14,21,35,42"),
-) -> Any:
+) -> Any:  # noqa: ANN401
     """SPEC-LOTTO-114: 입력 번호의 역대 당첨 일치 이력 조회 API."""
     from lotto.web import data as wd
 
