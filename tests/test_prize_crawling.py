@@ -74,6 +74,7 @@ class TestFetchDrawParsesPrize:
         requests_mock.get(
             API_URL_PATTERN,
             json=_make_response_with_prize(1148, 2_500_000_000, 7),
+            headers={"Content-Type": "application/json"},
         )
         collector = LottoCollector(data_dir=tmp_data_dir)
         with patch("time.sleep"):
@@ -92,6 +93,7 @@ class TestFetchDrawParsesPrize:
         requests_mock.get(
             API_URL_PATTERN,
             json=_make_response_without_prize(1148),
+            headers={"Content-Type": "application/json"},
         )
         collector = LottoCollector(data_dir=tmp_data_dir)
         with patch("time.sleep"):
@@ -113,7 +115,11 @@ class TestFetchDrawParsesPrize:
         """firstWinamnt만 있고 firstPrzwnerCo 가 누락된 경우 → 각각 독립 처리."""
         payload = _make_response_with_prize(1148, 100, 1)
         del payload["firstPrzwnerCo"]
-        requests_mock.get(API_URL_PATTERN, json=payload)
+        requests_mock.get(
+            API_URL_PATTERN,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+        )
         collector = LottoCollector(data_dir=tmp_data_dir)
         with patch("time.sleep"):
             result = collector.fetch_draw(1148)

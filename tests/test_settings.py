@@ -315,7 +315,12 @@ def test_settings_page_renders_html() -> None:
 
 
 def test_settings_page_shows_masked_values() -> None:
-    """설정 페이지에 마스킹된 값이 노출되며 원본 값은 노출되지 않는다."""
+    """설정 페이지에 폼 필드가 있으며 원본 비밀값은 HTML에 노출되지 않는다.
+
+    SPEC-LOTTO-113: 설정이 편집 가능한 폼으로 변경됨.
+    값은 JS(/api/settings/values)로 로드하므로 마스킹 텍스트가 HTML에 없음.
+    원본 secret-token 등은 HTML에 포함되어서는 안 됨.
+    """
     from lotto.web.app import app
 
     with _override_settings(
@@ -328,18 +333,22 @@ def test_settings_page_shows_masked_values() -> None:
         resp = client.get("/settings")
 
     assert resp.status_code == 200
-    # 마스킹 값 노출, 원본 비노출
-    assert "https://di****" in resp.text
+    # 폼 필드 존재 확인
+    assert 'id="notify_webhook_url"' in resp.text
+    assert 'id="notify_email_to"' in resp.text
+    # 원본 비밀값은 HTML에 노출되지 않음 (JS 로드 방식)
     assert "secret-token" not in resp.text
-    assert "us****@gmail.com" in resp.text
-    assert "user@gmail.com" not in resp.text
     # 테스트 발송 버튼 존재
     assert 'data-testid="test-webhook-btn"' in resp.text
     assert 'data-testid="test-email-btn"' in resp.text
 
 
 def test_settings_page_empty_state() -> None:
-    """모든 항목 미설정 시 빈 상태 안내 문구가 노출된다."""
+    """모든 항목 미설정 시에도 설정 폼이 정상 렌더링된다.
+
+    SPEC-LOTTO-113: 설정 페이지가 폼 기반으로 변경됨.
+    빈 상태에서도 폼 요소가 표시되어야 함.
+    """
     from lotto.web.app import app
 
     with _override_settings(
@@ -353,7 +362,9 @@ def test_settings_page_empty_state() -> None:
         resp = client.get("/settings")
 
     assert resp.status_code == 200
-    assert "설정된 항목이 없습니다" in resp.text
+    # 폼 요소가 있어야 함
+    assert 'id="notify_webhook_url"' in resp.text
+    assert 'id="notify_prize_threshold"' in resp.text
 
 
 def test_settings_nav_link_present() -> None:
