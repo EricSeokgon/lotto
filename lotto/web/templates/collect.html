@@ -136,6 +136,30 @@
         </div>
     </div>
 
+    <!-- 엑셀 업로드 폼 -->
+    <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 shadow-sm overflow-hidden">
+        <button id="toggle-excel" onclick="toggleExcelForm()"
+                class="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-surface transition-colors">
+            <span class="font-semibold text-ink">엑셀 파일 업로드</span>
+            <span id="excel-toggle-icon" class="text-muted text-lg">＋</span>
+        </button>
+        <div id="excel-form-section" class="hidden border-t border-border p-5">
+            <p class="text-xs text-muted mb-4">동행복권 공식 엑셀 파일을 업로드하면 기존 데이터에 없는 회차만 자동으로 추가합니다.</p>
+            <form id="excel-form" onsubmit="submitExcel(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs text-muted mb-1">엑셀 파일 (.xlsx)</label>
+                    <input type="file" id="excel-file" accept=".xlsx,.xls" required
+                           class="w-full text-sm border border-border rounded px-3 py-2 bg-surface text-ink focus:outline-none focus:border-data-blue">
+                </div>
+                <div id="excel-result" class="hidden text-sm rounded px-3 py-2"></div>
+                <button type="submit" id="excel-submit-btn"
+                        class="px-4 py-2 text-sm font-medium rounded bg-data-blue text-white hover:opacity-90 transition-opacity">
+                    업로드
+                </button>
+            </form>
+        </div>
+    </div>
+
     <!-- 수동 입력 폼 -->
     <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 shadow-sm overflow-hidden">
         <button id="toggle-manual" onclick="toggleManualForm()"
@@ -421,6 +445,47 @@ async function submitManualDraw(e) {
     } catch {
         result.className = 'text-sm rounded px-3 py-2 bg-red-50 text-red-700 border border-red-200';
         result.textContent = '네트워크 오류가 발생했습니다.';
+    }
+}
+
+/* ── 엑셀 업로드 ─────────────────────────────────── */
+function toggleExcelForm() {
+    const section = document.getElementById('excel-form-section');
+    const icon = document.getElementById('excel-toggle-icon');
+    section.classList.toggle('hidden');
+    icon.textContent = section.classList.contains('hidden') ? '＋' : '－';
+}
+
+async function submitExcel(e) {
+    e.preventDefault();
+    const file = document.getElementById('excel-file').files[0];
+    if (!file) return;
+    const btn = document.getElementById('excel-submit-btn');
+    const result = document.getElementById('excel-result');
+    btn.disabled = true;
+    btn.textContent = '업로드 중...';
+    result.className = 'text-sm rounded px-3 py-2 bg-surface text-muted';
+    result.textContent = '파싱 중...';
+    result.classList.remove('hidden');
+    try {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/draws/upload-excel', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (res.ok) {
+            result.className = 'text-sm rounded px-3 py-2 bg-green-50 text-green-700 dark:bg-green-900 dark:text-green-300';
+            result.textContent = data.message;
+            if (data.added > 0) setTimeout(() => location.reload(), 1500);
+        } else {
+            result.className = 'text-sm rounded px-3 py-2 bg-red-50 text-red-700 dark:bg-red-900 dark:text-red-300';
+            result.textContent = data.detail || '업로드 실패';
+        }
+    } catch (err) {
+        result.className = 'text-sm rounded px-3 py-2 bg-red-50 text-red-700';
+        result.textContent = '네트워크 오류: ' + err.message;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '업로드';
     }
 }
 
