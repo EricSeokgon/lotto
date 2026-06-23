@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{# SPEC-LOTTO-114: 역대 당첨 일치 이력 조회 (서버 렌더링, JS 비의존) #}
+{% block title %}역대 당첨 일치 이력{% endblock %}
+{% block content %}
+<div class="space-y-6">
+    <div class="flex items-center justify-between">
+        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">역대 당첨 일치 이력 조회</h2>
+    </div>
+
+    <p class="text-sm text-muted dark:text-gray-400">
+        입력한 번호가 역대 회차에서 얼마나 일치했는지 조회합니다.
+        주번호 6개 기준으로 일치 개수와 등수를 분석합니다.
+    </p>
+
+    <!-- 번호 입력 폼 -->
+    <form method="get" class="flex items-end gap-3 flex-wrap">
+        <div class="flex-1 min-w-48">
+            <label for="numbers" class="block text-sm text-muted dark:text-gray-400 mb-1">번호 입력 <span class="text-xs">(쉼표로 구분, 예: 1,7,14,21,35,42)</span></label>
+            <input type="text" id="numbers" name="numbers" value="{{ numbers }}"
+                placeholder="예: 1,7,14,21,35,42" autocomplete="off"
+                class="border border-border dark:border-gray-700 rounded px-3 py-2 text-sm bg-card dark:bg-gray-800 text-ink dark:text-gray-100 w-full">
+        </div>
+        <button type="submit" class="px-4 py-2 text-sm bg-data-blue text-white rounded hover:opacity-90">조회</button>
+    </form>
+
+    {% if error_msg %}
+    <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm dark:bg-red-900/20 dark:border-red-800 dark:text-red-400">
+        {{ error_msg }}
+    </div>
+    {% endif %}
+
+    {% if stats %}
+    <!-- 등수별 요약 카드 -->
+    <div class="grid grid-cols-3 sm:grid-cols-6 gap-3">
+        <div class="bg-card border border-border rounded-lg p-3 text-center dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">전체 회차</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.total_draws }}</p>
+        </div>
+        <div class="bg-card border border-amber-300 rounded-lg p-3 text-center dark:bg-gray-800 dark:border-amber-600">
+            <p class="text-xs text-muted dark:text-gray-400">1등 (6개)</p>
+            <p class="text-xl font-bold text-amber-600 dark:text-amber-400">{{ stats.rank_counts[1] }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-3 text-center dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">2등 (5+보)</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.rank_counts[2] }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-3 text-center dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">3등 (5개)</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.rank_counts[3] }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-3 text-center dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">4등 (4개)</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.rank_counts[4] }}</p>
+        </div>
+        <div class="bg-card border border-border rounded-lg p-3 text-center dark:bg-gray-800 dark:border-gray-700">
+            <p class="text-xs text-muted dark:text-gray-400">5등 (3개)</p>
+            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.rank_counts[5] }}</p>
+        </div>
+    </div>
+
+    <!-- 주번호 일치 분포 -->
+    <div class="bg-card border border-border rounded-lg dark:bg-gray-800 dark:border-gray-700">
+        <div class="px-4 py-3 border-b border-border dark:border-gray-700">
+            <h3 class="text-sm font-semibold text-ink dark:text-gray-100">주번호 일치 분포</h3>
+        </div>
+        <div class="p-4">
+            <div class="grid grid-cols-7 gap-2 text-center">
+                {% for cnt in range(7) %}
+                <div>
+                    <div class="text-xs text-muted dark:text-gray-400 mb-1">{{ cnt }}개</div>
+                    <div class="text-lg font-bold text-ink dark:text-gray-100">{{ stats.main_match_dist[cnt] }}</div>
+                    {% if stats.total_draws > 0 %}
+                    <div class="text-xs text-muted dark:text-gray-500">{{ "%.1f"|format(stats.main_match_dist[cnt] / stats.total_draws * 100) }}%</div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- 일치 이력 테이블 -->
+    <div class="bg-card border border-border rounded-lg dark:bg-gray-800 dark:border-gray-700">
+        <div class="px-4 py-3 border-b border-border dark:border-gray-700">
+            <h3 class="text-sm font-semibold text-ink dark:text-gray-100">
+                일치 이력 (2개 이상, {{ stats.results_total }}건 중 최대 200건 표시)
+            </h3>
+        </div>
+        {% if stats.results %}
+        <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+                <thead>
+                    <tr class="border-b border-border dark:border-gray-700 bg-surface dark:bg-gray-750">
+                        <th class="text-left px-4 py-2 text-xs text-muted dark:text-gray-400 font-medium">회차</th>
+                        <th class="text-left px-4 py-2 text-xs text-muted dark:text-gray-400 font-medium">날짜</th>
+                        <th class="text-left px-4 py-2 text-xs text-muted dark:text-gray-400 font-medium">당첨 번호</th>
+                        <th class="text-left px-4 py-2 text-xs text-muted dark:text-gray-400 font-medium">보너스</th>
+                        <th class="text-left px-4 py-2 text-xs text-muted dark:text-gray-400 font-medium">일치</th>
+                        <th class="text-left px-4 py-2 text-xs text-muted dark:text-gray-400 font-medium">등수</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set input_set = stats.input_numbers %}
+                    {% for r in stats.results %}
+                    <tr class="border-b border-border dark:border-gray-700 hover:bg-surface dark:hover:bg-gray-750">
+                        <td class="px-4 py-2 text-ink dark:text-gray-100 font-medium">{{ r.drwNo }}</td>
+                        <td class="px-4 py-2 text-muted dark:text-gray-400 text-xs">{{ r.date }}</td>
+                        <td class="px-4 py-2">
+                            {% for n in r.main_numbers %}
+                            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold mr-0.5
+                                {% if n in input_set %}bg-data-blue text-white{% else %}bg-surface text-muted dark:bg-gray-700 dark:text-gray-400{% endif %}">{{ n }}</span>
+                            {% endfor %}
+                        </td>
+                        <td class="px-4 py-2">
+                            <span class="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold
+                                {% if r.bonus_match %}bg-amber-500 text-white{% else %}bg-surface text-muted dark:bg-gray-700 dark:text-gray-400{% endif %}">{{ r.bonus }}</span>
+                        </td>
+                        <td class="px-4 py-2 text-ink dark:text-gray-100 text-xs">
+                            {{ r.main_match }}개{% if r.bonus_match %}+보너스{% endif %}
+                        </td>
+                        <td class="px-4 py-2 text-xs">
+                            {% if r.rank == 1 %}<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 font-medium">1등</span>
+                            {% elif r.rank == 2 %}<span class="px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400 font-medium">2등</span>
+                            {% elif r.rank == 3 %}<span class="px-2 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-400 font-medium">3등</span>
+                            {% elif r.rank == 4 %}<span class="px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400 font-medium">4등</span>
+                            {% elif r.rank == 5 %}<span class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400 font-medium">5등</span>
+                            {% else %}<span class="text-muted dark:text-gray-500">해당없음</span>{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="p-8 text-center text-muted dark:text-gray-400 text-sm">
+            2개 이상 일치하는 회차가 없습니다.
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -2029,6 +2029,39 @@ async def yearly_distribution_page(
     })
 
 
+@router.get("/stats/historic-match")
+async def historic_match_page(
+    request: Request,
+    numbers: Optional[str] = Query(None),
+) -> TemplateResponse:
+    """SPEC-LOTTO-114: 역대 당첨 일치 이력 조회 페이지."""
+    from lotto.web import data as wd
+
+    stats = None
+    error_msg = None
+
+    if numbers:
+        try:
+            nums = [int(x.strip()) for x in numbers.split(",") if x.strip()]
+            if len(nums) != 6:
+                error_msg = "6개 번호를 입력해주세요."
+            elif not all(1 <= n <= 45 for n in nums):
+                error_msg = "번호는 1~45 사이여야 합니다."
+            elif len(set(nums)) != 6:
+                error_msg = "중복된 번호가 있습니다."
+            else:
+                stats = wd.get_historic_match(nums, wd.get_draws())
+        except (ValueError, TypeError) as exc:
+            error_msg = str(exc)
+
+    return _render(request, "historic_match.html", {
+        "active_tab": "historic_match",
+        "stats": stats,
+        "numbers": numbers or "",
+        "error_msg": error_msg,
+    })
+
+
 @router.get("/stats/gap-distribution")
 async def gap_distribution_page(request: Request) -> TemplateResponse:
     """간격 분포 페이지 — 번호별 연속 출현 간격(drwNo 차이) 상세 분포 (SPEC-LOTTO-109).

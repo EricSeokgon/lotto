@@ -23,7 +23,7 @@ import time as time
 import warnings
 from collections import Counter
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional  # noqa: UP045 — Python 3.9 런타임 호환
 
 from lotto.config import settings
 
@@ -10246,3 +10246,65 @@ def get_gap_distribution(draws: list[DrawResult] | None) -> dict[str, Any]:
     }
     _gap_dist_cache[cache_key] = result
     return result
+
+
+def get_historic_match(
+    numbers: list,
+    draws: Optional[list],
+) -> Optional[dict]:
+    """SPEC-LOTTO-114: 입력 번호의 역대 당첨 일치 이력 조회.
+
+    # @MX:ANCHOR: [AUTO] 역대 일치 이력 조회 진입점
+    # @MX:REASON: pages.py, api.py에서 호출 (fan_in >= 2)
+    # @MX:SPEC: SPEC-LOTTO-114 REQ-HM-001~005
+    """
+    if draws is None or len(draws) < 1 or len(numbers) != 6:
+        return None
+
+    nums_set = set(numbers)
+    results = []
+    rank_counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    main_match_dist = {i: 0 for i in range(7)}  # 0..6
+
+    for d in draws:
+        main = set(d.numbers())
+        main_match = len(nums_set & main)
+        bonus_match = (d.bonus in nums_set) and (d.bonus not in main)
+
+        if main_match == 6:
+            rank = 1
+        elif main_match == 5 and bonus_match:
+            rank = 2
+        elif main_match == 5:
+            rank = 3
+        elif main_match == 4:
+            rank = 4
+        elif main_match == 3:
+            rank = 5
+        else:
+            rank = 0
+
+        rank_counts[rank] = rank_counts.get(rank, 0) + 1
+        main_match_dist[main_match] = main_match_dist.get(main_match, 0) + 1
+
+        if main_match >= 2:
+            results.append({
+                "drwNo": d.drwNo,
+                "date": d.date.isoformat(),
+                "main_numbers": list(d.numbers()),
+                "bonus": d.bonus,
+                "main_match": main_match,
+                "bonus_match": bonus_match,
+                "rank": rank,
+            })
+
+    results.sort(key=lambda x: (x["main_match"], x["drwNo"]), reverse=True)
+
+    return {
+        "input_numbers": sorted(numbers),
+        "total_draws": len(draws),
+        "rank_counts": rank_counts,
+        "main_match_dist": main_match_dist,
+        "results": results[:200],
+        "results_total": len(results),
+    }

@@ -3589,6 +3589,31 @@ async def yearly_distribution_route(
     return wd.get_yearly_distribution(wd.get_draws(), top_n=top_n)
 
 
+@router.get("/stats/historic-match")
+async def api_historic_match(
+    numbers: str = Query(..., description="쉼표 구분 6개 번호, 예: 1,7,14,21,35,42"),
+) -> Any:
+    """SPEC-LOTTO-114: 입력 번호의 역대 당첨 일치 이력 조회 API."""
+    from lotto.web import data as wd
+
+    try:
+        nums = [int(x.strip()) for x in numbers.split(",") if x.strip()]
+        if len(nums) != 6:
+            raise HTTPException(status_code=422, detail="6개 번호를 입력해주세요.")
+        if not all(1 <= n <= 45 for n in nums):
+            raise HTTPException(status_code=422, detail="번호는 1~45 사이여야 합니다.")
+        if len(set(nums)) != 6:
+            raise HTTPException(status_code=422, detail="중복된 번호가 있습니다.")
+        result = wd.get_historic_match(nums, wd.get_draws())
+        if result is None:
+            raise HTTPException(status_code=503, detail="데이터를 불러올 수 없습니다.")
+        return result
+    except HTTPException:
+        raise
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.get("/stats/gap-distribution")
 async def gap_distribution_route() -> dict[str, Any]:
     """번호별 연속 출현 간격(drwNo 차이)의 상세 분포를 반환합니다 (SPEC-LOTTO-109).
