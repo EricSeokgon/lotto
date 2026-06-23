@@ -69,8 +69,9 @@ class LottoCollector:
                 resp = self._session.get(url, timeout=10)
                 resp.raise_for_status()
                 # HTML 응답 감지 (REQ-PW-004)
+                # 빈 Content-Type은 허용(일부 서버/mock 환경); text/html만 명시 차단
                 content_type = resp.headers.get("Content-Type", "")
-                if "application/json" not in content_type:
+                if content_type and "application/json" not in content_type:
                     raise HTMLResponseError(
                         f"API가 JSON 대신 HTML을 반환했습니다 (Content-Type: {content_type})"
                     )
