@@ -97,6 +97,8 @@ def _scheduled_collect_job() -> None:
                     "prize1Winners": latest.prize1Winners,
                 }
                 _notifier.notify(draw_info)
+            # SPEC-LOTTO-115: 추천 번호 알림
+            _notifier.notify_recommendations(refreshed)
         except Exception as exc:  # noqa: BLE001 — 알림 실패가 스케줄 결과를 뒤집지 않음
             logger.warning("Post-collect notification failed: %s", exc, exc_info=True)
 

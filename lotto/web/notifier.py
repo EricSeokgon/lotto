@@ -21,7 +21,7 @@ import threading
 import uuid
 from email.message import EmailMessage
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 # SPEC-LOTTO-045: 명시적 재노출(PEP 484 redundant-alias). 테스트가 모듈 네임스페이스
 # (lotto.web.notifier.settings)로 패치/참조하므로 명시적 재노출로 처리한다 (런타임 동작 무관).
@@ -345,6 +345,132 @@ def is_email_configured() -> bool:
         and settings.notify_email_to.strip()
         and settings.notify_email_from.strip()
     )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# SPEC-LOTTO-115: 추천 번호 알림
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _format_recommend_payload(
+    recommendations: list[dict[str, Any]],
+    next_drw_no: Optional[int],
+) -> dict[str, Any]:
+    """SPEC-LOTTO-115 REQ-REC-002: 추천 번호 알림 Webhook 페이로드 생성."""
+    drw_label = f"{next_drw_no}회차" if next_drw_no else "다음 회차"
+    lines = [f"[{drw_label}] 추천 번호"]
+    for idx, rec in enumerate(recommendations, start=1):
+        nums = " ".join(str(n) for n in rec.get("numbers", []))
+        label = rec.get("strategy_label", "")
+        lines.append(f"{idx}. {nums}  ({label})")
+    text = "\n".join(lines)
+    return {"text": text}
+
+
+def send_webhook_recommend(
+    recommendations: list[dict[str, Any]],
+    next_drw_no: Optional[int] = None,
+) -> bool:
+    """SPEC-LOTTO-115 REQ-REC-003: 추천 번호를 Webhook 으로 전송."""
+    url = settings.notify_webhook_url.strip()
+    if not url:
+        return False
+    try:
+        import httpx
+
+        payload = _format_recommend_payload(recommendations, next_drw_no)
+        resp = httpx.post(url, json=payload, timeout=10)
+        return 200 <= resp.status_code < 300
+    except Exception:  # noqa: BLE001
+        logger.exception("추천 번호 Webhook 전송 중 오류")
+        return False
+
+
+def send_email_recommend(
+    recommendations: list[dict[str, Any]],
+    next_drw_no: Optional[int] = None,
+) -> bool:
+    """SPEC-LOTTO-115 REQ-REC-004: 추천 번호를 이메일로 전송."""
+    if not is_email_configured():
+        return False
+    drw_label = f"{next_drw_no}회차" if next_drw_no else "다음 회차"
+    try:
+        lines = [f"[{drw_label}] 추천 번호"]
+        for idx, rec in enumerate(recommendations, start=1):
+            nums = " ".join(str(n) for n in rec.get("numbers", []))
+            label = rec.get("strategy_label", "")
+            desc = rec.get("strategy_desc", "")
+            lines.append(f"{idx}. {nums}  ({label}) — {desc}")
+        body = "\n".join(lines)
+
+        msg = EmailMessage()
+        msg["Subject"] = f"[로또] {drw_label} 추천 번호"
+        msg["From"] = settings.notify_email_from
+        msg["To"] = settings.notify_email_to
+        msg.set_content(body)
+
+        with smtplib.SMTP(settings.notify_smtp_host, settings.notify_smtp_port) as smtp:
+            smtp.starttls()
+            if settings.notify_smtp_user:
+                smtp.login(settings.notify_smtp_user, settings.notify_smtp_pass)
+            smtp.send_message(msg)
+        return True
+    except Exception:  # noqa: BLE001
+        logger.exception("추천 번호 이메일 전송 중 오류")
+        return False
+
+
+# @MX:ANCHOR: [AUTO] 추천 번호 알림 진입점 — scheduler 및 API 테스트 엔드포인트에서 호출
+# @MX:REASON: 추천 생성·채널 발사·결과 반환을 담당하는 단일 진입점 (fan_in >= 2)
+# @MX:SPEC: SPEC-LOTTO-115 REQ-REC-005
+def notify_recommendations(draws: list[Any]) -> list[dict[str, Any]]:
+    """SPEC-LOTTO-115: 다음 회차 추천 번호를 모든 설정된 채널로 전송.
+
+    - settings.notify_recommend_count 가 0 이면 즉시 [] 반환
+    - draws 가 비어있으면 즉시 [] 반환
+    - 추천 생성은 내부에서 get_stats() 를 통해 처리
+    - 어떤 예외도 호출자로 전파하지 않음
+
+    Returns:
+        기록된 알림 엔트리 리스트 (전송 채널별).
+    """
+    count = settings.notify_recommend_count
+    if count <= 0 or not draws:
+        return []
+
+    try:
+        from lotto.web import data as wd
+        from lotto.recommender import LottoRecommender
+
+        stats = wd.get_stats()
+        if stats is None:
+            logger.warning("추천 번호 알림: stats 없음, 건너뜀")
+            return []
+
+        recs_raw = LottoRecommender(stats).recommend(count=count)
+        recommendations = [
+            {
+                "numbers": r.numbers,
+                "strategy_label": r.strategy_label,
+                "strategy_desc": r.strategy_desc,
+            }
+            for r in recs_raw
+        ]
+        next_drw_no: Optional[int] = draws[-1].drwNo + 1 if draws else None
+    except Exception:  # noqa: BLE001
+        logger.exception("추천 번호 생성 중 오류")
+        return []
+
+    entries: list[dict[str, Any]] = []
+
+    if is_webhook_configured():
+        ok = send_webhook_recommend(recommendations, next_drw_no)
+        entries.append({"channel": "webhook", "ok": ok, "count": len(recommendations)})
+
+    if is_email_configured():
+        ok = send_email_recommend(recommendations, next_drw_no)
+        entries.append({"channel": "email", "ok": ok, "count": len(recommendations)})
+
+    return entries
 
 
 def get_full_settings_status() -> dict[str, Any]:

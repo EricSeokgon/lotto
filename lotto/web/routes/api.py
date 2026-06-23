@@ -3242,6 +3242,7 @@ class NotifySettingsUpdate(BaseModel):
     notify_smtp_user: str = ""
     notify_smtp_pass: str = ""
     notify_prize_threshold: int = 0
+    notify_recommend_count: int = 0
 
 
 # @MX:WARN: [AUTO] 전역 settings 객체 인메모리 교체 — 멀티프로세스 환경 비호환
@@ -3264,6 +3265,7 @@ async def update_settings(body: NotifySettingsUpdate) -> dict[str, Any]:
         "notify_smtp_user": body.notify_smtp_user,
         "notify_smtp_pass": body.notify_smtp_pass,
         "notify_prize_threshold": body.notify_prize_threshold,
+        "notify_recommend_count": body.notify_recommend_count,
     }
     _us.save(data)
 
@@ -3327,6 +3329,28 @@ async def test_email() -> Union[Response, dict[str, Any]]:  # noqa: UP007 — Py
     if sent:
         return {"sent": True}
     return {"sent": False, "reason": "Email 전송 실패 (상세는 로그 참조)"}
+
+
+# @MX:NOTE: [AUTO] SPEC-LOTTO-115 REQ-REC-006 — 추천 번호 알림 테스트 발송 API
+# @MX:SPEC: SPEC-LOTTO-115 REQ-REC-006
+@router.post("/settings/test-recommend", status_code=200)
+async def test_recommend_notify() -> dict[str, Any]:
+    """SPEC-LOTTO-115 REQ-REC-006: 추천 번호 알림 테스트 발송."""
+    from lotto.web import data as wd
+    from lotto.web import notifier as _notifier
+
+    draws = wd.get_draws()
+    if not draws:
+        raise HTTPException(status_code=503, detail="데이터가 없습니다.")
+    if not _notifier.is_webhook_configured():
+        raise HTTPException(status_code=400, detail="Webhook URL이 설정되지 않았습니다.")
+    results = _notifier.notify_recommendations(draws)
+    if not results:
+        raise HTTPException(
+            status_code=400,
+            detail="추천 번호 알림 개수가 0입니다. 설정에서 개수를 1 이상으로 설정하세요.",
+        )
+    return {"ok": True, "results": results}
 
 
 @router.get("/stats/fitness")

@@ -120,6 +120,8 @@ class Settings:
     notify_smtp_port: int = 587
     notify_smtp_user: str = ""
     notify_smtp_pass: str = ""
+    # SPEC-LOTTO-115 REQ-REC-001: 추천 번호 알림 개수 (0 = 비활성)
+    notify_recommend_count: int = 0
 
 
 def _load_settings() -> Settings:
@@ -172,6 +174,10 @@ def _load_settings() -> Settings:
     )
     notify_smtp_user = os.environ.get("LOTTO_NOTIFY_SMTP_USER", "")
     notify_smtp_pass = os.environ.get("LOTTO_NOTIFY_SMTP_PASS", "")
+    notify_recommend_count = _parse_int(
+        os.environ.get("LOTTO_NOTIFY_RECOMMEND_COUNT", "0"),
+        "LOTTO_NOTIFY_RECOMMEND_COUNT",
+    )
 
     # 웹 UI 저장 설정 로드 (환경 변수가 없을 때만 적용)
     _us_path = data_dir / "user_settings.json"
@@ -200,6 +206,13 @@ def _load_settings() -> Settings:
                     notify_smtp_user = str(_file.get("notify_smtp_user", ""))
                 if not notify_smtp_pass:
                     notify_smtp_pass = str(_file.get("notify_smtp_pass", ""))
+                if not os.environ.get("LOTTO_NOTIFY_RECOMMEND_COUNT"):
+                    _fr = _file.get("notify_recommend_count")
+                    if _fr is not None:
+                        try:
+                            notify_recommend_count = int(_fr)
+                        except (TypeError, ValueError):
+                            pass
                 if not os.environ.get("LOTTO_NOTIFY_PRIZE_THRESHOLD"):
                     _ft = _file.get("notify_prize_threshold")
                     if _ft is not None:
@@ -230,6 +243,7 @@ def _load_settings() -> Settings:
         notify_smtp_port=notify_smtp_port,
         notify_smtp_user=notify_smtp_user,
         notify_smtp_pass=notify_smtp_pass,
+        notify_recommend_count=notify_recommend_count,
     )
 
 
