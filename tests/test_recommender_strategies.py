@@ -142,23 +142,28 @@ class TestGapAndEnsembleStrategies:
         assert set(scores.keys()) == set(range(1, 46))
 
     def test_recommend_cycles_through_all_strategies(self, stats) -> None:
-        """recommend(count=N)으로 N가지 전략이 한 번씩 순환되어야 한다."""
+        """recommend(count=N)으로 N가지 전략이 모두 등장해야 한다 (순서는 랜덤).
+
+        전략 순서는 매 호출마다 랜덤하게 셔플되므로 순서가 아닌 집합으로 검증한다.
+        """
         recommender = LottoRecommender(stats)
         recs = recommender.recommend(count=len(STRATEGY_LABELS))
 
         assert len(recs) == len(STRATEGY_LABELS)
         labels = [r.strategy_label for r in recs]
-        assert labels == STRATEGY_LABELS
+        assert set(labels) == set(STRATEGY_LABELS)
 
-    def test_recommend_count_20_covers_strategies_in_order(self, stats) -> None:
-        """count=20이면 전략 순환 순서대로 20개 레이블이 반환된다."""
+    def test_recommend_count_20_covers_all_strategies(self, stats) -> None:
+        """count=20이면 모든 전략 레이블이 최소 1회 이상 포함된다.
+
+        전략 순서는 랜덤 셔플이므로 집합으로 검증한다.
+        """
         recommender = LottoRecommender(stats)
         recs = recommender.recommend(count=20)
 
         assert len(recs) == 20
-        labels = [r.strategy_label for r in recs]
-        expected = [STRATEGY_LABELS[i % len(STRATEGY_LABELS)] for i in range(20)]
-        assert labels == expected
+        labels = {r.strategy_label for r in recs}
+        assert labels == set(STRATEGY_LABELS)
 
     def test_gap_strategy_candidates_size(self, stats) -> None:
         """갭분석 전략의 candidates는 상위 22개 번호여야 한다."""
