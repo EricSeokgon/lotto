@@ -222,20 +222,26 @@ def test_notify_recommendations_webhook_sends() -> None:
 # config.py 단위 테스트
 # ──────────────────────────────────────────────
 
-def test_config_notify_recommend_count_default() -> None:
-    """Settings 기본값에서 notify_recommend_count는 0이어야 한다."""
+def test_config_notify_recommend_count_default(tmp_path: "pytest.TempPathFactory") -> None:
+    """환경 변수도 user_settings.json도 없을 때 기본값 0이어야 한다."""
     import importlib
 
     import lotto.config as _config
 
-    # 환경 변수가 없을 때 기본값 0 인지 확인
-    original = os.environ.pop("LOTTO_NOTIFY_RECOMMEND_COUNT", None)
+    # 빈 tmp 디렉토리를 data_dir로 지정하면 user_settings.json이 없어 기본값 적용됨
+    original_count = os.environ.pop("LOTTO_NOTIFY_RECOMMEND_COUNT", None)
+    original_data_dir = os.environ.pop("LOTTO_DATA_DIR", None)
     try:
+        os.environ["LOTTO_DATA_DIR"] = str(tmp_path)
         importlib.reload(_config)
         assert _config.settings.notify_recommend_count == 0
     finally:
-        if original is not None:
-            os.environ["LOTTO_NOTIFY_RECOMMEND_COUNT"] = original
+        if original_count is not None:
+            os.environ["LOTTO_NOTIFY_RECOMMEND_COUNT"] = original_count
+        if original_data_dir is not None:
+            os.environ["LOTTO_DATA_DIR"] = original_data_dir
+        elif "LOTTO_DATA_DIR" in os.environ:
+            del os.environ["LOTTO_DATA_DIR"]
         importlib.reload(_config)
 
 

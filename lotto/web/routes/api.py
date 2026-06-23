@@ -320,6 +320,30 @@ async def get_recommendation_list(
     return payload
 
 
+@router.post("/recommendations/notify", status_code=200)
+async def notify_recommendations_now() -> dict[str, Any]:
+    """현재 추천 번호를 즉시 Webhook/이메일로 발송합니다.
+
+    추천 페이지에서 바로 알림을 보낼 때 사용합니다.
+    settings.notify_recommend_count > 0 이어야 발송됩니다.
+    """
+    from lotto.web import data as wd
+    from lotto.web import notifier as _notifier
+
+    draws = wd.get_draws()
+    if not draws:
+        raise HTTPException(status_code=503, detail="데이터가 없습니다.")
+    if not _notifier.is_webhook_configured():
+        raise HTTPException(status_code=400, detail="Webhook URL이 설정되지 않았습니다.")
+    results = _notifier.notify_recommendations(draws)
+    if not results:
+        raise HTTPException(
+            status_code=400,
+            detail="추천 번호 알림 개수가 0입니다. 설정에서 개수를 1 이상으로 설정하세요.",
+        )
+    return {"ok": True, "sent": len([r for r in results if r])}
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-033 — 번호 생성 이력 조회 공개 API
 # @MX:SPEC: SPEC-LOTTO-033
 @router.get("/gen-history")

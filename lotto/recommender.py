@@ -307,8 +307,10 @@ class LottoRecommender:
         used_numbers: set[int] = set()
         results: list[Recommendation] = []
 
+        # 매 추천마다 전략 순서를 랜덤하게 섞어 다양성 확보
+        shuffled_labels = random.sample(STRATEGY_LABELS, len(STRATEGY_LABELS))
         for i in range(count):
-            label = STRATEGY_LABELS[i % len(STRATEGY_LABELS)]
+            label = shuffled_labels[i % len(shuffled_labels)]
             scores = self._strategy_scores(label, used_numbers)
             numbers, actual_label = self._pick_set(scores, used_sets, force_label=label)
             used_sets.add(frozenset(numbers))

@@ -18,6 +18,11 @@
                     class="text-sm px-3 py-1.5 rounded border border-border bg-card text-ink hover:bg-surface transition-colors">
                 다시 추천
             </button>
+            <!-- 알림 발송 버튼 -->
+            <button id="notify-btn" onclick="sendRecommendNotify()"
+                    class="text-sm px-3 py-1.5 rounded border border-border bg-card text-ink hover:bg-surface transition-colors">
+                알림 발송
+            </button>
             <!-- 추천 수 선택 -->
             <form method="get" action="/recommend" class="flex items-center space-x-2">
                 <label class="text-sm text-muted">세트 수:</label>
@@ -801,6 +806,26 @@
 
             if (runBtn) { runBtn.addEventListener("click", run); }
         })();
+    </script>
+
+    <script>
+        function sendRecommendNotify() {
+            var btn = document.getElementById("notify-btn");
+            if (btn) { btn.disabled = true; btn.textContent = "발송 중..."; }
+            fetch("/api/recommendations/notify", { method: "POST" })
+                .then(function(r) { return r.json(); })
+                .then(function(body) {
+                    if (body.ok) {
+                        alert("추천 번호 알림을 발송했습니다.");
+                    } else {
+                        alert("발송 실패: " + (body.detail || JSON.stringify(body)));
+                    }
+                })
+                .catch(function() { alert("네트워크 오류가 발생했습니다."); })
+                .finally(function() {
+                    if (btn) { btn.disabled = false; btn.textContent = "알림 발송"; }
+                });
+        }
     </script>
 </div>
 {% endblock %}
