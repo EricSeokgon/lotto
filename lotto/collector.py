@@ -33,6 +33,14 @@ class CollectAbortError(Exception):
     """5회 연속 API 실패로 수집을 중단합니다."""
 
 
+class HTMLResponseError(Exception):
+    """HTTP API가 JSON 대신 HTML을 반환할 때 발생합니다.
+
+    SPEC-LOTTO-111 REQ-PW-004: Content-Type이 application/json이 아니거나
+    본문이 <!DOCTYPE으로 시작하면 발생합니다.
+    """
+
+
 class LottoCollector:
     """동행복권 API에서 당첨 번호를 수집합니다."""
 
@@ -48,13 +56,32 @@ class LottoCollector:
     # @MX:WARN: [AUTO] HTTP 재시도 로직 — 외부 API 의존성 및 sleep 사용
     # @MX:REASON: 지수 백오프로 과부하 방지. time.sleep은 테스트에서 반드시 mock 필요.
     def _fetch_with_retry(self, drw_no: int) -> dict[str, Any] | None:
-        """지수 백오프(1s/2s/4s)로 최대 3회 재시도합니다."""
+        """지수 백오프(1s/2s/4s)로 최대 3회 재시도합니다.
+
+        SPEC-LOTTO-111 REQ-PW-004: HTML 응답 감지 시 HTMLResponseError를 발생시킵니다.
+        감지 조건:
+        - Content-Type 헤더에 application/json이 없는 경우
+        - 응답 본문이 <!DOCTYPE으로 시작하는 경우
+        """
         url = API_URL.format(drw_no=drw_no)
         for delay in RETRY_DELAYS:
             try:
                 resp = self._session.get(url, timeout=10)
                 resp.raise_for_status()
+                # HTML 응답 감지 (REQ-PW-004)
+                content_type = resp.headers.get("Content-Type", "")
+                if "application/json" not in content_type:
+                    raise HTMLResponseError(
+                        f"API가 JSON 대신 HTML을 반환했습니다 (Content-Type: {content_type})"
+                    )
+                body_text = resp.text
+                if body_text.lstrip().startswith("<!DOCTYPE"):
+                    raise HTMLResponseError(
+                        "API가 JSON 대신 HTML 문서를 반환했습니다."
+                    )
                 return resp.json()  # type: ignore[no-any-return]
+            except HTMLResponseError:
+                raise
             except (requests.RequestException, ValueError):
                 time.sleep(delay)
         return None
