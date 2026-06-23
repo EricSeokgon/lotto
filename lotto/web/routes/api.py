@@ -3651,3 +3651,92 @@ async def gap_distribution_route() -> dict[str, Any]:
     from lotto.web import data as wd
 
     return wd.get_gap_distribution(wd.get_draws())
+
+
+# SPEC-LOTTO-116: 데이터 내보내기 엔드포인트
+@router.get("/export/csv")
+async def export_csv() -> StreamingResponse:
+    """전체 회차 당첨 번호 CSV 다운로드."""
+    import csv
+
+    from lotto.web import data as wd
+
+    draws = wd.get_draws()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["회차", "추첨일", "1번", "2번", "3번", "4번", "5번", "6번", "보너스", "1등당첨금", "1등당첨자수"])
+    for d in sorted(draws, key=lambda x: x.drwNo):
+        nums = d.numbers()
+        writer.writerow([
+            d.drwNo,
+            d.date.isoformat(),
+            nums[0], nums[1], nums[2], nums[3], nums[4], nums[5],
+            d.bonus,
+            d.prize1Amount if d.prize1Amount is not None else 0,
+            d.prize1Winners if d.prize1Winners is not None else 0,
+        ])
+
+    output.seek(0)
+    content = output.getvalue()
+
+    return StreamingResponse(
+        iter([content.encode("utf-8-sig")]),
+        media_type="text/csv; charset=utf-8-sig",
+        headers={"Content-Disposition": "attachment; filename*=UTF-8''lotto_draws.csv"},
+    )
+
+
+@router.get("/export/xlsx")
+async def export_xlsx() -> StreamingResponse:
+    """전체 회차 당첨 번호 Excel 다운로드."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    from lotto.web import data as wd
+
+    draws = wd.get_draws()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "로또당첨번호"
+
+    headers = ["회차", "추첨일", "1번", "2번", "3번", "4번", "5번", "6번", "보너스", "1등당첨금", "1등당첨자수"]
+    ws.append(headers)
+
+    # 헤더 스타일 적용
+    header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+    for col_idx, _ in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+
+    # 헤더 행 고정
+    ws.freeze_panes = "A2"
+
+    for d in sorted(draws, key=lambda x: x.drwNo):
+        nums = d.numbers()
+        ws.append([
+            d.drwNo,
+            d.date.isoformat(),
+            nums[0], nums[1], nums[2], nums[3], nums[4], nums[5],
+            d.bonus,
+            d.prize1Amount if d.prize1Amount is not None else 0,
+            d.prize1Winners if d.prize1Winners is not None else 0,
+        ])
+
+    # 열 너비 설정
+    col_widths = [8, 12, 6, 6, 6, 6, 6, 6, 8, 14, 12]
+    for i, width in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = width
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    return StreamingResponse(
+        iter([buf.read()]),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename*=UTF-8''lotto_draws.xlsx"},
+    )
