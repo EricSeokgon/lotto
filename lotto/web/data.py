@@ -1252,15 +1252,41 @@ def hot_cold_analysis(
 
 
 def get_simulation(rounds: int = 1000) -> SimulationResult | None:
-    """시뮬레이션 결과를 반환합니다. draws.csv 없으면 None."""
+    """시뮬레이션 결과를 반환합니다. draws.csv 없으면 None.
+
+    결과를 파일 캐시에 저장하여 동일 조건 재요청 시 즉시 반환합니다.
+    캐시 키: (rounds, 마지막_회차_번호).
+    """
     if not DRAWS_PATH.exists():
         return None
     draws = get_draws()
     if not draws:
         return None
+
+    last_drw_no = draws[-1].drwNo
+    cache_path = settings.data_dir / f"sim_cache_{rounds}_{last_drw_no}.json"
+
+    # 캐시 히트
+    if cache_path.exists():
+        try:
+            raw = json.loads(cache_path.read_text(encoding="utf-8"))
+            from lotto.models import SimulationResult
+            return SimulationResult.model_validate(raw)
+        except Exception:  # noqa: BLE001
+            cache_path.unlink(missing_ok=True)
+
     from lotto.simulator import LottoSimulator
 
-    return LottoSimulator(draws).simulate(rounds=rounds)
+    result = LottoSimulator(draws).simulate(rounds=rounds)
+
+    # 캐시 저장 (실패해도 결과 반환에 영향 없음)
+    with contextlib.suppress(Exception):
+        cache_path.write_text(
+            json.dumps(result.model_dump(), ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    return result
 
 
 def get_strategy_comparison(rounds: int = 100) -> list[dict[str, Any]] | None:
