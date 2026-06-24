@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% block title %}구간 조합 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">구간 조합(저/중/고) 분석</h2>
+  <p class="text-muted mb-4">
+    1~15(저), 16~30(중), 31~45(고) 구간별 번호 수의 조합 분포를 분석합니다.
+  </p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ data.best_combo }}</div>
+          <div class="text-muted small">최빈 조합 (저-중-고)</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.best_combo_pct }}%</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.best_combo_count }}</div>
+          <div class="text-muted small">최빈 조합 출현 수</div>
+          <div class="text-muted" style="font-size:0.7rem;">전체 {{ data.total }}회</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-warning">{{ data.total_combos }}종</div>
+          <div class="text-muted small">출현한 조합 종류</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-info">2.0개</div>
+          <div class="text-muted small">구간당 기대 번호 수</div>
+          <div class="text-muted" style="font-size:0.7rem;">균등 분포 시</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- 상위 조합 -->
+    <div class="col-12 col-md-5">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">빈출 조합 상위 15</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">조합 형식: 저-중-고 (개수)</p>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>조합</th><th>회차</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for item in data.top_combos %}
+              <tr {% if item.combo == data.best_combo %}class="table-primary"{% endif %}>
+                <td><strong>{{ item.combo }}</strong></td>
+                <td>{{ item.count }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar" style="width:{{ item.pct }}%;">{{ item.pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 구간별 번호 수 분포 -->
+    <div class="col-12 col-md-7">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">구간별 번호 수 분포</div>
+        <div class="card-body">
+          <div class="row g-3">
+            {% for zone_key, zone_label, color in [('low', '저 (1~15)', 'primary'), ('mid', '중 (16~30)', 'success'), ('high', '고 (31~45)', 'danger')] %}
+            <div class="col-12">
+              <h6 class="text-{{ color }}">{{ zone_label }}</h6>
+              <table class="table table-sm mb-2">
+                <thead><tr>
+                  {% for item in data.zone_data[zone_key] %}
+                  <th class="text-center" style="font-size:0.75rem;">{{ item.count }}개</th>
+                  {% endfor %}
+                </tr></thead>
+                <tbody><tr>
+                  {% for item in data.zone_data[zone_key] %}
+                  <td class="text-center" style="font-size:0.75rem;">{{ item.pct }}%</td>
+                  {% endfor %}
+                </tr></tbody>
+              </table>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

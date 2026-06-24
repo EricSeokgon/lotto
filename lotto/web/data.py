@@ -10951,3 +10951,58 @@ def get_std_deviation_analysis() -> dict[str, Any] | None:
         "bucket_list": bucket_list,
         "recent": recent,
     }
+
+
+def get_range_combo_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-126: 번호 구간 조합(저/중/고) 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    combo_dist: dict[str, int] = {}
+    low_dist: dict[int, int] = dict.fromkeys(range(7), 0)
+    mid_dist: dict[int, int] = dict.fromkeys(range(7), 0)
+    high_dist: dict[int, int] = dict.fromkeys(range(7), 0)
+
+    for draw in draws:
+        nums = draw.numbers()
+        low = sum(1 for n in nums if 1 <= n <= 15)
+        mid = sum(1 for n in nums if 16 <= n <= 30)
+        high = sum(1 for n in nums if 31 <= n <= 45)
+        key = f"{low}-{mid}-{high}"
+        combo_dist[key] = combo_dist.get(key, 0) + 1
+        low_dist[low] += 1
+        mid_dist[mid] += 1
+        high_dist[high] += 1
+
+    best_combo = max(combo_dist, key=lambda k: combo_dist[k])
+
+    # 상위 15개 조합만 반환 (빈도 순)
+    top_combos = sorted(
+        [{"combo": k, "count": v, "pct": round(v / total * 100, 1)} for k, v in combo_dist.items()],
+        key=lambda x: -x["count"],
+    )[:15]
+
+    def _zone_list(dist: dict[int, int]) -> list[dict[str, Any]]:
+        return [
+            {"count": k, "freq": dist[k], "pct": round(dist[k] / total * 100, 1)}
+            for k in range(7)
+        ]
+
+    zone_data = {
+        "low": _zone_list(low_dist),
+        "mid": _zone_list(mid_dist),
+        "high": _zone_list(high_dist),
+    }
+
+    return {
+        "total": total,
+        "best_combo": best_combo,
+        "best_combo_count": combo_dist[best_combo],
+        "best_combo_pct": round(combo_dist[best_combo] / total * 100, 1),
+        "total_combos": len(combo_dist),
+        "top_combos": top_combos,
+        "zone_data": zone_data,
+    }

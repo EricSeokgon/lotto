@@ -2156,3 +2156,13 @@ async def std_deviation_page(request: Request) -> TemplateResponse:
         "active_tab": "std_deviation",
         "data": data,
     })
+
+
+@router.get("/stats/range-combo")
+async def range_combo_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-126: 번호 구간 조합 분석."""
+    data = wd.get_range_combo_analysis()
+    return _render(request, "range_combo.html", {
+        "active_tab": "range_combo",
+        "data": data,
+    })
