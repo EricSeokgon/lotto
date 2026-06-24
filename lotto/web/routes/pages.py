@@ -2099,3 +2099,13 @@ async def carryover_page(request: Request) -> TemplateResponse:
         "active_tab": "carryover",
         "data": data,
     })
+
+
+@router.get("/stats/combo-guide")
+async def combo_guide_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-119: 번호 조합 가이드."""
+    data = wd.get_combo_guide()
+    return _render(request, "combo_guide.html", {
+        "active_tab": "combo_guide",
+        "data": data,
+    })

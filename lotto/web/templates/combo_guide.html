@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}번호 조합 가이드{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">번호 조합 가이드</h2>
+  <p class="text-muted mb-4">{{ data.total }}회차 실제 당첨 데이터 기반의 최적 조합 패턴입니다.</p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <div class="row g-4">
+
+    <!-- 홀짝 비율 -->
+    <div class="col-12 col-md-6">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">홀수 개수 분포</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            최빈: <strong>홀수 {{ data.best_odd }}개</strong> ({{ data.best_odd_pct }}%)
+          </p>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>홀수 개수</th><th>짝수 개수</th><th>회차수</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for k in range(7) %}
+              {% set cnt = data.odd_dist[k] %}
+              {% set pct = (cnt / data.total * 100) | round(1) %}
+              <tr {% if k == data.best_odd %}class="table-success"{% endif %}>
+                <td>홀 {{ k }}개</td>
+                <td>짝 {{ 6 - k }}개</td>
+                <td>{{ cnt }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar" style="width:{{ pct }}%;">{{ pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 합계 구간 -->
+    <div class="col-12 col-md-6">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">번호 합계 구간 분포</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            최빈 구간: <strong>{{ data.best_sum_label }}</strong> ({{ data.best_sum_pct }}%)
+          </p>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>합계 구간</th><th>회차수</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for i in range(data.sum_labels | length) %}
+              {% set cnt = data.sum_dist[i] %}
+              {% set pct = (cnt / data.total * 100) | round(1) %}
+              <tr {% if data.sum_labels[i] == data.best_sum_label %}class="table-success"{% endif %}>
+                <td>{{ data.sum_labels[i] }}</td>
+                <td>{{ cnt }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-info" style="width:{{ pct }}%;">{{ pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 연속 번호 쌍 수 -->
+    <div class="col-12 col-md-6">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">연속 번호 쌍 수 분포</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            최빈: <strong>연속 쌍 {{ data.best_consec }}개</strong> ({{ data.best_consec_pct }}%)
+          </p>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>연속 쌍 수</th><th>회차수</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for k in range(6) %}
+              {% if data.consec_dist[k] > 0 %}
+              {% set cnt = data.consec_dist[k] %}
+              {% set pct = (cnt / data.total * 100) | round(1) %}
+              <tr {% if k == data.best_consec %}class="table-success"{% endif %}>
+                <td>{{ k }}쌍</td>
+                <td>{{ cnt }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-warning" style="width:{{ pct }}%;">{{ pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 구간 커버 수 -->
+    <div class="col-12 col-md-6">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">커버 구간 수 분포 (1~9 / 10~19 / 20~29 / 30~39 / 40~45)</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            최빈: <strong>{{ data.best_zone }}개 구간 커버</strong> ({{ data.best_zone_pct }}%)
+          </p>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>커버 구간 수</th><th>회차수</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for k in range(1, 6) %}
+              {% set cnt = data.zone_dist.get(k, 0) %}
+              {% set pct = (cnt / data.total * 100) | round(1) %}
+              <tr {% if k == data.best_zone %}class="table-success"{% endif %}>
+                <td>{{ k }}개 구간</td>
+                <td>{{ cnt }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-danger" style="width:{{ pct }}%;">{{ pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 고저 비율 -->
+    <div class="col-12 col-md-6">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">저번호(1~22) 개수 분포</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            최빈: <strong>저번호 {{ data.best_low }}개</strong> ({{ data.best_low_pct }}%)
+          </p>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>저번호 개수</th><th>고번호 개수</th><th>회차수</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for k in range(7) %}
+              {% set cnt = data.low_dist[k] %}
+              {% set pct = (cnt / data.total * 100) | round(1) %}
+              <tr {% if k == data.best_low %}class="table-success"{% endif %}>
+                <td>저 {{ k }}개</td>
+                <td>고 {{ 6 - k }}개</td>
+                <td>{{ cnt }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-secondary" style="width:{{ pct }}%;">{{ pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 조합 원칙 요약 -->
+    <div class="col-12 col-md-6">
+      <div class="card h-100 border-primary">
+        <div class="card-header fw-semibold bg-primary text-white">최적 조합 원칙 요약</div>
+        <div class="card-body">
+          <ul class="list-group list-group-flush">
+            <li class="list-group-item d-flex justify-content-between">
+              <span>홀짝 비율</span>
+              <strong>홀수 {{ data.best_odd }}개 : 짝수 {{ 6 - data.best_odd }}개</strong>
+            </li>
+            <li class="list-group-item d-flex justify-content-between">
+              <span>번호 합계 범위</span>
+              <strong>{{ data.best_sum_label }}</strong>
+            </li>
+            <li class="list-group-item d-flex justify-content-between">
+              <span>연속 번호 쌍</span>
+              <strong>{{ data.best_consec }}쌍</strong>
+            </li>
+            <li class="list-group-item d-flex justify-content-between">
+              <span>구간 커버 수</span>
+              <strong>{{ data.best_zone }}개 구간</strong>
+            </li>
+            <li class="list-group-item d-flex justify-content-between">
+              <span>저번호(1~22) 개수</span>
+              <strong>{{ data.best_low }}개</strong>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

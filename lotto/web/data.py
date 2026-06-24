@@ -10497,3 +10497,95 @@ def get_carryover_analysis() -> dict[str, Any] | None:
         "most_common": max(dist, key=lambda k: dist[k]),
         "recent": recent_pairs,
     }
+
+
+def get_combo_guide() -> dict[str, Any] | None:
+    """SPEC-LOTTO-119: 번호 조합 가이드.
+
+    실제 당첨 데이터 기반으로 최적 조합 패턴(홀짝·합계·AC값·구간·연속번호) 통계를 반환.
+    """
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    # 1. 홀짝 비율 분포 (홀수 개수 기준)
+    odd_dist: dict[int, int] = {k: 0 for k in range(7)}
+    for draw in draws:
+        odd_count = sum(1 for n in draw.numbers() if n % 2 == 1)
+        odd_dist[odd_count] += 1
+
+    # 2. 합계 분포 (20단위 구간)
+    # 6개 번호의 합계: 최소 21(1+2+3+4+5+6), 최대 255(40+41+42+43+44+45)
+    # 구간: <80, 80-99, 100-119, 120-139, 140-159, 160-179, 180-199, >=200
+    sum_bins = [80, 100, 120, 140, 160, 180, 200]
+    sum_labels = ["~79", "80~99", "100~119", "120~139", "140~159", "160~179", "180~199", "200~"]
+    sum_dist: list[int] = [0] * len(sum_labels)
+    for draw in draws:
+        s = sum(draw.numbers())
+        bucket = len(sum_bins)  # 기본값: 마지막 버킷
+        for i, boundary in enumerate(sum_bins):
+            if s < boundary:
+                bucket = i
+                break
+        sum_dist[bucket] += 1
+
+    # 3. 연속 번호 포함 여부 분포 (연속 쌍 개수)
+    consec_dist: dict[int, int] = {k: 0 for k in range(6)}
+    for draw in draws:
+        nums = sorted(draw.numbers())
+        pairs = sum(1 for i in range(len(nums) - 1) if nums[i + 1] == nums[i] + 1)
+        consec_dist[min(pairs, 5)] += 1
+
+    # 4. 구간(십의 자리) 분포 — 1~9, 10~19, 20~29, 30~39, 40~45 중 몇 개 구간이 커버되는가
+    zone_dist: dict[int, int] = {k: 0 for k in range(1, 6)}
+    for draw in draws:
+        zones = set()
+        for n in draw.numbers():
+            if n <= 9:
+                zones.add(1)
+            elif n <= 19:
+                zones.add(2)
+            elif n <= 29:
+                zones.add(3)
+            elif n <= 39:
+                zones.add(4)
+            else:
+                zones.add(5)
+        zone_dist[len(zones)] = zone_dist.get(len(zones), 0) + 1
+
+    # 5. 고저 비율 분포 (22 이하 = 저, 23 이상 = 고)
+    low_dist: dict[int, int] = {k: 0 for k in range(7)}
+    for draw in draws:
+        low_count = sum(1 for n in draw.numbers() if n <= 22)
+        low_dist[low_count] += 1
+
+    def most_common_key(d: dict) -> int:  # type: ignore[type-arg]
+        return max(d, key=lambda k: d[k])
+
+    def top_pct(d: dict, k: object) -> float:  # type: ignore[type-arg]
+        return round(d[k] / total * 100, 1)
+
+    # 구간별 최빈 버킷
+    best_sum_idx = sum_dist.index(max(sum_dist))
+
+    return {
+        "total": total,
+        "odd_dist": odd_dist,
+        "best_odd": most_common_key(odd_dist),
+        "best_odd_pct": top_pct(odd_dist, most_common_key(odd_dist)),
+        "sum_labels": sum_labels,
+        "sum_dist": sum_dist,
+        "best_sum_label": sum_labels[best_sum_idx],
+        "best_sum_pct": round(sum_dist[best_sum_idx] / total * 100, 1),
+        "consec_dist": consec_dist,
+        "best_consec": most_common_key(consec_dist),
+        "best_consec_pct": top_pct(consec_dist, most_common_key(consec_dist)),
+        "zone_dist": zone_dist,
+        "best_zone": most_common_key(zone_dist),
+        "best_zone_pct": top_pct(zone_dist, most_common_key(zone_dist)),
+        "low_dist": low_dist,
+        "best_low": most_common_key(low_dist),
+        "best_low_pct": top_pct(low_dist, most_common_key(low_dist)),
+    }
