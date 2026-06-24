@@ -973,20 +973,13 @@ async def stats_consecutive_pairs_page(request: Request) -> TemplateResponse:
 
 @router.get("/stats/ac-value")
 async def stats_ac_value_page(request: Request) -> TemplateResponse:
-    """AC값(산술 복잡도) 분포 분석 페이지 (SPEC-LOTTO-070).
-
-    - 요약 카드: 분석 회차 / 평균 AC값 / 최다 AC값 / 고다양성 비율(AC>=9)
-    - 분포 테이블: 15개 고정 키("0".."14")의 count/pct
-    - "14" 는 AC>=14 오버플로 버킷이다.
-    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
-    """
-    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
+    """SPEC-LOTTO-121: AC값(산술 복잡도) 분석."""
     from lotto.web import data as wd
 
-    stats = wd.get_ac_value_stats(wd.get_draws())
+    data = wd.get_ac_analysis()
     return _render(request, "ac_value.html", {
         "active_tab": "ac_value",
-        "stats": stats,
+        "data": data,
     })
 
 

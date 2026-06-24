@@ -10656,3 +10656,54 @@ def get_seasonal_analysis() -> dict[str, Any] | None:
         }
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-121: AC값(산술 복잡도) 분포 분석
+# ---------------------------------------------------------------------------
+
+def _calc_ac(numbers: list[int]) -> int:
+    """AC값(산술 복잡도) 계산: 6개 번호의 서로 다른 차이값 수 - 5."""
+    nums = sorted(numbers)
+    diffs: set[int] = set()
+    for i in range(len(nums)):
+        for j in range(i + 1, len(nums)):
+            diffs.add(nums[j] - nums[i])
+    return len(diffs) - 5
+
+
+def get_ac_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-121: AC값(산술 복잡도) 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+    ac_values = [_calc_ac(draw.numbers()) for draw in draws]
+
+    # 분포: AC 0~10
+    dist: dict[int, int] = dict.fromkeys(range(11), 0)
+    for ac in ac_values:
+        dist[min(ac, 10)] += 1
+
+    best_ac = max(dist, key=lambda k: dist[k])
+    avg_ac = round(sum(ac_values) / total, 3)
+
+    # 최근 20회차 AC값
+    recent = []
+    for draw in draws[-20:][::-1]:
+        ac = _calc_ac(draw.numbers())
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "ac": ac,
+        })
+
+    return {
+        "total": total,
+        "distribution": dist,
+        "best_ac": best_ac,
+        "best_ac_pct": round(dist[best_ac] / total * 100, 1),
+        "avg_ac": avg_ac,
+        "recent": recent,
+    }

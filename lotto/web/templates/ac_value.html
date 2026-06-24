@@ -1,73 +1,154 @@
 {% extends "base.html" %}
-{# SPEC-LOTTO-070: AC값(산술 복잡도) 분포 분석 — 회차별 AC값(0~14) 15버킷 분포 (JS 없음) #}
+{% block title %}AC값 분석{% endblock %}
 {% block content %}
-<div class="space-y-6">
-    <div class="flex items-center justify-between">
-        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">AC값(산술 복잡도) 분포 분석</h2>
-    </div>
+<div class="container-fluid py-4">
+  <h2 class="mb-1">AC값 (산술 복잡도) 분석</h2>
+  <p class="text-muted mb-2">
+    AC값 = 당첨 번호 6개 간 모든 차이값의 <strong>고유 개수 - 5</strong><br>
+    높을수록 번호 조합이 분산되어 있으며, 범위는 0~10입니다.
+  </p>
 
-    <p class="text-sm text-muted dark:text-gray-400">
-        회차별 AC값(Arithmetic Complexity) 분포를 집계합니다.
-        AC값이란 같은 회차 본번호 6개(보너스 제외)의 모든 쌍(C(6,2)=15개)에 대한
-        절대 차이 중 서로 다른(distinct) 값의 개수입니다.
-        예) [1,2,3,10,11,12] → 차이 {1,2,7,8,9,10,11} → AC=7.
-        값이 클수록 번호 간격이 다양함을 의미하며, AC&ge;9 를 고다양성으로 봅니다.
-        키 "14" 는 AC&ge;14 를 합산한 오버플로 버킷입니다.
-        과거 통계일 뿐 미래 출현을 보장하지 않습니다.
-    </p>
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
 
-    {% if stats.total_draws == 0 %}
-    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
-        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ data.avg_ac }}</div>
+          <div class="text-muted small">평균 AC값</div>
+        </div>
+      </div>
     </div>
-    {% else %}
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
-            <p class="text-xs text-muted dark:text-gray-400">분석 회차</p>
-            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.total_draws }}</p>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.best_ac }}</div>
+          <div class="text-muted small">최빈 AC값</div>
         </div>
-        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
-            <p class="text-xs text-muted dark:text-gray-400">평균 AC값</p>
-            <p class="text-xl font-bold text-sky-600 dark:text-sky-400">{{ stats.avg_ac_value }}</p>
-        </div>
-        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
-            <p class="text-xs text-muted dark:text-gray-400">최다 AC값</p>
-            <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">{{ stats.most_common_ac }}</p>
-        </div>
-        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
-            <p class="text-xs text-muted dark:text-gray-400">고다양성 비율(AC&ge;9)</p>
-            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{ stats.high_diversity_pct }}%</p>
-        </div>
+      </div>
     </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-info">{{ data.best_ac_pct }}%</div>
+          <div class="text-muted small">최빈 AC값 출현율</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-warning">{{ data.total }}</div>
+          <div class="text-muted small">분석 회차 수</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
-        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">AC값 분포 (0~14)</h3>
-        <table class="min-w-full text-sm">
-            <thead>
-                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
-                    <th class="py-2 pr-4">AC값</th>
-                    <th class="py-2 pr-4 text-right">회차 수</th>
-                    <th class="py-2 pr-4 text-right">비율</th>
-                </tr>
-            </thead>
+  <div class="row g-4">
+    <!-- AC값 분포 -->
+    <div class="col-12 col-md-6">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">AC값별 분포</div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>AC값</th><th>복잡도</th><th>회차수</th><th>비율</th></tr></thead>
             <tbody>
-                {# 15개 고정 키("0".."14")를 정의 순서대로 표시한다(미관측 키 0 포함) #}
-                {% for label, cell in stats.ac_distribution.items() %}
-                {% if label|int == stats.most_common_ac %}
-                <tr class="border-b border-border dark:border-gray-700 bg-sky-50 dark:bg-sky-900/20">
-                {% else %}
-                <tr class="border-b border-border dark:border-gray-700">
-                {% endif %}
-                    <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">
-                        {{ label }}{% if label == "14" %} <span class="text-xs font-normal text-muted dark:text-gray-400">(이상)</span>{% endif %}{% if label|int == stats.most_common_ac %} <span class="text-xs font-normal text-sky-600 dark:text-sky-400">(최다)</span>{% endif %}
-                    </td>
-                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ cell.count }}</td>
-                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ cell.pct }}%</td>
+              {% for k in range(11) %}
+              {% set cnt = data.distribution[k] %}
+              {% set pct = (cnt / data.total * 100) | round(1) %}
+              <tr {% if k == data.best_ac %}class="table-success"{% endif %}>
+                <td><strong>{{ k }}</strong></td>
+                <td>
+                  {% if k <= 3 %}
+                  <span class="badge bg-secondary">낮음</span>
+                  {% elif k <= 6 %}
+                  <span class="badge bg-primary">중간</span>
+                  {% else %}
+                  <span class="badge bg-danger">높음</span>
+                  {% endif %}
+                </td>
+                <td>{{ cnt }}</td>
+                <td>
+                  <div class="progress" style="height:14px;min-width:100px;">
+                    <div class="progress-bar {% if k == data.best_ac %}bg-success{% endif %}" style="width:{{ pct }}%;">
+                      {{ pct }}%
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 최근 20회차 -->
+    <div class="col-12 col-md-6">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">최근 20회차 AC값</div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead><tr><th>회차</th><th>AC값</th><th>당첨 번호</th></tr></thead>
+              <tbody>
+                {% for item in data.recent %}
+                <tr>
+                  <td>{{ item.drwNo }}회</td>
+                  <td>
+                    <span class="badge {% if item.ac <= 3 %}bg-secondary{% elif item.ac <= 6 %}bg-primary{% else %}bg-danger{% endif %} fs-6">
+                      {{ item.ac }}
+                    </span>
+                  </td>
+                  <td>
+                    {% for n in item.numbers %}
+                    <span class="badge bg-light text-dark border me-1">{{ n }}</span>
+                    {% endfor %}
+                  </td>
                 </tr>
                 {% endfor %}
-            </tbody>
-        </table>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </div>
-    {% endif %}
+  </div>
+
+  <!-- AC값 가이드 -->
+  <div class="card mt-4">
+    <div class="card-header fw-semibold">AC값 활용 가이드</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <div class="border rounded p-3 text-center">
+            <div class="fs-4 fw-bold text-secondary">AC 0~3</div>
+            <div class="text-muted">낮은 복잡도</div>
+            <div class="small mt-1">번호가 밀집 배치 (연속번호 많음)</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded p-3 text-center border-primary">
+            <div class="fs-4 fw-bold text-primary">AC 4~7</div>
+            <div class="text-muted">중간 복잡도 (권장)</div>
+            <div class="small mt-1">역대 당첨 번호의 최빈 범위</div>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="border rounded p-3 text-center">
+            <div class="fs-4 fw-bold text-danger">AC 8~10</div>
+            <div class="text-muted">높은 복잡도</div>
+            <div class="small mt-1">번호가 고루 분산 배치</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
 </div>
 {% endblock %}
