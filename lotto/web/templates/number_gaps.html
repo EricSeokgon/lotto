@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}번호 간격 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">번호 간격(Gap) 분석</h2>
+  <p class="text-muted mb-4">
+    정렬된 당첨 번호 6개 사이의 5개 차이값(gap) 분포를 분석합니다.<br>
+    <small>gap = [n2-n1, n3-n2, n4-n3, n5-n4, n6-n5]</small>
+  </p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ data.avg_gap }}</div>
+          <div class="text-muted small">평균 간격</div>
+          <div class="text-muted" style="font-size:0.7rem;">(n6-n1)/5</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.best_min_gap }}</div>
+          <div class="text-muted small">최빈 최솟값 gap</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.best_min_gap_pct }}%</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-danger">{{ data.best_max_gap }}</div>
+          <div class="text-muted small">최빈 최댓값 gap</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.best_max_gap_pct }}%</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-warning">{{ data.best_consec }}쌍</div>
+          <div class="text-muted small">최빈 연속 번호 수</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.best_consec_pct }}%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- 최솟값 gap 분포 -->
+    <div class="col-12 col-md-4">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">최솟값 gap 분포</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">6개 번호 중 가장 작은 간격의 분포</p>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>gap</th><th>회차</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for item in data.min_gap_list %}
+              <tr {% if item.gap == data.best_min_gap %}class="table-success"{% endif %}>
+                <td><strong>{{ item.gap }}</strong></td>
+                <td>{{ item.count }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-success" style="width:{{ item.pct }}%;">{{ item.pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 최댓값 gap 분포 (상위 15개만) -->
+    <div class="col-12 col-md-4">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">최댓값 gap 분포 (상위)</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">6개 번호 중 가장 큰 간격의 분포</p>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>gap</th><th>회차</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for item in data.max_gap_list[:15] %}
+              <tr {% if item.gap == data.best_max_gap %}class="table-danger"{% endif %}>
+                <td><strong>{{ item.gap }}</strong></td>
+                <td>{{ item.count }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-danger" style="width:{{ item.pct }}%;">{{ item.pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 연속 번호 쌍 수 분포 -->
+    <div class="col-12 col-md-4">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">연속 번호 쌍 수 분포</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">gap=1인 쌍(연속 번호)이 몇 개 있는가?</p>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>연속 쌍</th><th>회차</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for k in range(6) %}
+              {% set cnt = data.consec_dist[k] %}
+              {% set pct = (cnt / data.total * 100) | round(1) %}
+              <tr {% if k == data.best_consec %}class="table-warning"{% endif %}>
+                <td><strong>{{ k }}쌍</strong></td>
+                <td>{{ cnt }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-warning" style="width:{{ pct }}%;">{{ pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

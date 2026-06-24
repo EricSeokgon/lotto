@@ -995,6 +995,18 @@ async def tail_digits_page(request: Request) -> TemplateResponse:
     })
 
 
+@router.get("/stats/number-gaps")
+async def number_gaps_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-123: 번호 간격(Gap) 분석."""
+    from lotto.web import data as wd
+
+    data = wd.get_number_gap_analysis()
+    return _render(request, "number_gaps.html", {
+        "active_tab": "number_gaps",
+        "data": data,
+    })
+
+
 @router.get("/stats/median")
 async def stats_median_page(request: Request) -> TemplateResponse:
     """번호 중앙값(median) 분포 분석 페이지 (SPEC-LOTTO-071).

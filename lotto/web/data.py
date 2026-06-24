@@ -10768,3 +10768,61 @@ def get_tail_digit_analysis() -> dict[str, Any] | None:
         "best_cover": best_cover,
         "best_cover_pct": round(cover_dist[best_cover] / total * 100, 1),
     }
+
+
+def get_number_gap_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-123: 번호 간격(Gap) 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    # 분포 딕셔너리 초기화
+    min_gap_dist: dict[int, int] = {}
+    max_gap_dist: dict[int, int] = {}
+    consec_dist: dict[int, int] = {k: 0 for k in range(6)}  # 연속쌍 수 0~5
+    avg_gaps: list[float] = []
+
+    for draw in draws:
+        nums = sorted(draw.numbers())
+        gaps = [nums[i + 1] - nums[i] for i in range(5)]
+
+        min_g = min(gaps)
+        max_g = max(gaps)
+        consec = sum(1 for g in gaps if g == 1)
+        avg_gap = (nums[-1] - nums[0]) / 5
+
+        min_gap_dist[min_g] = min_gap_dist.get(min_g, 0) + 1
+        max_gap_dist[max_g] = max_gap_dist.get(max_g, 0) + 1
+        consec_dist[consec] += 1
+        avg_gaps.append(avg_gap)
+
+    overall_avg = round(sum(avg_gaps) / total, 3)
+    best_min_gap = max(min_gap_dist, key=lambda k: min_gap_dist[k])
+    best_max_gap = max(max_gap_dist, key=lambda k: max_gap_dist[k])
+    best_consec = max(consec_dist, key=lambda k: consec_dist[k])
+
+    # min/max gap 분포를 정렬된 리스트로 변환
+    min_gap_list = [
+        {"gap": k, "count": min_gap_dist[k], "pct": round(min_gap_dist[k] / total * 100, 1)}
+        for k in sorted(min_gap_dist)
+    ]
+    max_gap_list = [
+        {"gap": k, "count": max_gap_dist[k], "pct": round(max_gap_dist[k] / total * 100, 1)}
+        for k in sorted(max_gap_dist)
+    ]
+
+    return {
+        "total": total,
+        "avg_gap": overall_avg,
+        "best_min_gap": best_min_gap,
+        "best_min_gap_pct": round(min_gap_dist[best_min_gap] / total * 100, 1),
+        "best_max_gap": best_max_gap,
+        "best_max_gap_pct": round(max_gap_dist[best_max_gap] / total * 100, 1),
+        "best_consec": best_consec,
+        "best_consec_pct": round(consec_dist[best_consec] / total * 100, 1),
+        "min_gap_list": min_gap_list,
+        "max_gap_list": max_gap_list,
+        "consec_dist": consec_dist,
+    }
