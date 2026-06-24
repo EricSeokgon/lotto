@@ -2109,3 +2109,13 @@ async def combo_guide_page(request: Request) -> TemplateResponse:
         "active_tab": "combo_guide",
         "data": data,
     })
+
+
+@router.get("/stats/seasonal")
+async def seasonal_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-120: 계절별 번호 출현 분석."""
+    data = wd.get_seasonal_analysis()
+    return _render(request, "seasonal.html", {
+        "active_tab": "seasonal",
+        "data": data,
+    })

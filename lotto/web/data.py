@@ -10589,3 +10589,70 @@ def get_combo_guide() -> dict[str, Any] | None:
         "best_low": most_common_key(low_dist),
         "best_low_pct": top_pct(low_dist, most_common_key(low_dist)),
     }
+
+
+def get_seasonal_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-120: 계절별 번호 출현 분석.
+
+    봄(3~5월)/여름(6~8월)/가을(9~11월)/겨울(12~2월)별 번호 빈도를 분석.
+    """
+    draws = get_draws()
+    if not draws:
+        return None
+
+    seasons = {
+        "봄": (3, 4, 5),
+        "여름": (6, 7, 8),
+        "가을": (9, 10, 11),
+        "겨울": (12, 1, 2),
+    }
+    season_order = ["봄", "여름", "가을", "겨울"]
+
+    # 계절별 번호 카운트와 회차 수
+    season_counts: dict[str, dict[int, int]] = {
+        s: {n: 0 for n in range(1, 46)} for s in season_order
+    }
+    season_draws: dict[str, int] = {s: 0 for s in season_order}
+
+    for draw in draws:
+        month = draw.date.month
+        for season, months in seasons.items():
+            if month in months:
+                season_draws[season] += 1
+                for n in draw.numbers():
+                    season_counts[season][n] += 1
+                break
+
+    result: dict[str, Any] = {
+        "season_order": season_order,
+        "season_draws": season_draws,
+        "seasons": {},
+    }
+
+    for season in season_order:
+        draws_in_season = season_draws[season]
+        if draws_in_season == 0:
+            result["seasons"][season] = {
+                "draws": 0,
+                "top10": [],
+                "counts": {},
+            }
+            continue
+
+        counts = season_counts[season]
+        sorted_nums = sorted(counts.items(), key=lambda x: (-x[1], x[0]))
+        top10 = [
+            {
+                "number": n,
+                "count": c,
+                "rate": round(c / draws_in_season * 100, 1),
+            }
+            for n, c in sorted_nums[:10]
+        ]
+        result["seasons"][season] = {
+            "draws": draws_in_season,
+            "top10": top10,
+            "counts": {str(n): c for n, c in counts.items()},
+        }
+
+    return result

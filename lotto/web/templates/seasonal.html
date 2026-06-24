@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}계절별 번호 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">계절별 번호 출현 분석</h2>
+  <p class="text-muted mb-4">봄(3~5월)·여름(6~8월)·가을(9~11월)·겨울(12~2월) 시즌별 상위 출현 번호를 비교합니다.</p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  {% set season_colors = {"봄": "success", "여름": "danger", "가을": "warning", "겨울": "info"} %}
+
+  <div class="row g-4">
+    {% for season in data.season_order %}
+    {% set s = data.seasons[season] %}
+    {% set color = season_colors[season] %}
+    <div class="col-12 col-md-6">
+      <div class="card h-100 border-{{ color }}">
+        <div class="card-header bg-{{ color }} text-white fw-semibold">
+          {{ season }} ({{ s.draws }}회차)
+        </div>
+        <div class="card-body p-2">
+          {% if s.draws == 0 %}
+          <p class="text-muted p-2">데이터 없음</p>
+          {% else %}
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr><th>#</th><th>번호</th><th>출현 수</th><th>출현율</th></tr>
+            </thead>
+            <tbody>
+              {% for item in s.top10 %}
+              <tr>
+                <td class="text-muted">{{ loop.index }}</td>
+                <td>
+                  <span class="badge bg-{{ color }} fs-6" style="min-width:2rem;">{{ item.number }}</span>
+                </td>
+                <td>{{ item.count }}회</td>
+                <td>
+                  <div class="progress" style="height:14px;min-width:80px;">
+                    <div class="progress-bar bg-{{ color }}" style="width:{{ [item.rate * 3, 100] | min }}%;">
+                      {{ item.rate }}%
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- 계절별 공통 번호 -->
+  <div class="card mt-4">
+    <div class="card-header fw-semibold">계절 공통 상위 번호 (모든 계절 Top10에 포함된 번호)</div>
+    <div class="card-body">
+      {% set top_sets = [] %}
+      {% for season in data.season_order %}
+        {% set _ = top_sets.append(data.seasons[season].top10 | map(attribute='number') | list) %}
+      {% endfor %}
+      {% set common = [] %}
+      {% for n in range(1, 46) %}
+        {% set in_all = true %}
+        {% for s_top in top_sets %}
+          {% if n not in s_top %}{% set in_all = false %}{% endif %}
+        {% endfor %}
+        {% if in_all %}{% set _ = common.append(n) %}{% endif %}
+      {% endfor %}
+      {% if common %}
+        {% for n in common %}
+        <span class="badge bg-dark fs-6 me-1">{{ n }}</span>
+        {% endfor %}
+      {% else %}
+        <span class="text-muted">모든 계절 Top10에 공통으로 포함된 번호가 없습니다.</span>
+      {% endif %}
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
