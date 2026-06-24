@@ -2166,3 +2166,13 @@ async def range_combo_page(request: Request) -> TemplateResponse:
         "active_tab": "range_combo",
         "data": data,
     })
+
+
+@router.get("/stats/multiples")
+async def multiples_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-127: 배수 분석."""
+    data = wd.get_multiples_analysis()
+    return _render(request, "multiples.html", {
+        "active_tab": "multiples",
+        "data": data,
+    })

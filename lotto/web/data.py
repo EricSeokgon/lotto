@@ -11006,3 +11006,61 @@ def get_range_combo_analysis() -> dict[str, Any] | None:
         "top_combos": top_combos,
         "zone_data": zone_data,
     }
+
+
+# SPEC-LOTTO-127: 배수 분석용 상수
+MULTIPLES_3 = {n for n in range(1, 46) if n % 3 == 0}   # 15개
+MULTIPLES_5 = {n for n in range(1, 46) if n % 5 == 0}   # 9개
+MULTIPLES_7 = {n for n in range(1, 46) if n % 7 == 0}   # 6개
+
+
+def get_multiples_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-127: 배수 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    def analyze_multiples(multiples: set[int]) -> dict[str, Any]:
+        count_dist: dict[int, int] = {k: 0 for k in range(7)}
+        freq: dict[int, int] = {n: 0 for n in sorted(multiples)}
+        total_appear = 0
+
+        for draw in draws:
+            nums = draw.numbers()
+            in_draw = [n for n in nums if n in multiples]
+            count_dist[len(in_draw)] += 1
+            total_appear += len(in_draw)
+            for n in in_draw:
+                freq[n] += 1
+
+        best_count = max(count_dist, key=lambda k: count_dist[k])
+        rate = round(total_appear / (total * 6) * 100, 2)
+        expected = round(len(multiples) / 45 * 100, 2)
+
+        dist_list = [
+            {"count": k, "freq": count_dist[k], "pct": round(count_dist[k] / total * 100, 1)}
+            for k in range(7)
+        ]
+        freq_list = [
+            {"number": n, "count": freq[n], "rate": round(freq[n] / total * 100, 2)}
+            for n in sorted(multiples)
+        ]
+
+        return {
+            "size": len(multiples),
+            "best_count": best_count,
+            "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+            "rate": rate,
+            "expected": expected,
+            "dist_list": dist_list,
+            "freq_list": freq_list,
+        }
+
+    return {
+        "total": total,
+        "mult3": analyze_multiples(MULTIPLES_3),
+        "mult5": analyze_multiples(MULTIPLES_5),
+        "mult7": analyze_multiples(MULTIPLES_7),
+    }
