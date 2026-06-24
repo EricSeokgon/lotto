@@ -2146,3 +2146,13 @@ async def prime_numbers_page(request: Request) -> TemplateResponse:
         "active_tab": "prime_numbers",
         "data": data,
     })
+
+
+@router.get("/stats/std-deviation")
+async def std_deviation_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-125: 번호 표준편차 분석."""
+    data = wd.get_std_deviation_analysis()
+    return _render(request, "std_deviation.html", {
+        "active_tab": "std_deviation",
+        "data": data,
+    })

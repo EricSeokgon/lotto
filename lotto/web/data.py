@@ -10881,3 +10881,73 @@ def get_prime_analysis() -> dict[str, Any] | None:
         "prime_list": prime_list,
         "num_primes_in_range": len(PRIMES_1_45),
     }
+
+
+def get_std_deviation_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-125: 번호 표준편차 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    def calc_std(nums: list[int]) -> float:
+        mean = sum(nums) / len(nums)
+        variance = sum((n - mean) ** 2 for n in nums) / len(nums)
+        return round(math.sqrt(variance), 2)
+
+    std_values: list[float] = [calc_std(draw.numbers()) for draw in draws]
+
+    # 구간 분류: [0,5), [5,8), [8,11), [11,14), [14,17), [17,∞)
+    buckets = [
+        {"label": "0~4", "min": 0, "max": 5, "count": 0},
+        {"label": "5~7", "min": 5, "max": 8, "count": 0},
+        {"label": "8~10", "min": 8, "max": 11, "count": 0},
+        {"label": "11~13", "min": 11, "max": 14, "count": 0},
+        {"label": "14~16", "min": 14, "max": 17, "count": 0},
+        {"label": "17+", "min": 17, "max": float("inf"), "count": 0},
+    ]
+    for s in std_values:
+        for b in buckets:
+            if b["min"] <= s < b["max"]:
+                b["count"] += 1
+                break
+
+    avg_std = round(sum(std_values) / total, 2)
+    min_std = min(std_values)
+    max_std = max(std_values)
+    min_draw = draws[std_values.index(min_std)]
+    max_draw = draws[std_values.index(max_std)]
+
+    best_bucket = max(buckets, key=lambda b: b["count"])
+
+    # 최근 20회차
+    recent = []
+    for draw, s in zip(draws[-20:][::-1], reversed(std_values[-20:])):
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "std": s,
+        })
+
+    bucket_list = [
+        {
+            "label": b["label"],
+            "count": b["count"],
+            "pct": round(b["count"] / total * 100, 1),
+        }
+        for b in buckets
+    ]
+
+    return {
+        "total": total,
+        "avg_std": avg_std,
+        "min_std": min_std,
+        "min_draw": {"drwNo": min_draw.drwNo, "numbers": sorted(min_draw.numbers())},
+        "max_std": max_std,
+        "max_draw": {"drwNo": max_draw.drwNo, "numbers": sorted(max_draw.numbers())},
+        "best_bucket_label": best_bucket["label"],
+        "best_bucket_pct": round(best_bucket["count"] / total * 100, 1),
+        "bucket_list": bucket_list,
+        "recent": recent,
+    }
