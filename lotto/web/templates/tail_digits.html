@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}끝자리 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">번호 끝자리(일의 자리) 분석</h2>
+  <p class="text-muted mb-4">당첨 번호 6개의 일의 자리(0~9) 분포와 회차별 커버 종류 수를 분석합니다.</p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- 요약 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ data.best_tail }}</div>
+          <div class="text-muted small">최빈 끝자리</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.best_tail_pct }}%</div>
+          <div class="text-muted small">최빈 끝자리 비율</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-info">{{ data.best_cover }}종</div>
+          <div class="text-muted small">최빈 커버 끝자리 수</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-warning">{{ data.best_cover_pct }}%</div>
+          <div class="text-muted small">최빈 커버 비율</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- 끝자리별 출현 빈도 -->
+    <div class="col-12 col-md-7">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">끝자리별 출현 빈도 vs 기대값</div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <thead>
+              <tr>
+                <th>끝자리</th>
+                <th>해당 번호</th>
+                <th>출현 수</th>
+                <th>비율</th>
+                <th>기대값 대비</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in data.tail_data %}
+              <tr {% if item.digit == data.best_tail %}class="table-success"{% endif %}>
+                <td><strong>{{ item.digit }}</strong></td>
+                <td class="text-muted small">
+                  {% set ns = namespace(nums=[]) %}
+                  {% for n in range(1, 46) %}
+                    {% if n % 10 == item.digit %}
+                      {% set ns.nums = ns.nums + [n] %}
+                    {% endif %}
+                  {% endfor %}
+                  {{ ns.nums | join(', ') }}
+                </td>
+                <td>{{ item.count }}</td>
+                <td>
+                  <div class="progress" style="height:14px;min-width:80px;">
+                    <div class="progress-bar" style="width:{{ [item.rate * 5, 100] | min }}%;">
+                      {{ item.rate }}%
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  {% if item.ratio >= 1.05 %}
+                  <span class="badge bg-danger">+{{ ((item.ratio - 1) * 100) | round(1) }}%</span>
+                  {% elif item.ratio <= 0.95 %}
+                  <span class="badge bg-secondary">-{{ ((1 - item.ratio) * 100) | round(1) }}%</span>
+                  {% else %}
+                  <span class="badge bg-success">≈ 기대값</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 커버 종류 수 분포 -->
+    <div class="col-12 col-md-5">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">회차별 커버 끝자리 종류 수</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            6개 번호에서 몇 가지 서로 다른 끝자리가 나오는가?
+          </p>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>커버 종류</th><th>회차 수</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for k in range(1, 7) %}
+              {% set cnt = data.cover_dist[k] %}
+              {% set pct = (cnt / data.total * 100) | round(1) %}
+              <tr {% if k == data.best_cover %}class="table-success"{% endif %}>
+                <td>{{ k }}종</td>
+                <td>{{ cnt }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-info" style="width:{{ pct }}%;">{{ pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          <div class="alert alert-info mt-3 mb-0 py-2 small">
+            최빈 커버: <strong>{{ data.best_cover }}종</strong> ({{ data.best_cover_pct }}%)<br>
+            6개 번호 모두 다른 끝자리 = 6종 커버 (가장 분산)
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

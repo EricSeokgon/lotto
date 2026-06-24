@@ -10707,3 +10707,64 @@ def get_ac_analysis() -> dict[str, Any] | None:
         "avg_ac": avg_ac,
         "recent": recent,
     }
+
+
+# ---------------------------------------------------------------------------
+# SPEC-LOTTO-122: 번호 끝자리(일의 자리) 분포 분석
+# ---------------------------------------------------------------------------
+
+def get_tail_digit_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-122: 번호 끝자리(일의 자리) 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+    total_numbers = total * 6  # 전체 번호 출현 수
+
+    # 1. 끝자리별 전체 출현 빈도
+    tail_freq: dict[int, int] = {d: 0 for d in range(10)}
+    for draw in draws:
+        for n in draw.numbers():
+            tail_freq[n % 10] += 1
+
+    best_tail = max(tail_freq, key=lambda k: tail_freq[k])
+
+    # 끝자리별 기대 빈도 (번호 수 비례)
+    # 1~45에서 끝자리별 번호 수: 0→4개, 1~5→5개, 6~9→4개
+    tail_pool: dict[int, int] = {d: 0 for d in range(10)}
+    for n in range(1, 46):
+        tail_pool[n % 10] += 1
+
+    # 2. 회차별 끝자리 커버 수 분포 (몇 가지 끝자리를 커버하는가)
+    cover_dist: dict[int, int] = {k: 0 for k in range(1, 7)}
+    for draw in draws:
+        tails = {n % 10 for n in draw.numbers()}
+        cover_dist[len(tails)] += 1
+
+    best_cover = max(cover_dist, key=lambda k: cover_dist[k])
+
+    tail_data = []
+    for d in range(10):
+        count = tail_freq[d]
+        pool = tail_pool[d]
+        expected = total_numbers * (pool / 45)
+        tail_data.append({
+            "digit": d,
+            "count": count,
+            "rate": round(count / total_numbers * 100, 2),
+            "pool": pool,
+            "expected": round(expected, 1),
+            "ratio": round(count / expected, 3) if expected > 0 else 0,
+        })
+
+    return {
+        "total": total,
+        "total_numbers": total_numbers,
+        "tail_data": tail_data,
+        "best_tail": best_tail,
+        "best_tail_pct": round(tail_freq[best_tail] / total_numbers * 100, 1),
+        "cover_dist": cover_dist,
+        "best_cover": best_cover,
+        "best_cover_pct": round(cover_dist[best_cover] / total * 100, 1),
+    }
