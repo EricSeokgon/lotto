@@ -10826,3 +10826,58 @@ def get_number_gap_analysis() -> dict[str, Any] | None:
         "max_gap_list": max_gap_list,
         "consec_dist": consec_dist,
     }
+
+
+# SPEC-LOTTO-124: 1~45 중 소수 집합
+PRIMES_1_45: set[int] = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43}
+
+
+def get_prime_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-124: 소수 번호 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+    total_numbers = total * 6
+
+    # 회차별 소수 개수 분포 (0~6)
+    prime_count_dist: dict[int, int] = {k: 0 for k in range(7)}
+    # 개별 소수 출현 빈도
+    prime_freq: dict[int, int] = {p: 0 for p in sorted(PRIMES_1_45)}
+    prime_total = 0
+
+    for draw in draws:
+        nums = draw.numbers()
+        primes_in_draw = [n for n in nums if n in PRIMES_1_45]
+        cnt = len(primes_in_draw)
+        prime_count_dist[cnt] += 1
+        prime_total += cnt
+        for n in primes_in_draw:
+            prime_freq[n] += 1
+
+    best_count = max(prime_count_dist, key=lambda k: prime_count_dist[k])
+    prime_rate = round(prime_total / total_numbers * 100, 2)
+    # 기대값: 14/45 ≈ 31.11%
+    expected_rate = round(14 / 45 * 100, 2)
+
+    prime_list = [
+        {
+            "number": p,
+            "count": prime_freq[p],
+            "rate": round(prime_freq[p] / total * 100, 2),
+        }
+        for p in sorted(PRIMES_1_45)
+    ]
+
+    return {
+        "total": total,
+        "prime_count_dist": prime_count_dist,
+        "best_count": best_count,
+        "best_count_pct": round(prime_count_dist[best_count] / total * 100, 1),
+        "prime_rate": prime_rate,
+        "expected_rate": expected_rate,
+        "prime_total": prime_total,
+        "prime_list": prime_list,
+        "num_primes_in_range": len(PRIMES_1_45),
+    }

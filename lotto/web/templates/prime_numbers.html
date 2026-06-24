@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}소수 번호 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">소수 번호 분석</h2>
+  <p class="text-muted mb-4">
+    1~45 중 소수({{ data.num_primes_in_range }}개)의 당첨 출현 패턴을 분석합니다.<br>
+    <small>소수: 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43</small>
+  </p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ data.best_count }}개</div>
+          <div class="text-muted small">회차당 최빈 소수 수</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.best_count_pct }}%</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.prime_rate }}%</div>
+          <div class="text-muted small">실제 소수 출현율</div>
+          <div class="text-muted" style="font-size:0.7rem;">기대값 {{ data.expected_rate }}%</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-warning">{{ data.num_primes_in_range }}개</div>
+          <div class="text-muted small">1~45 내 소수 수</div>
+          <div class="text-muted" style="font-size:0.7rem;">45개 중</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-info">{{ data.prime_total }}</div>
+          <div class="text-muted small">누적 소수 출현 수</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.total }}회차</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- 회차별 소수 개수 분포 -->
+    <div class="col-12 col-md-5">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">회차별 소수 포함 개수 분포</div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>소수 개수</th><th>회차</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for k in range(7) %}
+              {% set cnt = data.prime_count_dist[k] %}
+              {% set pct = (cnt / data.total * 100) | round(1) %}
+              <tr {% if k == data.best_count %}class="table-primary"{% endif %}>
+                <td><strong>{{ k }}개</strong></td>
+                <td>{{ cnt }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar" style="width:{{ pct }}%;">{{ pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 개별 소수 출현 빈도 -->
+    <div class="col-12 col-md-7">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">개별 소수 출현 빈도</div>
+        <div class="card-body">
+          <p class="text-muted small mb-3">각 소수가 당첨 번호로 출현한 횟수 ({{ data.total }}회차 기준)</p>
+          <table class="table table-sm mb-0">
+            <thead><tr><th>번호</th><th>출현 수</th><th>출현율(회/회차)</th></tr></thead>
+            <tbody>
+              {% for item in data.prime_list %}
+              <tr>
+                <td>
+                  <span class="badge rounded-pill bg-primary">{{ item.number }}</span>
+                </td>
+                <td>{{ item.count }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-success" style="width:{{ [item.rate * 2, 100] | min }}%;">{{ item.rate }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

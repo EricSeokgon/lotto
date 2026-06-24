@@ -2136,3 +2136,13 @@ async def seasonal_page(request: Request) -> TemplateResponse:
         "active_tab": "seasonal",
         "data": data,
     })
+
+
+@router.get("/stats/prime-numbers")
+async def prime_numbers_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-124: 소수 번호 분석."""
+    data = wd.get_prime_analysis()
+    return _render(request, "prime_numbers.html", {
+        "active_tab": "prime_numbers",
+        "data": data,
+    })
