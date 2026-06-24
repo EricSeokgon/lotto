@@ -2176,3 +2176,13 @@ async def multiples_page(request: Request) -> TemplateResponse:
         "active_tab": "multiples",
         "data": data,
     })
+
+
+@router.get("/stats/hot-cold")
+async def hot_cold_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-128: 핫/콜드 번호 분석."""
+    data = wd.get_hot_cold_analysis()
+    return _render(request, "hot_cold.html", {
+        "active_tab": "hot_cold",
+        "data": data,
+    })

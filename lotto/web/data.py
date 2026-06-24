@@ -11064,3 +11064,73 @@ def get_multiples_analysis() -> dict[str, Any] | None:
         "mult5": analyze_multiples(MULTIPLES_5),
         "mult7": analyze_multiples(MULTIPLES_7),
     }
+
+
+def get_hot_cold_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-128: 핫/콜드 번호 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+    recent_50 = draws[-50:] if total >= 50 else draws
+    recent_10 = draws[-10:] if total >= 10 else draws
+
+    # all_count
+    all_count: dict[int, int] = {n: 0 for n in range(1, 46)}
+    for draw in draws:
+        for n in draw.numbers():
+            all_count[n] += 1
+
+    # r50_count
+    r50_count: dict[int, int] = {n: 0 for n in range(1, 46)}
+    for draw in recent_50:
+        for n in draw.numbers():
+            r50_count[n] += 1
+
+    # r10_count
+    r10_count: dict[int, int] = {n: 0 for n in range(1, 46)}
+    for draw in recent_10:
+        for n in draw.numbers():
+            r10_count[n] += 1
+
+    # last_seen: find how many draws ago the number last appeared
+    last_seen_ago: dict[int, int] = {}
+    for n in range(1, 46):
+        for i, draw in enumerate(reversed(draws)):
+            if n in draw.numbers():
+                last_seen_ago[n] = i  # 0 = last draw
+                break
+        else:
+            last_seen_ago[n] = total  # never appeared
+
+    numbers = []
+    for n in range(1, 46):
+        r10 = r10_count[n]
+        status = "hot" if r10 >= 3 else ("cold" if r10 == 0 else "warm")
+        numbers.append({
+            "number": n,
+            "all_count": all_count[n],
+            "all_rate": round(all_count[n] / total * 100, 1),
+            "r50_count": r50_count[n],
+            "r50_rate": round(r50_count[n] / len(recent_50) * 100, 1),
+            "r10_count": r10_count[n],
+            "r10_rate": round(r10_count[n] / len(recent_10) * 100, 1),
+            "last_seen_ago": last_seen_ago[n],
+            "status": status,
+        })
+
+    hot_numbers = sorted([x for x in numbers if x["status"] == "hot"], key=lambda x: -x["r10_count"])
+    cold_numbers = sorted([x for x in numbers if x["status"] == "cold"], key=lambda x: -x["last_seen_ago"])
+
+    return {
+        "total": total,
+        "recent_50_size": len(recent_50),
+        "recent_10_size": len(recent_10),
+        "numbers": numbers,
+        "hot_count": len(hot_numbers),
+        "cold_count": len(cold_numbers),
+        "top_hot": hot_numbers[:10],
+        "top_cold": cold_numbers[:10],
+        "expected_rate": round(6 / 45 * 100, 2),
+    }

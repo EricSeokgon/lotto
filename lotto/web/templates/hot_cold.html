@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}핫/콜드 번호 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">핫/콜드 번호 분석</h2>
+  <p class="text-muted mb-4">
+    최근 10회 기준 자주 나온 번호(핫)와 오래 안 나온 번호(콜드)를 분석합니다.<br>
+    <small>핫: 최근 10회 중 3회 이상 | 콜드: 최근 10회 미출현 | 기대값: {{ data.expected_rate }}%/회</small>
+  </p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100 border-danger">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-danger">{{ data.hot_count }}</div>
+          <div class="text-muted small">핫 번호 수</div>
+          <div class="text-muted" style="font-size:0.7rem;">최근 10회 3회 이상</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100 border-info">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-info">{{ data.cold_count }}</div>
+          <div class="text-muted small">콜드 번호 수</div>
+          <div class="text-muted" style="font-size:0.7rem;">최근 10회 미출현</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.expected_rate }}%</div>
+          <div class="text-muted small">기대 출현율</div>
+          <div class="text-muted" style="font-size:0.7rem;">6/45 균등분포</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ data.total }}</div>
+          <div class="text-muted small">전체 회차</div>
+          <div class="text-muted" style="font-size:0.7rem;">분석 기준</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mb-4">
+    <!-- 핫 번호 TOP 10 -->
+    <div class="col-12 col-md-6">
+      <div class="card h-100 border-danger">
+        <div class="card-header fw-semibold text-danger">핫 번호 TOP 10 (최근 10회)</div>
+        <div class="card-body">
+          {% if data.top_hot %}
+          <table class="table table-sm mb-0">
+            <thead><tr><th>번호</th><th>최근10회</th><th>최근50회</th><th>전체</th></tr></thead>
+            <tbody>
+              {% for item in data.top_hot %}
+              <tr>
+                <td><span class="badge rounded-pill bg-danger">{{ item.number }}</span></td>
+                <td><strong>{{ item.r10_count }}회</strong> ({{ item.r10_rate }}%)</td>
+                <td>{{ item.r50_count }}회 ({{ item.r50_rate }}%)</td>
+                <td>{{ item.all_count }}회 ({{ item.all_rate }}%)</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="text-muted">핫 번호 없음</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- 콜드 번호 TOP 10 -->
+    <div class="col-12 col-md-6">
+      <div class="card h-100 border-info">
+        <div class="card-header fw-semibold text-info">콜드 번호 TOP 10 (최근 미출현)</div>
+        <div class="card-body">
+          {% if data.top_cold %}
+          <table class="table table-sm mb-0">
+            <thead><tr><th>번호</th><th>미출현 기간</th><th>최근50회</th><th>전체</th></tr></thead>
+            <tbody>
+              {% for item in data.top_cold %}
+              <tr>
+                <td><span class="badge rounded-pill bg-info text-dark">{{ item.number }}</span></td>
+                <td><strong>{{ item.last_seen_ago }}회</strong> 전</td>
+                <td>{{ item.r50_count }}회 ({{ item.r50_rate }}%)</td>
+                <td>{{ item.all_count }}회 ({{ item.all_rate }}%)</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <p class="text-muted">콜드 번호 없음</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 전체 번호 상태 그리드 -->
+  <div class="card">
+    <div class="card-header fw-semibold">전체 번호 상태 (1~45)</div>
+    <div class="card-body">
+      <p class="text-muted small mb-3">
+        <span class="badge bg-danger me-1">핫</span> 최근10회 3회이상 &nbsp;
+        <span class="badge bg-secondary me-1">웜</span> 최근10회 1~2회 &nbsp;
+        <span class="badge bg-info text-dark me-1">콜드</span> 최근10회 미출현
+      </p>
+      <div class="row g-2">
+        {% for item in data.numbers %}
+        <div class="col-auto">
+          <div class="text-center" style="min-width:52px;">
+            <span class="badge rounded-pill {% if item.status == 'hot' %}bg-danger{% elif item.status == 'cold' %}bg-info text-dark{% else %}bg-secondary{% endif %} fs-6">
+              {{ item.number }}
+            </span>
+            <div style="font-size:0.65rem; color:#666;">{{ item.r10_count }}/10</div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
