@@ -11134,3 +11134,166 @@ def get_hot_cold_analysis() -> dict[str, Any] | None:
         "top_cold": cold_numbers[:10],
         "expected_rate": round(6 / 45 * 100, 2),
     }
+
+
+def get_number_range_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-130: 번호 범위(최대-최소) 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    ranges = [max(draw.numbers()) - min(draw.numbers()) for draw in draws]
+
+    buckets = [
+        {"label": "5~14", "min": 5, "max": 15, "count": 0},
+        {"label": "15~19", "min": 15, "max": 20, "count": 0},
+        {"label": "20~24", "min": 20, "max": 25, "count": 0},
+        {"label": "25~29", "min": 25, "max": 30, "count": 0},
+        {"label": "30~34", "min": 30, "max": 35, "count": 0},
+        {"label": "35~39", "min": 35, "max": 40, "count": 0},
+        {"label": "40~44", "min": 40, "max": 45, "count": 0},
+    ]
+
+    for r in ranges:
+        for b in buckets:
+            if b["min"] <= r < b["max"]:
+                b["count"] += 1
+                break
+
+    avg_range = round(sum(ranges) / total, 2)
+    min_range = min(ranges)
+    max_range = max(ranges)
+    min_draw = draws[ranges.index(min_range)]
+    max_draw = draws[ranges.index(max_range)]
+
+    best_bucket = max(buckets, key=lambda b: b["count"])
+
+    # Min/Max number frequency
+    min_freq: dict[int, int] = {n: 0 for n in range(1, 46)}
+    max_freq: dict[int, int] = {n: 0 for n in range(1, 46)}
+    for draw in draws:
+        nums = draw.numbers()
+        min_freq[min(nums)] += 1
+        max_freq[max(nums)] += 1
+
+    top_min = sorted(
+        [{"number": n, "count": min_freq[n]} for n in range(1, 46) if min_freq[n] > 0],
+        key=lambda x: -x["count"],
+    )[:10]
+    top_max = sorted(
+        [{"number": n, "count": max_freq[n]} for n in range(1, 46) if max_freq[n] > 0],
+        key=lambda x: -x["count"],
+    )[:10]
+
+    bucket_list = [
+        {
+            "label": b["label"],
+            "count": b["count"],
+            "pct": round(b["count"] / total * 100, 1),
+        }
+        for b in buckets
+    ]
+
+    recent = []
+    for draw, r in zip(reversed(draws[-20:]), reversed(ranges[-20:])):
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "range": r,
+        })
+
+    return {
+        "total": total,
+        "avg_range": avg_range,
+        "min_range": min_range,
+        "max_range": max_range,
+        "min_draw": {"drwNo": min_draw.drwNo, "numbers": sorted(min_draw.numbers())},
+        "max_draw": {"drwNo": max_draw.drwNo, "numbers": sorted(max_draw.numbers())},
+        "best_bucket_label": best_bucket["label"],
+        "best_bucket_pct": round(best_bucket["count"] / total * 100, 1),
+        "bucket_list": bucket_list,
+        "top_min": top_min,
+        "top_max": top_max,
+        "recent": recent,
+    }
+
+
+def get_median_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-129: 번호 중앙값 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    def calc_median(nums: list[int]) -> float:
+        s = sorted(nums)
+        return (s[2] + s[3]) / 2
+
+    medians = [calc_median(draw.numbers()) for draw in draws]
+
+    buckets = [
+        {"label": "~9", "min": 0, "max": 10, "count": 0},
+        {"label": "10~14", "min": 10, "max": 15, "count": 0},
+        {"label": "15~19", "min": 15, "max": 20, "count": 0},
+        {"label": "20~24", "min": 20, "max": 25, "count": 0},
+        {"label": "25~29", "min": 25, "max": 30, "count": 0},
+        {"label": "30~34", "min": 30, "max": 35, "count": 0},
+        {"label": "35~", "min": 35, "max": float("inf"), "count": 0},
+    ]
+
+    for m in medians:
+        for b in buckets:
+            if b["min"] <= m < b["max"]:
+                b["count"] += 1
+                break
+
+    avg_median = round(sum(medians) / total, 2)
+    min_median = min(medians)
+    max_median = max(medians)
+    min_draw = draws[medians.index(min_median)]
+    max_draw = draws[medians.index(max_median)]
+
+    best_bucket = max(buckets, key=lambda b: b["count"])
+
+    below_center = sum(1 for m in medians if m < 23)
+    above_center = sum(1 for m in medians if m > 23)
+    at_center = total - below_center - above_center
+
+    bucket_list = [
+        {
+            "label": b["label"],
+            "count": b["count"],
+            "pct": round(b["count"] / total * 100, 1),
+        }
+        for b in buckets
+    ]
+
+    recent = []
+    for draw, m in zip(reversed(draws[-20:]), reversed(medians[-20:])):
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "median": m,
+        })
+
+    return {
+        "total": total,
+        "avg_median": avg_median,
+        "min_median": min_median,
+        "max_median": max_median,
+        "min_draw": {"drwNo": min_draw.drwNo, "numbers": sorted(min_draw.numbers())},
+        "max_draw": {"drwNo": max_draw.drwNo, "numbers": sorted(max_draw.numbers())},
+        "best_bucket_label": best_bucket["label"],
+        "best_bucket_pct": round(best_bucket["count"] / total * 100, 1),
+        "below_center": below_center,
+        "below_pct": round(below_center / total * 100, 1),
+        "above_center": above_center,
+        "above_pct": round(above_center / total * 100, 1),
+        "at_center": at_center,
+        "at_pct": round(at_center / total * 100, 1),
+        "bucket_list": bucket_list,
+        "recent": recent,
+    }

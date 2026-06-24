@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}번호 범위 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">번호 범위(최대-최소) 분석</h2>
+  <p class="text-muted mb-4">
+    6개 당첨 번호의 최대값과 최소값의 차이(범위)가 얼마나 되는지 분석합니다.<br>
+    <small>범위가 클수록 번호가 넓게 퍼져있고, 작을수록 번호가 밀집되어 있습니다.</small>
+  </p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ data.avg_range }}</div>
+          <div class="text-muted small">평균 범위</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.best_bucket_label }}</div>
+          <div class="text-muted small">최빈 구간</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.best_bucket_pct }}%</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-info">{{ data.min_range }}</div>
+          <div class="text-muted small">최소 범위</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.min_draw.drwNo }}회: {{ data.min_draw.numbers | join(', ') }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-danger">{{ data.max_range }}</div>
+          <div class="text-muted small">최대 범위</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.max_draw.drwNo }}회: {{ data.max_draw.numbers | join(', ') }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mb-4">
+    <!-- 구간 분포 -->
+    <div class="col-12 col-md-5">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">범위 구간 분포</div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>구간</th><th>회차</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for item in data.bucket_list %}
+              <tr {% if item.label == data.best_bucket_label %}class="table-success"{% endif %}>
+                <td><strong>{{ item.label }}</strong></td>
+                <td>{{ item.count }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-success" style="width:{{ item.pct }}%;">{{ item.pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 최소/최대 번호 빈도 -->
+    <div class="col-12 col-md-7">
+      <div class="row g-3 h-100">
+        <div class="col-6">
+          <div class="card h-100">
+            <div class="card-header fw-semibold text-info">최소 번호 TOP 10</div>
+            <div class="card-body">
+              <table class="table table-sm mb-0">
+                <thead><tr><th>번호</th><th>횟수</th></tr></thead>
+                <tbody>
+                  {% for item in data.top_min %}
+                  <tr>
+                    <td><span class="badge rounded-pill bg-info text-dark">{{ item.number }}</span></td>
+                    <td>{{ item.count }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="col-6">
+          <div class="card h-100">
+            <div class="card-header fw-semibold text-danger">최대 번호 TOP 10</div>
+            <div class="card-body">
+              <table class="table table-sm mb-0">
+                <thead><tr><th>번호</th><th>횟수</th></tr></thead>
+                <tbody>
+                  {% for item in data.top_max %}
+                  <tr>
+                    <td><span class="badge rounded-pill bg-danger">{{ item.number }}</span></td>
+                    <td>{{ item.count }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 최근 20회차 -->
+  <div class="card">
+    <div class="card-header fw-semibold">최근 20회차 범위</div>
+    <div class="card-body">
+      <table class="table table-sm mb-0">
+        <thead><tr><th>회차</th><th>번호</th><th>범위</th></tr></thead>
+        <tbody>
+          {% for item in data.recent %}
+          <tr>
+            <td>{{ item.drwNo }}</td>
+            <td>
+              {% for n in item.numbers %}
+              <span class="badge rounded-pill {% if n <= 10 %}bg-warning text-dark{% elif n <= 20 %}bg-primary{% elif n <= 30 %}bg-danger{% elif n <= 40 %}bg-secondary{% else %}bg-dark{% endif %}">{{ n }}</span>
+              {% endfor %}
+            </td>
+            <td>
+              <strong {% if item.range < 25 %}class="text-info"{% elif item.range > 39 %}class="text-danger"{% endif %}>
+                {{ item.range }}
+              </strong>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
