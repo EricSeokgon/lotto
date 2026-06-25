@@ -11368,6 +11368,62 @@ def get_consecutive_analysis() -> dict[str, Any] | None:
     }
 
 
+def get_pair_frequency_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-133: 번호 쌍(pair) 동시 출현 빈도 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    pair_count: dict[tuple[int, int], int] = {}
+
+    for draw in draws:
+        nums = sorted(draw.numbers())
+        for i in range(len(nums)):
+            for j in range(i + 1, len(nums)):
+                pair = (nums[i], nums[j])
+                pair_count[pair] = pair_count.get(pair, 0) + 1
+
+    expected = round(total * 15 / 990, 2)
+
+    sorted_pairs = sorted(pair_count.items(), key=lambda x: -x[1])
+
+    top_pairs = [
+        {"pair": list(p), "count": c, "pct": round(c / total * 100, 2)}
+        for p, c in sorted_pairs[:20]
+    ]
+    rare_pairs = [
+        {"pair": list(p), "count": c, "pct": round(c / total * 100, 2)}
+        for p, c in sorted_pairs[-20:][::-1]
+        if c > 0
+    ]
+
+    # 번호별 주요 파트너 TOP 5
+    partner_freq: dict[int, dict[int, int]] = {n: {} for n in range(1, 46)}
+    for (a, b), c in pair_count.items():
+        partner_freq[a][b] = c
+        partner_freq[b][a] = c
+
+    top_partners: dict[int, list[dict[str, int]]] = {}
+    for n in range(1, 46):
+        partners = sorted(partner_freq[n].items(), key=lambda x: -x[1])[:5]
+        top_partners[n] = [{"number": p, "count": c} for p, c in partners]
+
+    total_unique_pairs = len(pair_count)
+    never_appeared = 990 - total_unique_pairs
+
+    return {
+        "total": total,
+        "expected": expected,
+        "total_unique_pairs": total_unique_pairs,
+        "never_appeared": never_appeared,
+        "top_pairs": top_pairs,
+        "rare_pairs": rare_pairs,
+        "top_partners": top_partners,
+    }
+
+
 def get_median_analysis() -> dict[str, Any] | None:
     """SPEC-LOTTO-129: 번호 중앙값 분포 분석."""
     draws = get_draws()

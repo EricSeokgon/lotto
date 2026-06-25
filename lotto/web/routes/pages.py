@@ -2189,3 +2189,13 @@ async def hot_cold_page(request: Request) -> TemplateResponse:
         "active_tab": "hot_cold",
         "data": data,
     })
+
+
+@router.get("/stats/pair-frequency")
+async def pair_frequency_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-133: 번호 쌍 동시 출현 빈도 분석."""
+    data = wd.get_pair_frequency_analysis()
+    return _render(request, "pair_frequency.html", {
+        "active_tab": "pair_frequency",
+        "data": data,
+    })

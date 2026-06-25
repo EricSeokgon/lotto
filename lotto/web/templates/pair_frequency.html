@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}번호 쌍 빈도 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">번호 쌍(Pair) 동시 출현 빈도 분석</h2>
+  <p class="text-muted mb-4">
+    같은 회차에서 두 번호가 함께 당첨된 빈도를 분석합니다.<br>
+    <small>기대값: 회차당 15쌍 × 전체 회차 ÷ 990 (가능한 쌍) ≈ {{ data.expected if data else 0 }}회</small>
+  </p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ data.expected }}</div>
+          <div class="text-muted small">쌍별 기대 출현 횟수</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.top_pairs[0].count if data.top_pairs else 0 }}</div>
+          <div class="text-muted small">최다 동시 출현</div>
+          {% if data.top_pairs %}
+          <div class="text-muted" style="font-size:0.7rem;">
+            {{ data.top_pairs[0].pair[0] }}-{{ data.top_pairs[0].pair[1] }}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-info">{{ data.total_unique_pairs }}</div>
+          <div class="text-muted small">출현한 쌍 수</div>
+          <div class="text-muted" style="font-size:0.7rem;">총 990쌍 중</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-warning">{{ data.never_appeared }}</div>
+          <div class="text-muted small">한 번도 안 나온 쌍</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mb-4">
+    <!-- TOP 20 자주 나온 쌍 -->
+    <div class="col-12 col-md-6">
+      <div class="card h-100">
+        <div class="card-header fw-semibold text-success">자주 나온 쌍 TOP 20</div>
+        <div class="card-body" style="max-height:400px;overflow-y:auto;">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>#</th><th>쌍</th><th>횟수</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for item in data.top_pairs %}
+              <tr>
+                <td class="text-muted">{{ loop.index }}</td>
+                <td>
+                  <span class="badge bg-success">{{ item.pair[0] }}</span>
+                  <span class="text-muted">-</span>
+                  <span class="badge bg-success">{{ item.pair[1] }}</span>
+                </td>
+                <td><strong>{{ item.count }}</strong></td>
+                <td><small class="text-muted">{{ item.pct }}%</small></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 드물게 나온 쌍 TOP 20 -->
+    <div class="col-12 col-md-6">
+      <div class="card h-100">
+        <div class="card-header fw-semibold text-danger">드물게 나온 쌍 TOP 20</div>
+        <div class="card-body" style="max-height:400px;overflow-y:auto;">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>#</th><th>쌍</th><th>횟수</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for item in data.rare_pairs %}
+              <tr>
+                <td class="text-muted">{{ loop.index }}</td>
+                <td>
+                  <span class="badge bg-secondary">{{ item.pair[0] }}</span>
+                  <span class="text-muted">-</span>
+                  <span class="badge bg-secondary">{{ item.pair[1] }}</span>
+                </td>
+                <td><strong>{{ item.count }}</strong></td>
+                <td><small class="text-muted">{{ item.pct }}%</small></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 번호별 주요 파트너 (1~45, 5개씩) -->
+  <div class="card">
+    <div class="card-header fw-semibold">번호별 주요 동반 번호 TOP 5</div>
+    <div class="card-body">
+      <div class="row g-2">
+        {% for n in range(1, 46) %}
+        <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+          <div class="d-flex align-items-start gap-1 py-1 border-bottom">
+            <span class="badge rounded-pill flex-shrink-0 {% if n <= 10 %}bg-warning text-dark{% elif n <= 20 %}bg-primary{% elif n <= 30 %}bg-danger{% elif n <= 40 %}bg-secondary{% else %}bg-dark{% endif %}" style="min-width:28px;">{{ n }}</span>
+            <div class="d-flex flex-wrap gap-1">
+              {% for p in data.top_partners[n] %}
+              <span class="badge bg-light text-dark border" style="font-size:0.65rem;">{{ p.number }}({{ p.count }})</span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
