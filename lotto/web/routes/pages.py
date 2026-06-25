@@ -2249,3 +2249,13 @@ async def tens_digit_page(request: Request) -> TemplateResponse:
         "active_tab": "tens_digit",
         "data": data,
     })
+
+
+@router.get("/stats/prime-number-dist")
+async def prime_number_dist_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-139: 번호 소수(Prime Number) 분포 분석."""
+    data = wd.get_prime_number_dist_analysis()
+    return _render(request, "prime_number_dist.html", {
+        "active_tab": "prime_number_dist",
+        "data": data,
+    })

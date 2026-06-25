@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}소수(Prime Number) 분포 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">소수(Prime Number) 분포 분석</h2>
+  <p class="text-muted mb-4">
+    1~45 내 소수(2,3,5,...,43) 14개의 당첨 번호 포함 빈도 분석. 이론적 기댓값(14/45×6≈1.867)과 비교.
+  </p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-warning">{{ data.prime_count }}개</div>
+          <div class="text-muted small">1~45 내 소수 개수</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ data.avg_primes }}</div>
+          <div class="text-muted small">평균 소수 포함 수</div>
+          <div class="text-muted" style="font-size:0.75rem;">기댓값 {{ data.expected }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.best_count }}개</div>
+          <div class="text-muted small">최빈 소수 포함 수</div>
+          <div class="text-muted" style="font-size:0.75rem;">{{ data.best_count_pct }}%</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-danger">{{ data.zero_prime_pct }}%</div>
+          <div class="text-muted small">소수 0개 비율</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 분포 테이블 -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">회차당 소수 포함 개수 분포 (0~6개)</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0">
+          <thead>
+            <tr>
+              <th>소수 개수</th>
+              <th>회차 수</th>
+              <th>비율</th>
+              <th>분포</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in data.dist_list %}
+            <tr {% if d.count == data.best_count %}class="table-success"{% endif %}>
+              <td><strong>{{ d.count }}개</strong></td>
+              <td>{{ d.draws }}</td>
+              <td>{{ d.pct }}%</td>
+              <td>
+                <div class="progress" style="height:12px;">
+                  <div class="progress-bar bg-primary" style="width:{{ d.pct }}%;" title="{{ d.draws }}회 ({{ d.pct }}%)"></div>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 소수 출현 빈도 테이블 -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">개별 소수 출현 빈도 (출현 횟수 내림차순)</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0">
+          <thead>
+            <tr>
+              <th>소수</th>
+              <th>출현 횟수</th>
+              <th>출현율</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in data.freq_list %}
+            <tr>
+              <td><span class="badge bg-warning text-dark">{{ f.number }}</span></td>
+              <td><strong>{{ f.count }}</strong></td>
+              <td>{{ f.pct }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 최근 20회차 -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">최근 20회차 소수 포함 현황</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead>
+            <tr>
+              <th>회차</th>
+              <th>당첨 번호 (소수: 노란색)</th>
+              <th>소수 개수</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in data.recent %}
+            <tr>
+              <td class="fw-bold">{{ r.drwNo }}회</td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  {% for n in r.numbers %}
+                  {% if n in r.primes %}
+                  <span class="badge bg-warning text-dark">{{ n }}</span>
+                  {% else %}
+                  <span class="badge bg-secondary">{{ n }}</span>
+                  {% endif %}
+                  {% endfor %}
+                </div>
+              </td>
+              <td>
+                {% if r.prime_count > 0 %}
+                <span class="badge bg-warning text-dark">{{ r.prime_count }}개</span>
+                {% else %}
+                <span class="text-muted">0개</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}

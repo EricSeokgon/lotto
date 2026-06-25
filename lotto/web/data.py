@@ -11921,3 +11921,68 @@ def get_tens_digit_analysis() -> dict[str, Any] | None:
         "top_patterns": top_patterns,
         "recent": recent,
     }
+
+
+def get_prime_number_dist_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-139: 번호 소수(Prime Number) 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    PRIMES = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43}
+    prime_count_dist: dict[int, int] = {k: 0 for k in range(7)}
+    prime_freq: dict[int, int] = {p: 0 for p in PRIMES}
+    prime_totals: list[int] = []
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        primes_in = nums & PRIMES
+        cnt = len(primes_in)
+        prime_count_dist[cnt] += 1
+        prime_totals.append(cnt)
+        for p in primes_in:
+            prime_freq[p] += 1
+
+    avg_primes = round(sum(prime_totals) / total, 3)
+    expected = round(len(PRIMES) / 45 * 6, 3)
+    best_count = max(prime_count_dist, key=lambda k: prime_count_dist[k])
+
+    dist_list = [
+        {"count": k, "draws": prime_count_dist[k],
+         "pct": round(prime_count_dist[k] / total * 100, 1)}
+        for k in range(7)
+    ]
+
+    freq_list = sorted(
+        [{"number": p, "count": prime_freq[p],
+          "pct": round(prime_freq[p] / total * 100, 1)}
+         for p in PRIMES],
+        key=lambda x: -x["count"],
+    )
+
+    recent = []
+    for draw in reversed(draws[-20:]):
+        nums = set(draw.numbers())
+        primes_in = sorted(nums & PRIMES)
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "primes": primes_in,
+            "prime_count": len(primes_in),
+        })
+
+    return {
+        "total": total,
+        "prime_count": len(PRIMES),
+        "avg_primes": avg_primes,
+        "expected": expected,
+        "diff": round(avg_primes - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(prime_count_dist[best_count] / total * 100, 1),
+        "zero_prime_pct": round(prime_count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }
