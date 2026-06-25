@@ -12360,3 +12360,69 @@ def get_multiples3_analysis() -> dict[str, Any] | None:
         "freq_list": freq_list,
         "recent": recent,
     }
+
+
+def get_multiples5_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-145: 5의 배수 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    MULT5 = {n for n in range(1, 46) if n % 5 == 0}
+    expected = round(len(MULT5) / 45 * 6, 3)
+
+    count_dist: dict[int, int] = {k: 0 for k in range(7)}
+    freq: dict[int, int] = {m: 0 for m in MULT5}
+    totals: list[int] = []
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        in_draw = nums & MULT5
+        cnt = len(in_draw)
+        count_dist[cnt] += 1
+        totals.append(cnt)
+        for m in in_draw:
+            freq[m] += 1
+
+    avg = round(sum(totals) / total, 3)
+    best_count = max(count_dist, key=lambda k: count_dist[k])
+
+    dist_list = [
+        {"count": k, "draws": count_dist[k],
+         "pct": round(count_dist[k] / total * 100, 1)}
+        for k in range(7)
+    ]
+
+    freq_list = sorted(
+        [{"number": m, "count": freq[m],
+          "pct": round(freq[m] / total * 100, 1)}
+         for m in MULT5],
+        key=lambda x: -x["count"],
+    )
+
+    recent = []
+    for draw in reversed(draws[-20:]):
+        nums = set(draw.numbers())
+        in_draw = sorted(nums & MULT5)
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "mult5": in_draw,
+            "count": len(in_draw),
+        })
+
+    return {
+        "total": total,
+        "mult5_count": len(MULT5),
+        "avg": avg,
+        "expected": expected,
+        "diff": round(avg - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+        "zero_pct": round(count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }
