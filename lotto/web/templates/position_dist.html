@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}번호 위치별 분포 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">번호 위치별 분포 분석</h2>
+  <p class="text-muted mb-4">
+    6개 당첨 번호를 오름차순 정렬했을 때 각 위치(1~6번째)별 번호 통계.
+    위치 1 = 최소값, 위치 6 = 최대값.
+  </p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- 요약 테이블 -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">위치별 요약</div>
+    <div class="card-body p-0">
+      <table class="table table-sm table-striped mb-0">
+        <thead>
+          <tr>
+            <th>위치</th>
+            <th>평균</th>
+            <th>최소</th>
+            <th>최대</th>
+            <th>최빈값</th>
+            <th>빈도</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in data.positions %}
+          <tr>
+            <td><span class="badge bg-secondary">{{ p.pos }}번째</span></td>
+            <td><strong>{{ p.avg }}</strong></td>
+            <td>{{ p.min }}</td>
+            <td>{{ p.max }}</td>
+            <td><span class="badge bg-primary">{{ p.mode }}</span></td>
+            <td>{{ p.mode_count }}회 ({{ p.mode_pct }}%)</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 위치별 상세 카드 (3열 그리드) -->
+  <div class="row g-3 mb-4">
+    {% for p in data.positions %}
+    <div class="col-md-6 col-xl-4">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span class="fw-bold">{{ p.pos }}번째 번호</span>
+          <span class="badge bg-info text-dark">평균 {{ p.avg }}</span>
+        </div>
+        <div class="card-body">
+          <!-- 구간별 분포 -->
+          <div class="mb-3">
+            <div class="small text-muted mb-1">구간별 분포</div>
+            {% for b in p.bucket_list %}
+            <div class="d-flex align-items-center mb-1">
+              <div style="width:60px;" class="small text-end me-2">{{ b.range }}</div>
+              <div class="flex-grow-1">
+                <div class="progress" style="height:14px;">
+                  <div class="progress-bar" style="width:{{ b.pct }}%;" title="{{ b.count }}회 ({{ b.pct }}%)"></div>
+                </div>
+              </div>
+              <div class="small ms-2" style="width:45px;">{{ b.pct }}%</div>
+            </div>
+            {% endfor %}
+          </div>
+          <!-- Top 5 최빈 번호 -->
+          <div>
+            <div class="small text-muted mb-1">최빈 번호 Top 5</div>
+            <div class="d-flex flex-wrap gap-1">
+              {% for t in p.top5 %}
+              <span class="badge bg-primary" title="{{ t.count }}회 ({{ t.pct }}%)">
+                {{ t.number }} <small>({{ t.pct }}%)</small>
+              </span>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- 최근 20회 -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">최근 20회 위치별 번호</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead>
+            <tr>
+              <th>회차</th>
+              <th class="text-center">1번째</th>
+              <th class="text-center">2번째</th>
+              <th class="text-center">3번째</th>
+              <th class="text-center">4번째</th>
+              <th class="text-center">5번째</th>
+              <th class="text-center">6번째</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in data.recent %}
+            <tr>
+              <td class="fw-bold">{{ r.drwNo }}회</td>
+              {% for n in r.numbers %}
+              <td class="text-center">
+                <span class="badge bg-secondary">{{ n }}</span>
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}

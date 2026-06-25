@@ -11674,3 +11674,71 @@ def get_median_analysis() -> dict[str, Any] | None:
         "bucket_list": bucket_list,
         "recent": recent,
     }
+
+
+def get_position_dist_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-136: 번호 위치별(순서) 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+    # 각 위치(0~5)별로 출현한 번호 수집
+    pos_numbers: list[list[int]] = [[] for _ in range(6)]
+
+    for draw in draws:
+        nums = sorted(draw.numbers())
+        for i, n in enumerate(nums):
+            pos_numbers[i].append(n)
+
+    positions = []
+    for i in range(6):
+        nums_at_pos = pos_numbers[i]
+        avg = round(sum(nums_at_pos) / total, 2)
+        mn = min(nums_at_pos)
+        mx = max(nums_at_pos)
+        cnt = Counter(nums_at_pos)
+        mode_num = cnt.most_common(1)[0][0]
+        mode_count = cnt.most_common(1)[0][1]
+        top5 = [
+            {"number": n, "count": c, "pct": round(c / total * 100, 1)}
+            for n, c in cnt.most_common(5)
+        ]
+        buckets = {"1-9": 0, "10-19": 0, "20-29": 0, "30-39": 0, "40-45": 0}
+        for n in nums_at_pos:
+            if n <= 9:
+                buckets["1-9"] += 1
+            elif n <= 19:
+                buckets["10-19"] += 1
+            elif n <= 29:
+                buckets["20-29"] += 1
+            elif n <= 39:
+                buckets["30-39"] += 1
+            else:
+                buckets["40-45"] += 1
+        bucket_list = [
+            {"range": k, "count": v, "pct": round(v / total * 100, 1)}
+            for k, v in buckets.items()
+        ]
+        positions.append({
+            "pos": i + 1,
+            "avg": avg,
+            "min": mn,
+            "max": mx,
+            "mode": mode_num,
+            "mode_count": mode_count,
+            "mode_pct": round(mode_count / total * 100, 1),
+            "top5": top5,
+            "bucket_list": bucket_list,
+        })
+
+    recent = []
+    for draw in reversed(draws[-20:]):
+        nums = sorted(draw.numbers())
+        recent.append({"drwNo": draw.drwNo, "numbers": nums})
+
+    return {
+        "total": total,
+        "positions": positions,
+        "recent": recent,
+    }

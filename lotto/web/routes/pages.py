@@ -2219,3 +2219,13 @@ async def special_numbers_page(request: Request) -> TemplateResponse:
         "active_tab": "special_numbers",
         "data": data,
     })
+
+
+@router.get("/stats/position-dist")
+async def position_dist_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-136: 번호 위치별 분포 분석."""
+    data = wd.get_position_dist_analysis()
+    return _render(request, "position_dist.html", {
+        "active_tab": "position_dist",
+        "data": data,
+    })
