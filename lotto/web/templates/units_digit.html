@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% block title %}번호 끝자리(일의 자리) 분포 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">번호 끝자리(일의 자리) 분포 분석</h2>
+  <p class="text-muted mb-4">
+    당첨 번호의 일의 자리(0~9)별 출현 빈도 및 분포 분석. 이론적 기댓값과 실제 출현 평균 비교.
+  </p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <div class="card border-danger">
+        <div class="card-body text-center">
+          <div class="text-muted small mb-1">가장 많이 나온 끝자리</div>
+          <div class="display-4 fw-bold text-danger">{{ data.most_digit }}</div>
+          <div class="text-muted">총 {{ data.most_digit_total }}회 출현</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card border-primary">
+        <div class="card-body text-center">
+          <div class="text-muted small mb-1">가장 적게 나온 끝자리</div>
+          <div class="display-4 fw-bold text-primary">{{ data.least_digit }}</div>
+          <div class="text-muted">총 {{ data.least_digit_total }}회 출현</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 끝자리별 통계 테이블 -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">끝자리별 출현 통계</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0">
+          <thead>
+            <tr>
+              <th>끝자리</th>
+              <th>풀 크기</th>
+              <th>풀 번호들</th>
+              <th>총 출현</th>
+              <th>평균/회</th>
+              <th>기댓값</th>
+              <th>차이</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in data.digit_stats %}
+            <tr>
+              <td><span class="badge bg-secondary fs-6">{{ s.digit }}</span></td>
+              <td>{{ s.pool_size }}</td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  {% for n in s.pool_nums %}
+                  <span class="badge bg-light text-dark border">{{ n }}</span>
+                  {% endfor %}
+                </div>
+              </td>
+              <td><strong>{{ s.total_appearances }}</strong></td>
+              <td>{{ s.avg }}</td>
+              <td class="text-muted">{{ s.expected }}</td>
+              <td>
+                {% if s.diff > 0 %}
+                <span class="text-danger">+{{ s.diff }}</span>
+                {% elif s.diff < 0 %}
+                <span class="text-primary">{{ s.diff }}</span>
+                {% else %}
+                <span class="text-muted">0.000</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 끝자리별 분포 카드 (회차당 포함 개수 분포) -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">끝자리별 회차당 포함 개수 분포</div>
+    <div class="card-body">
+      <div class="row g-3">
+        {% for s in data.digit_stats %}
+        <div class="col-md-6 col-xl-4">
+          <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center py-1">
+              <span class="fw-bold">끝자리 {{ s.digit }}</span>
+              <span class="badge bg-info text-dark">최빈 {{ s.best_count }}개 ({{ s.best_count_pct }}%)</span>
+            </div>
+            <div class="card-body py-2">
+              {% for d in s.dist_list %}
+              <div class="d-flex align-items-center mb-1">
+                <div style="width:30px;" class="small text-end me-2">{{ d.count }}개</div>
+                <div class="flex-grow-1">
+                  <div class="progress" style="height:12px;">
+                    <div class="progress-bar bg-secondary" style="width:{{ d.pct }}%;" title="{{ d.draws }}회 ({{ d.pct }}%)"></div>
+                  </div>
+                </div>
+                <div class="small ms-2" style="width:45px;">{{ d.pct }}%</div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- 최근 20회 -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">최근 20회 끝자리 현황</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead>
+            <tr>
+              <th>회차</th>
+              <th>당첨 번호</th>
+              <th>끝자리</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in data.recent %}
+            <tr>
+              <td class="fw-bold">{{ r.drwNo }}회</td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  {% for n in r.numbers %}
+                  <span class="badge bg-secondary">{{ n }}</span>
+                  {% endfor %}
+                </div>
+              </td>
+              <td>
+                <div class="d-flex flex-wrap gap-1">
+                  {% for d in r.digits %}
+                  <span class="badge bg-info text-dark">{{ d }}</span>
+                  {% endfor %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}

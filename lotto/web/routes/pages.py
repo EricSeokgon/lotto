@@ -2229,3 +2229,13 @@ async def position_dist_page(request: Request) -> TemplateResponse:
         "active_tab": "position_dist",
         "data": data,
     })
+
+
+@router.get("/stats/units-digit")
+async def units_digit_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-137: 번호 끝자리(일의 자리) 분포 분석."""
+    data = wd.get_units_digit_analysis()
+    return _render(request, "units_digit.html", {
+        "active_tab": "units_digit",
+        "data": data,
+    })

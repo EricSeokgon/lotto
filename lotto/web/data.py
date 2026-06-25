@@ -11742,3 +11742,80 @@ def get_position_dist_analysis() -> dict[str, Any] | None:
         "positions": positions,
         "recent": recent,
     }
+
+
+def get_units_digit_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-137: 번호 끝자리(일의 자리) 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    # 1~45에서 끝자리별 풀 크기
+    POOL_SIZE = {d: 0 for d in range(10)}
+    for n in range(1, 46):
+        POOL_SIZE[n % 10] += 1
+    # 회차당 기댓값: POOL_SIZE[d]/45 * 6
+    expected = {d: round(POOL_SIZE[d] / 45 * 6, 3) for d in range(10)}
+
+    # 끝자리별 총 출현 횟수
+    digit_total: dict[int, int] = {d: 0 for d in range(10)}
+    # digit_draw_dist[d][count] = count개 나온 회차 수
+    digit_draw_dist: dict[int, dict[int, int]] = {d: {k: 0 for k in range(7)} for d in range(10)}
+
+    for draw in draws:
+        per_digit: dict[int, int] = {d: 0 for d in range(10)}
+        for n in draw.numbers():
+            per_digit[n % 10] += 1
+        for d in range(10):
+            digit_total[d] += per_digit[d]
+            digit_draw_dist[d][per_digit[d]] += 1
+
+    digit_stats = []
+    for d in range(10):
+        avg = round(digit_total[d] / total, 3)
+        pool = POOL_SIZE[d]
+        exp = expected[d]
+        best_count = max(digit_draw_dist[d], key=lambda k: digit_draw_dist[d][k])
+        dist_list = [
+            {"count": k, "draws": digit_draw_dist[d][k],
+             "pct": round(digit_draw_dist[d][k] / total * 100, 1)}
+            for k in range(7)
+        ]
+        pool_nums = sorted([n for n in range(1, 46) if n % 10 == d])
+        digit_stats.append({
+            "digit": d,
+            "pool_size": pool,
+            "pool_nums": pool_nums,
+            "total_appearances": digit_total[d],
+            "avg": avg,
+            "expected": exp,
+            "diff": round(avg - exp, 3),
+            "best_count": best_count,
+            "best_count_pct": round(digit_draw_dist[d][best_count] / total * 100, 1),
+            "dist_list": dist_list,
+        })
+
+    recent = []
+    for draw in reversed(draws[-20:]):
+        nums = sorted(draw.numbers())
+        digits = sorted([n % 10 for n in nums])
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": nums,
+            "digits": digits,
+        })
+
+    most_digit = max(range(10), key=lambda d: digit_total[d])
+    least_digit = min(range(10), key=lambda d: digit_total[d])
+
+    return {
+        "total": total,
+        "digit_stats": digit_stats,
+        "most_digit": most_digit,
+        "most_digit_total": digit_total[most_digit],
+        "least_digit": least_digit,
+        "least_digit_total": digit_total[least_digit],
+        "recent": recent,
+    }
