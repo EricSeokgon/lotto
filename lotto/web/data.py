@@ -12217,3 +12217,80 @@ def get_fibonacci_analysis() -> dict[str, Any] | None:
         "freq_list": freq_list,
         "recent": recent,
     }
+
+
+def get_composite_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-143: 합성수(Composite Number) 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    # 1~45 내 합성수 (1도 아니고 소수도 아닌 수)
+    PRIMES = {2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43}
+    COMPOSITES = {n for n in range(1, 46) if n != 1 and n not in PRIMES}
+    expected = round(len(COMPOSITES) / 45 * 6, 3)
+
+    comp_count_dist: dict[int, int] = {k: 0 for k in range(7)}
+    comp_freq: dict[int, int] = {c: 0 for c in COMPOSITES}
+    comp_totals: list[int] = []
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        comps_in = nums & COMPOSITES
+        cnt = len(comps_in)
+        comp_count_dist[cnt] += 1
+        comp_totals.append(cnt)
+        for c in comps_in:
+            comp_freq[c] += 1
+
+    avg_comp = round(sum(comp_totals) / total, 3)
+    best_count = max(comp_count_dist, key=lambda k: comp_count_dist[k])
+
+    dist_list = [
+        {"count": k, "draws": comp_count_dist[k],
+         "pct": round(comp_count_dist[k] / total * 100, 1)}
+        for k in range(7)
+    ]
+
+    # 상위 15개 최빈 합성수
+    freq_list = sorted(
+        [{"number": c, "count": comp_freq[c],
+          "pct": round(comp_freq[c] / total * 100, 1)}
+         for c in COMPOSITES],
+        key=lambda x: -x["count"],
+    )[:15]
+
+    # 하위 5개 최저 빈도 합성수
+    bottom_list = sorted(
+        [{"number": c, "count": comp_freq[c],
+          "pct": round(comp_freq[c] / total * 100, 1)}
+         for c in COMPOSITES],
+        key=lambda x: x["count"],
+    )[:5]
+
+    recent = []
+    for draw in reversed(draws[-20:]):
+        nums = set(draw.numbers())
+        comps_in = sorted(nums & COMPOSITES)
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "composites": comps_in,
+            "comp_count": len(comps_in),
+        })
+
+    return {
+        "total": total,
+        "composite_count": len(COMPOSITES),
+        "avg_comp": avg_comp,
+        "expected": expected,
+        "diff": round(avg_comp - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(comp_count_dist[best_count] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "bottom_list": bottom_list,
+        "recent": recent,
+    }

@@ -2289,3 +2289,13 @@ async def fibonacci_page(request: Request) -> TemplateResponse:
         "active_tab": "fibonacci",
         "data": data,
     })
+
+
+@router.get("/stats/composite")
+async def composite_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-143: 합성수 분포 분석."""
+    data = wd.get_composite_analysis()
+    return _render(request, "composite.html", {
+        "active_tab": "composite",
+        "data": data,
+    })
