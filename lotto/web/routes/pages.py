@@ -2279,3 +2279,13 @@ async def median_dist_page(request: Request) -> TemplateResponse:
         "active_tab": "median_dist",
         "data": data,
     })
+
+
+@router.get("/stats/fibonacci")
+async def fibonacci_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-142: 피보나치 번호 분포 분석."""
+    data = wd.get_fibonacci_analysis()
+    return _render(request, "fibonacci.html", {
+        "active_tab": "fibonacci",
+        "data": data,
+    })

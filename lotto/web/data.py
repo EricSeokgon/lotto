@@ -12150,3 +12150,70 @@ def get_median_dist_analysis() -> dict[str, Any] | None:
         "top_medians": top_medians,
         "recent": recent,
     }
+
+
+def get_fibonacci_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-142: 피보나치 번호 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    fibonacci = {1, 2, 3, 5, 8, 13, 21, 34}
+    expected = round(len(fibonacci) / 45 * 6, 3)
+
+    fib_count_dist: dict[int, int] = dict.fromkeys(range(7), 0)
+    fib_freq: dict[int, int] = dict.fromkeys(fibonacci, 0)
+    fib_totals: list[int] = []
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        fibs_in = nums & fibonacci
+        cnt = len(fibs_in)
+        fib_count_dist[cnt] += 1
+        fib_totals.append(cnt)
+        for f in fibs_in:
+            fib_freq[f] += 1
+
+    avg_fib = round(sum(fib_totals) / total, 3)
+    best_count = max(fib_count_dist, key=lambda k: fib_count_dist[k])
+
+    dist_list = [
+        {"count": k, "draws": fib_count_dist[k],
+         "pct": round(fib_count_dist[k] / total * 100, 1)}
+        for k in range(7)
+    ]
+
+    freq_list = sorted(
+        [{"number": f, "count": fib_freq[f],
+          "pct": round(fib_freq[f] / total * 100, 1)}
+         for f in fibonacci],
+        key=lambda x: -x["count"],
+    )
+
+    recent = []
+    for draw in reversed(draws[-20:]):
+        nums = set(draw.numbers())
+        fibs_in = sorted(nums & fibonacci)
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "fibs": fibs_in,
+            "fib_count": len(fibs_in),
+        })
+
+    return {
+        "total": total,
+        "fib_count": len(fibonacci),
+        "fib_numbers": sorted(fibonacci),
+        "avg_fib": avg_fib,
+        "expected": expected,
+        "diff": round(avg_fib - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(fib_count_dist[best_count] / total * 100, 1),
+        "zero_fib_pct": round(fib_count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }
