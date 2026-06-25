@@ -11280,6 +11280,94 @@ def get_sum_last_digit_analysis() -> dict[str, Any] | None:
     }
 
 
+def get_consecutive_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-132: 연속 번호 패턴 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    def find_consecutive_runs(nums: list[int]) -> list[list[int]]:
+        s = sorted(nums)
+        runs: list[list[int]] = []
+        current = [s[0]]
+        for n in s[1:]:
+            if n == current[-1] + 1:
+                current.append(n)
+            else:
+                if len(current) >= 2:
+                    runs.append(current)
+                current = [n]
+        if len(current) >= 2:
+            runs.append(current)
+        return runs
+
+    # 회차별 연속 쌍 수 분포
+    pair_count_dist: dict[int, int] = {}
+    max_run_dist: dict[int, int] = {k: 0 for k in range(1, 7)}
+    pair_freq: dict[tuple[int, int], int] = {}
+
+    for draw in draws:
+        runs = find_consecutive_runs(draw.numbers())
+        pairs = sum(len(r) - 1 for r in runs)
+        pair_count_dist[pairs] = pair_count_dist.get(pairs, 0) + 1
+
+        max_run = max((len(r) for r in runs), default=1)
+        max_run_dist[max_run] = max_run_dist.get(max_run, 0) + 1
+
+        for run in runs:
+            for i in range(len(run) - 1):
+                pair = (run[i], run[i + 1])
+                pair_freq[pair] = pair_freq.get(pair, 0) + 1
+
+    no_consec = pair_count_dist.get(0, 0)
+    has_consec = total - no_consec
+    best_pair_count = max(pair_count_dist, key=lambda k: pair_count_dist[k])
+
+    pair_dist_list = sorted(
+        [{"pairs": k, "count": v, "pct": round(v / total * 100, 1)}
+         for k, v in pair_count_dist.items()],
+        key=lambda x: x["pairs"],
+    )
+
+    max_run_list = [
+        {"length": k, "count": max_run_dist[k], "pct": round(max_run_dist[k] / total * 100, 1)}
+        for k in range(1, 7)
+        if max_run_dist.get(k, 0) > 0
+    ]
+
+    top_pairs = sorted(
+        [{"pair": list(p), "count": c} for p, c in pair_freq.items()],
+        key=lambda x: -x["count"],
+    )[:20]
+
+    recent = []
+    for draw in reversed(draws[-20:]):
+        runs = find_consecutive_runs(draw.numbers())
+        runs_str = ["-".join(str(n) for n in r) for r in runs]
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "runs": runs_str,
+            "pair_count": sum(len(r) - 1 for r in runs),
+        })
+
+    return {
+        "total": total,
+        "no_consec": no_consec,
+        "no_consec_pct": round(no_consec / total * 100, 1),
+        "has_consec": has_consec,
+        "has_consec_pct": round(has_consec / total * 100, 1),
+        "best_pair_count": best_pair_count,
+        "best_pair_count_pct": round(pair_count_dist[best_pair_count] / total * 100, 1),
+        "pair_dist_list": pair_dist_list,
+        "max_run_list": max_run_list,
+        "top_pairs": top_pairs,
+        "recent": recent,
+    }
+
+
 def get_median_analysis() -> dict[str, Any] | None:
     """SPEC-LOTTO-129: 번호 중앙값 분포 분석."""
     draws = get_draws()

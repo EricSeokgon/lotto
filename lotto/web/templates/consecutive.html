@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}연속 번호 패턴 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">연속 번호 패턴 분석</h2>
+  <p class="text-muted mb-4">
+    6개 당첨 번호 중 연속된 번호(예: 7-8, 15-16-17)가 포함되는 패턴을 분석합니다.
+  </p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.has_consec_pct }}%</div>
+          <div class="text-muted small">연속 번호 포함 회차</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.has_consec }}회</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-secondary">{{ data.no_consec_pct }}%</div>
+          <div class="text-muted small">연속 번호 없음</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.no_consec }}회</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ data.best_pair_count }}쌍</div>
+          <div class="text-muted small">최빈 연속 쌍 수</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.best_pair_count_pct }}%</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-warning">{{ data.total }}</div>
+          <div class="text-muted small">전체 회차</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mb-4">
+    <!-- 연속 쌍 수 분포 -->
+    <div class="col-12 col-md-4">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">회차별 연속 쌍 수 분포</div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>연속 쌍 수</th><th>회차</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for item in data.pair_dist_list %}
+              <tr {% if item.pairs == data.best_pair_count %}class="table-success"{% endif %}>
+                <td><strong>{{ item.pairs }}쌍</strong></td>
+                <td>{{ item.count }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-success" style="width:{{ item.pct }}%;">{{ item.pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 최장 연속 길이 분포 -->
+    <div class="col-12 col-md-4">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">최장 연속 길이 분포</div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>최장 길이</th><th>회차</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for item in data.max_run_list %}
+              <tr>
+                <td><strong>{{ item.length }}개 연속</strong></td>
+                <td>{{ item.count }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-primary" style="width:{{ item.pct }}%;">{{ item.pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 자주 나온 연속 쌍 TOP 20 -->
+    <div class="col-12 col-md-4">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">자주 나온 연속 쌍 TOP 20</div>
+        <div class="card-body" style="max-height:350px;overflow-y:auto;">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>쌍</th><th>횟수</th></tr></thead>
+            <tbody>
+              {% for item in data.top_pairs %}
+              <tr>
+                <td>
+                  <span class="badge bg-warning text-dark">{{ item.pair[0] }}</span>
+                  <span class="text-muted">-</span>
+                  <span class="badge bg-warning text-dark">{{ item.pair[1] }}</span>
+                </td>
+                <td>{{ item.count }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 최근 20회차 -->
+  <div class="card">
+    <div class="card-header fw-semibold">최근 20회차 연속 번호</div>
+    <div class="card-body">
+      <table class="table table-sm mb-0">
+        <thead><tr><th>회차</th><th>번호</th><th>연속 구간</th></tr></thead>
+        <tbody>
+          {% for item in data.recent %}
+          <tr>
+            <td>{{ item.drwNo }}</td>
+            <td>
+              {% for n in item.numbers %}
+              <span class="badge rounded-pill {% if n <= 10 %}bg-warning text-dark{% elif n <= 20 %}bg-primary{% elif n <= 30 %}bg-danger{% elif n <= 40 %}bg-secondary{% else %}bg-dark{% endif %}">{{ n }}</span>
+              {% endfor %}
+            </td>
+            <td>
+              {% if item.runs %}
+                {% for r in item.runs %}
+                <span class="badge bg-success me-1">{{ r }}</span>
+                {% endfor %}
+              {% else %}
+                <span class="text-muted small">없음</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}

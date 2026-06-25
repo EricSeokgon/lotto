@@ -1407,6 +1407,18 @@ async def sum_last_digit_page(request: Request) -> TemplateResponse:
     })
 
 
+# @MX:NOTE: [AUTO] SPEC-LOTTO-132 — 연속 번호 패턴 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-132
+@router.get("/stats/consecutive")
+async def consecutive_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-132: 연속 번호 패턴 분석."""
+    data = wd.get_consecutive_analysis()
+    return _render(request, "consecutive.html", {
+        "active_tab": "consecutive",
+        "data": data,
+    })
+
+
 # @MX:NOTE: [AUTO] SPEC-LOTTO-091 — 소수 이웃 포함 개수 분포 페이지
 # @MX:SPEC: SPEC-LOTTO-091
 @router.get("/stats/prime-neighbor")
