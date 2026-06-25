@@ -2269,3 +2269,13 @@ async def sum_distribution_page(request: Request) -> TemplateResponse:
         "active_tab": "sum_distribution",
         "data": data,
     })
+
+
+@router.get("/stats/median-dist")
+async def median_dist_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-141: 번호 중앙값 분포 분석."""
+    data = wd.get_median_dist_analysis()
+    return _render(request, "median_dist.html", {
+        "active_tab": "median_dist",
+        "data": data,
+    })

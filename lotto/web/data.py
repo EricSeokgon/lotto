@@ -12067,3 +12067,86 @@ def get_sum_distribution_analysis() -> dict[str, Any] | None:
         "top_sums": top_sums,
         "recent": recent,
     }
+
+
+def get_median_dist_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-141: 번호 중앙값 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    # median = (3rd + 4th) / 2 for sorted 6 numbers
+    medians: list[float] = []
+    for draw in draws:
+        nums = sorted(draw.numbers())
+        m = (nums[2] + nums[3]) / 2
+        medians.append(m)
+
+    actual_avg = round(sum(medians) / total, 3)
+    theoretical_avg = 23.0
+    actual_min = min(medians)
+    actual_max = max(medians)
+
+    # Distribution by bucket (width 5): 1~5, 6~10, ..., 41~45
+    bucket_size = 5
+    bucket_labels = [f"{s}~{s+bucket_size-1}" for s in range(1, 46, bucket_size)]
+    bucket_counts: dict[str, int] = {label: 0 for label in bucket_labels}
+    for m in medians:
+        idx = int((m - 1) // bucket_size)
+        if idx < 0:
+            idx = 0
+        if idx >= len(bucket_labels):
+            idx = len(bucket_labels) - 1
+        bucket_counts[bucket_labels[idx]] += 1
+
+    bucket_list = [
+        {"range": label, "count": bucket_counts[label],
+         "pct": round(bucket_counts[label] / total * 100, 1)}
+        for label in bucket_labels
+    ]
+
+    peak = max(bucket_list, key=lambda x: x["count"])
+
+    # Count exact half-integers vs integers separately
+    int_count = sum(1 for m in medians if m == int(m))
+    half_count = total - int_count
+
+    # Most frequent median values (top 10)
+    med_counter = Counter(medians)
+    top_medians = [
+        {"median": m, "count": c, "pct": round(c / total * 100, 1)}
+        for m, c in med_counter.most_common(10)
+    ]
+
+    # Recent 20 draws
+    recent = []
+    for draw in reversed(draws[-20:]):
+        nums = sorted(draw.numbers())
+        m = (nums[2] + nums[3]) / 2
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": nums,
+            "n3": nums[2],
+            "n4": nums[3],
+            "median": m,
+        })
+
+    return {
+        "total": total,
+        "actual_avg": actual_avg,
+        "theoretical_avg": theoretical_avg,
+        "avg_diff": round(actual_avg - theoretical_avg, 3),
+        "actual_min": actual_min,
+        "actual_max": actual_max,
+        "int_count": int_count,
+        "int_pct": round(int_count / total * 100, 1),
+        "half_count": half_count,
+        "half_pct": round(half_count / total * 100, 1),
+        "peak_range": peak["range"],
+        "peak_pct": peak["pct"],
+        "bucket_list": bucket_list,
+        "top_medians": top_medians,
+        "recent": recent,
+    }

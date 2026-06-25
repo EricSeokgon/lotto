@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}번호 중앙값 분포 분석{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">번호 중앙값 분포 분석</h2>
+  <p class="text-muted mb-4">
+    정렬된 6개 번호 중 3번째와 4번째 번호의 평균(중앙값) 분포 분석. 이론적 중앙값 23.0 대비 실제 분포.
+  </p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ data.actual_avg }}</div>
+          <div class="text-muted small">실제 평균 중앙값</div>
+          <div class="text-muted" style="font-size:0.75rem;">이론값 {{ data.theoretical_avg }} (차이: {{ data.avg_diff }})</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-info">{{ data.actual_min }} ~ {{ data.actual_max }}</div>
+          <div class="text-muted small">중앙값 범위</div>
+          <div class="text-muted" style="font-size:0.75rem;">전체 {{ data.total }}회차</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.int_pct }}%</div>
+          <div class="text-muted small">정수 중앙값 비율</div>
+          <div class="text-muted" style="font-size:0.75rem;">n3+n4가 짝수 ({{ data.int_count }}회)</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-warning">{{ data.peak_range }}</div>
+          <div class="text-muted small">최빈 구간</div>
+          <div class="text-muted" style="font-size:0.75rem;">{{ data.peak_pct }}%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 구간별 분포 -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">중앙값 구간별 분포 (5 단위)</div>
+    <div class="card-body">
+      {% for b in data.bucket_list %}
+      <div class="mb-2">
+        <div class="d-flex justify-content-between mb-1">
+          <span class="small fw-bold {% if b.range == data.peak_range %}text-warning{% endif %}">{{ b.range }}</span>
+          <span class="small text-muted">{{ b.count }}회 ({{ b.pct }}%)</span>
+        </div>
+        <div class="progress" style="height:14px;">
+          <div class="progress-bar {% if b.range == data.peak_range %}bg-warning{% else %}bg-primary{% endif %}"
+               style="width:{{ b.pct }}%;" title="{{ b.range }}: {{ b.count }}회 ({{ b.pct }}%)"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- 상위 10개 최빈 중앙값 -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">상위 10개 최빈 중앙값</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0">
+          <thead>
+            <tr>
+              <th>순위</th>
+              <th>중앙값</th>
+              <th>회차 수</th>
+              <th>비율</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in data.top_medians %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              <td><strong>{{ t.median }}</strong></td>
+              <td>{{ t.count }}</td>
+              <td>{{ t.pct }}%</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 최근 20회차 -->
+  <div class="card mb-4">
+    <div class="card-header fw-bold">최근 20회차 중앙값 현황</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0">
+          <thead>
+            <tr>
+              <th>회차</th>
+              <th>당첨 번호 (3·4번째 강조)</th>
+              <th>중앙값</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in data.recent %}
+            <tr>
+              <td>{{ r.drwNo }}</td>
+              <td>
+                {% for n in r.numbers %}
+                {% if n == r.n3 or n == r.n4 %}
+                <span class="badge bg-warning text-dark me-1">{{ n }}</span>
+                {% else %}
+                <span class="badge bg-secondary me-1">{{ n }}</span>
+                {% endif %}
+                {% endfor %}
+              </td>
+              <td>
+                <span class="badge {% if r.median < 20 %}bg-primary{% elif r.median <= 26 %}bg-success{% else %}bg-danger{% endif %}">{{ r.median }}</span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
