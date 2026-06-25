@@ -2299,3 +2299,13 @@ async def composite_page(request: Request) -> TemplateResponse:
         "active_tab": "composite",
         "data": data,
     })
+
+
+@router.get("/stats/multiples-3")
+async def multiples3_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-144: 3의 배수 분포 분석."""
+    data = wd.get_multiples3_analysis()
+    return _render(request, "multiples3.html", {
+        "active_tab": "multiples3",
+        "data": data,
+    })
