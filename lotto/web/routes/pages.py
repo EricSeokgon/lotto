@@ -2259,3 +2259,13 @@ async def prime_number_dist_page(request: Request) -> TemplateResponse:
         "active_tab": "prime_number_dist",
         "data": data,
     })
+
+
+@router.get("/stats/sum-distribution")
+async def sum_distribution_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-140: 번호 합계 분포 분석."""
+    data = wd.get_sum_distribution_analysis()
+    return _render(request, "sum_distribution.html", {
+        "active_tab": "sum_distribution",
+        "data": data,
+    })

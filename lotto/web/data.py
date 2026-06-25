@@ -11986,3 +11986,84 @@ def get_prime_number_dist_analysis() -> dict[str, Any] | None:
         "freq_list": freq_list,
         "recent": recent,
     }
+
+
+def get_sum_distribution_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-140: 번호 합계 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    sums = [sum(draw.numbers()) for draw in draws]
+
+    actual_min = min(sums)
+    actual_max = max(sums)
+    actual_avg = round(sum(sums) / total, 2)
+    theoretical_avg = 138.0
+
+    # Bucket distribution: 20~59, 60~79, 80~99, ..., 220~239, 240~259
+    # Use buckets of width 20 starting from 20
+    buckets: dict[str, int] = {}
+    bucket_starts = list(range(20, 260, 20))
+    for s in bucket_starts:
+        label = f"{s}~{s+19}"
+        buckets[label] = 0
+
+    for s in sums:
+        b = (s // 20) * 20
+        if b < 20:
+            b = 20
+        if b > 240:
+            b = 240
+        label = f"{b}~{b+19}"
+        buckets[label] = buckets.get(label, 0) + 1
+
+    bucket_list = [
+        {"range": k, "count": buckets[k], "pct": round(buckets[k] / total * 100, 1)}
+        for k in sorted(buckets.keys(), key=lambda x: int(x.split("~")[0]))
+    ]
+
+    # Peak bucket
+    peak = max(bucket_list, key=lambda x: x["count"])
+
+    # Find mode sum
+    sum_counter = Counter(sums)
+    mode_sum = sum_counter.most_common(1)[0][0]
+    mode_count = sum_counter.most_common(1)[0][1]
+
+    # Top 10 most frequent sums
+    top_sums = [
+        {"sum": s, "count": c, "pct": round(c / total * 100, 1)}
+        for s, c in sum_counter.most_common(10)
+    ]
+
+    # Recent 20 draws
+    recent = []
+    for draw in reversed(draws[-20:]):
+        nums = sorted(draw.numbers())
+        s = sum(nums)
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": nums,
+            "sum": s,
+        })
+
+    return {
+        "total": total,
+        "actual_min": actual_min,
+        "actual_max": actual_max,
+        "actual_avg": actual_avg,
+        "theoretical_avg": theoretical_avg,
+        "avg_diff": round(actual_avg - theoretical_avg, 2),
+        "mode_sum": mode_sum,
+        "mode_count": mode_count,
+        "mode_pct": round(mode_count / total * 100, 1),
+        "peak_range": peak["range"],
+        "peak_count": peak["count"],
+        "peak_pct": peak["pct"],
+        "bucket_list": bucket_list,
+        "top_sums": top_sums,
+        "recent": recent,
+    }
