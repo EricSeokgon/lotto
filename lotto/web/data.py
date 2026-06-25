@@ -11501,6 +11501,102 @@ def get_shared_numbers_analysis() -> dict[str, Any] | None:
     }
 
 
+def get_special_numbers_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-135: 특수 번호(삼각수·제곱수) 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    TRIANGULAR = {1, 3, 6, 10, 15, 21, 28, 36, 45}
+    SQUARE = {1, 4, 9, 16, 25, 36}
+    BOTH = TRIANGULAR & SQUARE  # {1, 36}
+
+    tri_count_dist: dict[int, int] = {k: 0 for k in range(7)}
+    sq_count_dist: dict[int, int] = {k: 0 for k in range(7)}
+    tri_freq: dict[int, int] = {n: 0 for n in TRIANGULAR}
+    sq_freq: dict[int, int] = {n: 0 for n in SQUARE}
+
+    tri_totals: list[int] = []
+    sq_totals: list[int] = []
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        tri_in = nums & TRIANGULAR
+        sq_in = nums & SQUARE
+        tri_count_dist[len(tri_in)] += 1
+        sq_count_dist[len(sq_in)] += 1
+        tri_totals.append(len(tri_in))
+        sq_totals.append(len(sq_in))
+        for n in tri_in:
+            tri_freq[n] += 1
+        for n in sq_in:
+            sq_freq[n] += 1
+
+    avg_tri = round(sum(tri_totals) / total, 3)
+    avg_sq = round(sum(sq_totals) / total, 3)
+
+    # 기대값: 9/45 * 6 = 1.2 삼각수, 6/45 * 6 = 0.8 제곱수
+    expected_tri = round(len(TRIANGULAR) / 45 * 6, 3)
+    expected_sq = round(len(SQUARE) / 45 * 6, 3)
+
+    best_tri = max(tri_count_dist, key=lambda k: tri_count_dist[k])
+    best_sq = max(sq_count_dist, key=lambda k: sq_count_dist[k])
+
+    tri_dist_list = [
+        {"count": k, "draws": tri_count_dist[k], "pct": round(tri_count_dist[k] / total * 100, 1)}
+        for k in range(7)
+    ]
+    sq_dist_list = [
+        {"count": k, "draws": sq_count_dist[k], "pct": round(sq_count_dist[k] / total * 100, 1)}
+        for k in range(7)
+    ]
+
+    tri_freq_list = sorted(
+        [{"number": n, "count": tri_freq[n], "pct": round(tri_freq[n] / total * 100, 1), "is_both": n in BOTH} for n in TRIANGULAR],
+        key=lambda x: -x["count"],
+    )
+    sq_freq_list = sorted(
+        [{"number": n, "count": sq_freq[n], "pct": round(sq_freq[n] / total * 100, 1), "is_both": n in BOTH} for n in SQUARE],
+        key=lambda x: -x["count"],
+    )
+
+    recent = []
+    for draw in reversed(draws[-20:]):
+        nums = set(draw.numbers())
+        tri_in = sorted(nums & TRIANGULAR)
+        sq_in = sorted(nums & SQUARE)
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "tri": tri_in,
+            "sq": sq_in,
+            "tri_count": len(tri_in),
+            "sq_count": len(sq_in),
+        })
+
+    return {
+        "total": total,
+        "tri_count": len(TRIANGULAR),
+        "sq_count": len(SQUARE),
+        "both_count": len(BOTH),
+        "avg_tri": avg_tri,
+        "avg_sq": avg_sq,
+        "expected_tri": expected_tri,
+        "expected_sq": expected_sq,
+        "best_tri": best_tri,
+        "best_tri_pct": round(tri_count_dist[best_tri] / total * 100, 1),
+        "best_sq": best_sq,
+        "best_sq_pct": round(sq_count_dist[best_sq] / total * 100, 1),
+        "tri_dist_list": tri_dist_list,
+        "sq_dist_list": sq_dist_list,
+        "tri_freq_list": tri_freq_list,
+        "sq_freq_list": sq_freq_list,
+        "recent": recent,
+    }
+
+
 def get_median_analysis() -> dict[str, Any] | None:
     """SPEC-LOTTO-129: 번호 중앙값 분포 분석."""
     draws = get_draws()

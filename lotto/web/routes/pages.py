@@ -2209,3 +2209,13 @@ async def shared_numbers_page(request: Request) -> TemplateResponse:
         "active_tab": "shared_numbers",
         "data": data,
     })
+
+
+@router.get("/stats/special-numbers")
+async def special_numbers_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-135: 특수 번호(삼각수·제곱수) 분석."""
+    data = wd.get_special_numbers_analysis()
+    return _render(request, "special_numbers.html", {
+        "active_tab": "special_numbers",
+        "data": data,
+    })
