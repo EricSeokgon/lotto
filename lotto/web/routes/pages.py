@@ -1395,25 +1395,15 @@ async def low_high_page(request: Request) -> TemplateResponse:
     })
 
 
-# @MX:NOTE: [AUTO] SPEC-LOTTO-090 — 합계 일의 자리 분포 페이지
-# @MX:SPEC: SPEC-LOTTO-090
+# @MX:NOTE: [AUTO] SPEC-LOTTO-131 — 번호 합계 끝자리 분석 페이지
+# @MX:SPEC: SPEC-LOTTO-131
 @router.get("/stats/sum-last-digit")
 async def sum_last_digit_page(request: Request) -> TemplateResponse:
-    """합계 일의 자리 분포 분석 페이지 (SPEC-LOTTO-090).
-
-    - 요약 카드: 총 회차 / 평균 합계 / 최빈 끝자리 / 짝수 끝자리 비율(%)
-    - 분포 테이블: 10개 키("0"~"9")의 count/pct
-    - 한 회차 본번호 6개(보너스 제외) 합계의 일의 자리(total_sum % 10) 분류.
-    - SPEC-063·SPEC-079와는 출력 구조가 다른 별개 페이지.
-    - 데이터 부재(total_draws==0) 시에도 200 (빈 상태 안내 메시지).
-    """
-    # lotto.web.data 의 함수를 직접 patch 하는 테스트와 호환되도록 동적 호출
-    from lotto.web import data as wd
-
-    stats = wd.get_sum_last_digit_stats(wd.get_draws())
+    """번호 합계 끝자리 분석 페이지 (SPEC-LOTTO-131)."""
+    data = wd.get_sum_last_digit_analysis()
     return _render(request, "sum_last_digit.html", {
         "active_tab": "sum_last_digit",
-        "stats": stats,
+        "data": data,
     })
 
 

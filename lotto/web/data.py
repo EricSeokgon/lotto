@@ -11220,6 +11220,66 @@ def get_number_range_analysis() -> dict[str, Any] | None:
     }
 
 
+def get_sum_last_digit_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-131: 번호 합계 끝자리 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    digit_dist: dict[int, int] = {d: 0 for d in range(10)}
+    sums: list[int] = []
+
+    for draw in draws:
+        s = sum(draw.numbers())
+        sums.append(s)
+        digit_dist[s % 10] += 1
+
+    avg_sum = round(sum(sums) / total, 2)
+    best_digit = max(digit_dist, key=lambda d: digit_dist[d])
+    worst_digit = min(digit_dist, key=lambda d: digit_dist[d])
+
+    odd_count = sum(digit_dist[d] for d in [1, 3, 5, 7, 9])
+    even_count = sum(digit_dist[d] for d in [0, 2, 4, 6, 8])
+
+    digit_list = [
+        {
+            "digit": d,
+            "count": digit_dist[d],
+            "pct": round(digit_dist[d] / total * 100, 1),
+        }
+        for d in range(10)
+    ]
+
+    recent = []
+    for draw, s in zip(reversed(draws[-20:]), reversed(sums[-20:])):
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "sum": s,
+            "last_digit": s % 10,
+        })
+
+    return {
+        "total": total,
+        "avg_sum": avg_sum,
+        "best_digit": best_digit,
+        "best_digit_count": digit_dist[best_digit],
+        "best_digit_pct": round(digit_dist[best_digit] / total * 100, 1),
+        "worst_digit": worst_digit,
+        "worst_digit_count": digit_dist[worst_digit],
+        "worst_digit_pct": round(digit_dist[worst_digit] / total * 100, 1),
+        "odd_count": odd_count,
+        "odd_pct": round(odd_count / total * 100, 1),
+        "even_count": even_count,
+        "even_pct": round(even_count / total * 100, 1),
+        "expected_pct": 10.0,
+        "digit_list": digit_list,
+        "recent": recent,
+    }
+
+
 def get_median_analysis() -> dict[str, Any] | None:
     """SPEC-LOTTO-129: 번호 중앙값 분포 분석."""
     draws = get_draws()
