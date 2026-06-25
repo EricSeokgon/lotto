@@ -11819,3 +11819,105 @@ def get_units_digit_analysis() -> dict[str, Any] | None:
         "least_digit_total": digit_total[least_digit],
         "recent": recent,
     }
+
+
+def get_tens_digit_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-138: 번호 십의 자리 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+
+    # 십의 자리 그룹 정의
+    GROUPS = [
+        {"label": "01~09", "min": 1,  "max": 9,  "pool": 9},
+        {"label": "10~19", "min": 10, "max": 19, "pool": 10},
+        {"label": "20~29", "min": 20, "max": 29, "pool": 10},
+        {"label": "30~39", "min": 30, "max": 39, "pool": 10},
+        {"label": "40~45", "min": 40, "max": 45, "pool": 6},
+    ]
+
+    group_totals = [0] * 5
+    # group_dist[g][count] = 해당 그룹에서 count개 나온 회차 수
+    group_dist: list[dict[int, int]] = [{k: 0 for k in range(7)} for _ in range(5)]
+
+    for draw in draws:
+        per_group = [0] * 5
+        for n in draw.numbers():
+            for i, g in enumerate(GROUPS):
+                if g["min"] <= n <= g["max"]:
+                    per_group[i] += 1
+                    break
+        for i in range(5):
+            group_totals[i] += per_group[i]
+            group_dist[i][per_group[i]] += 1
+
+    group_stats = []
+    for i, g in enumerate(GROUPS):
+        avg = round(group_totals[i] / total, 3)
+        expected = round(g["pool"] / 45 * 6, 3)
+        best_count = max(group_dist[i], key=lambda k: group_dist[i][k])
+        dist_list = [
+            {"count": k, "draws": group_dist[i][k],
+             "pct": round(group_dist[i][k] / total * 100, 1)}
+            for k in range(7)
+        ]
+        pool_nums = list(range(g["min"], g["max"] + 1))
+        group_stats.append({
+            "label": g["label"],
+            "pool": g["pool"],
+            "pool_nums": pool_nums,
+            "total": group_totals[i],
+            "avg": avg,
+            "expected": expected,
+            "diff": round(avg - expected, 3),
+            "best_count": best_count,
+            "best_count_pct": round(group_dist[i][best_count] / total * 100, 1),
+            "dist_list": dist_list,
+        })
+
+    most_idx = max(range(5), key=lambda i: group_totals[i])
+    least_idx = min(range(5), key=lambda i: group_totals[i])
+
+    # 최빈 조합 패턴: 5개 그룹 각각 몇 개씩 나왔는지 튜플
+    pattern_counter: Counter = Counter()
+    for draw in draws:
+        per_group = [0] * 5
+        for n in draw.numbers():
+            for i, g in enumerate(GROUPS):
+                if g["min"] <= n <= g["max"]:
+                    per_group[i] += 1
+                    break
+        pattern_counter[tuple(per_group)] += 1
+
+    top_patterns = [
+        {"pattern": list(p), "count": c, "pct": round(c / total * 100, 1)}
+        for p, c in pattern_counter.most_common(10)
+    ]
+
+    recent = []
+    for draw in reversed(draws[-20:]):
+        nums = sorted(draw.numbers())
+        per_group = [0] * 5
+        for n in nums:
+            for i, g in enumerate(GROUPS):
+                if g["min"] <= n <= g["max"]:
+                    per_group[i] += 1
+                    break
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": nums,
+            "per_group": per_group,
+        })
+
+    return {
+        "total": total,
+        "group_stats": group_stats,
+        "most_label": GROUPS[most_idx]["label"],
+        "most_total": group_totals[most_idx],
+        "least_label": GROUPS[least_idx]["label"],
+        "least_total": group_totals[least_idx],
+        "top_patterns": top_patterns,
+        "recent": recent,
+    }

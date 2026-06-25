@@ -2239,3 +2239,13 @@ async def units_digit_page(request: Request) -> TemplateResponse:
         "active_tab": "units_digit",
         "data": data,
     })
+
+
+@router.get("/stats/tens-digit")
+async def tens_digit_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-138: 번호 십의 자리 분포 분석."""
+    data = wd.get_tens_digit_analysis()
+    return _render(request, "tens_digit.html", {
+        "active_tab": "tens_digit",
+        "data": data,
+    })
