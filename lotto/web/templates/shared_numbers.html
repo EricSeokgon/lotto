@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}연속 회차 공유 번호{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+  <h2 class="mb-1">연속 회차 공유 번호 분석</h2>
+  <p class="text-muted mb-4">
+    연속된 두 회차(n회 → n+1회)에서 공통으로 나온 번호가 몇 개인지 분석합니다.
+  </p>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ data.avg_shared }}</div>
+          <div class="text-muted small">평균 공유 번호 수</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100 border-success">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.best_shared }}개</div>
+          <div class="text-muted small">최빈 공유 수</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.best_shared_pct }}%</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-danger">{{ data.max_shared }}개</div>
+          <div class="text-muted small">최대 공유</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.max_shared_pair[0] }}회 → {{ data.max_shared_pair[1] }}회</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-secondary">{{ data.no_shared_pct }}%</div>
+          <div class="text-muted small">공유 없음 비율</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4 mb-4">
+    <!-- 공유 수 분포 -->
+    <div class="col-12 col-md-5">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">공유 번호 수 분포 (0~6개)</div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>공유 수</th><th>회차 쌍</th><th>비율</th></tr></thead>
+            <tbody>
+              {% for item in data.dist_list %}
+              <tr {% if item.shared == data.best_shared %}class="table-success"{% endif %}>
+                <td><strong>{{ item.shared }}개</strong></td>
+                <td>{{ item.count }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-success" style="width:{{ item.pct }}%;">{{ item.pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 최근 20 연속 회차 -->
+    <div class="col-12 col-md-7">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">최근 20 연속 회차 공유 번호</div>
+        <div class="card-body" style="max-height:420px;overflow-y:auto;">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>회차 쌍</th><th>공유 번호</th><th>수</th></tr></thead>
+            <tbody>
+              {% for item in data.recent %}
+              <tr>
+                <td class="text-muted" style="white-space:nowrap;">{{ item.draw_a }}→{{ item.draw_b }}</td>
+                <td>
+                  {% if item.shared_nums %}
+                    {% for n in item.shared_nums %}
+                    <span class="badge rounded-pill {% if n <= 10 %}bg-warning text-dark{% elif n <= 20 %}bg-primary{% elif n <= 30 %}bg-danger{% elif n <= 40 %}bg-secondary{% else %}bg-dark{% endif %}">{{ n }}</span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="text-muted small">없음</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <strong {% if item.shared_count >= 3 %}class="text-danger"{% elif item.shared_count == 0 %}class="text-muted"{% endif %}>
+                    {{ item.shared_count }}
+                  </strong>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}

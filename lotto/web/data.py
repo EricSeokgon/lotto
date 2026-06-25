@@ -11424,6 +11424,83 @@ def get_pair_frequency_analysis() -> dict[str, Any] | None:
     }
 
 
+def get_shared_numbers_analysis() -> dict[str, Any] | None:
+    """SPEC-LOTTO-134: 연속 회차 공유 번호 분석."""
+    draws = get_draws()
+    if not draws or len(draws) < 2:
+        return None
+
+    total = len(draws)
+    pairs = total - 1  # number of consecutive pairs
+
+    shared_dist: dict[int, int] = dict.fromkeys(range(7), 0)
+    shared_counts: list[int] = []
+
+    max_shared = 0
+    min_shared = 6
+    max_shared_pair: tuple[int, int] = (0, 0)
+    min_shared_pair: tuple[int, int] = (0, 0)
+
+    for i in range(pairs):
+        a = set(draws[i].numbers())
+        b = set(draws[i + 1].numbers())
+        shared = len(a & b)
+        shared_counts.append(shared)
+        shared_dist[shared] += 1
+
+        if shared > max_shared:
+            max_shared = shared
+            max_shared_pair = (draws[i].drwNo, draws[i + 1].drwNo)
+        if shared < min_shared:
+            min_shared = shared
+            min_shared_pair = (draws[i].drwNo, draws[i + 1].drwNo)
+
+    avg_shared = round(sum(shared_counts) / pairs, 3)
+
+    dist_list = [
+        {
+            "shared": k,
+            "count": shared_dist[k],
+            "pct": round(shared_dist[k] / pairs * 100, 1),
+        }
+        for k in range(7)
+    ]
+
+    best_shared = max(shared_dist, key=lambda k: shared_dist[k])
+
+    # recent 20 consecutive pairs
+    recent = []
+    start = max(0, pairs - 20)
+    for i in range(start, pairs):
+        a_nums = sorted(draws[i].numbers())
+        b_nums = sorted(draws[i + 1].numbers())
+        shared_nums = sorted(set(a_nums) & set(b_nums))
+        recent.append({
+            "draw_a": draws[i].drwNo,
+            "draw_b": draws[i + 1].drwNo,
+            "nums_a": a_nums,
+            "nums_b": b_nums,
+            "shared_nums": shared_nums,
+            "shared_count": len(shared_nums),
+        })
+    recent = list(reversed(recent))
+
+    return {
+        "total": total,
+        "pairs": pairs,
+        "avg_shared": avg_shared,
+        "max_shared": max_shared,
+        "max_shared_pair": list(max_shared_pair),
+        "min_shared": min_shared,
+        "min_shared_pair": list(min_shared_pair),
+        "best_shared": best_shared,
+        "best_shared_pct": round(shared_dist[best_shared] / pairs * 100, 1),
+        "no_shared_pct": round(shared_dist[0] / pairs * 100, 1),
+        "dist_list": dist_list,
+        "recent": recent,
+    }
+
+
 def get_median_analysis() -> dict[str, Any] | None:
     """SPEC-LOTTO-129: 번호 중앙값 분포 분석."""
     draws = get_draws()

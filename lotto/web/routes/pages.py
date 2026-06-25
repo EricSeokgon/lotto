@@ -2199,3 +2199,13 @@ async def pair_frequency_page(request: Request) -> TemplateResponse:
         "active_tab": "pair_frequency",
         "data": data,
     })
+
+
+@router.get("/stats/shared-numbers")
+async def shared_numbers_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-134: 연속 회차 공유 번호 분석."""
+    data = wd.get_shared_numbers_analysis()
+    return _render(request, "shared_numbers.html", {
+        "active_tab": "shared_numbers",
+        "data": data,
+    })
