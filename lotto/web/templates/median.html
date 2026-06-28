@@ -1,73 +1,137 @@
 {% extends "base.html" %}
-{# SPEC-LOTTO-071: 번호 중앙값(median) 분포 분석 — 회차별 중앙값 9구간 분포 (JS 없음) #}
+{% block title %}번호 중앙값 분석{% endblock %}
 {% block content %}
-<div class="space-y-6">
-    <div class="flex items-center justify-between">
-        <h2 class="text-2xl font-bold text-ink dark:text-gray-100">번호 중앙값 분포 분석</h2>
-    </div>
+<div class="container-fluid py-4">
+  <h2 class="mb-1">번호 중앙값 분석</h2>
+  <p class="text-muted mb-4">
+    정렬된 6개 번호 중 3번째·4번째 번호의 평균(중앙값) 분포를 분석합니다.<br>
+    <small>기대 중앙값 ≈ 23 (1~45 균등분포 기준)</small>
+  </p>
 
-    <p class="text-sm text-muted dark:text-gray-400">
-        회차별 본번호 6개(보너스 제외)의 중앙값(median) 분포를 집계합니다.
-        중앙값이란 본번호를 오름차순 정렬한 [a,b,c,d,e,f]에서 가운데 두 값의 평균,
-        즉 (3번째 + 4번째) / 2 입니다.
-        예) [1,2,3,10,11,12] → (3+10)/2 = 6.5 → "6-10" 구간.
-        전체 회차를 9개 구간("1-5".."41-45")으로 분류하며, 경계값은 상위 구간에 귀속합니다.
-        중앙값 23.0 미만을 저중앙값으로 봅니다.
-        과거 통계일 뿐 미래 출현을 보장하지 않습니다.
-    </p>
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
 
-    {% if stats.total_draws == 0 %}
-    <div class="bg-card border border-border rounded-lg p-10 text-center dark:bg-gray-800 dark:border-gray-700">
-        <p class="text-muted dark:text-gray-400">데이터가 없습니다. 먼저 데이터를 수집해주세요.</p>
+  <!-- 요약 카드 -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">{{ data.avg_median }}</div>
+          <div class="text-muted small">평균 중앙값</div>
+          <div class="text-muted" style="font-size:0.7rem;">기대값 ≈ 23.0</div>
+        </div>
+      </div>
     </div>
-    {% else %}
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
-            <p class="text-xs text-muted dark:text-gray-400">분석 회차</p>
-            <p class="text-xl font-bold text-ink dark:text-gray-100">{{ stats.total_draws }}</p>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.best_bucket_label }}</div>
+          <div class="text-muted small">최빈 구간</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.best_bucket_pct }}%</div>
         </div>
-        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
-            <p class="text-xs text-muted dark:text-gray-400">평균 중앙값</p>
-            <p class="text-xl font-bold text-sky-600 dark:text-sky-400">{{ stats.avg_median }}</p>
-        </div>
-        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
-            <p class="text-xs text-muted dark:text-gray-400">최다 구간</p>
-            <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">{{ stats.most_common_range }}</p>
-        </div>
-        <div class="bg-card border border-border rounded-lg p-4 dark:bg-gray-800 dark:border-gray-700">
-            <p class="text-xs text-muted dark:text-gray-400">저중앙값 비율(&lt;23.0)</p>
-            <p class="text-xl font-bold text-rose-600 dark:text-rose-400">{{ stats.low_median_pct }}%</p>
-        </div>
+      </div>
     </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-info">{{ data.min_median }}</div>
+          <div class="text-muted small">최소 중앙값</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.min_draw.drwNo }}회 {{ data.min_draw.numbers | join(', ') }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card text-center h-100">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-danger">{{ data.max_median }}</div>
+          <div class="text-muted small">최대 중앙값</div>
+          <div class="text-muted" style="font-size:0.7rem;">{{ data.max_draw.drwNo }}회 {{ data.max_draw.numbers | join(', ') }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-    <div class="bg-card border border-border rounded-lg p-5 dark:bg-gray-800 dark:border-gray-700">
-        <h3 class="text-lg font-semibold text-ink dark:text-gray-100 mb-3">중앙값 구간 분포</h3>
-        <table class="min-w-full text-sm">
-            <thead>
-                <tr class="text-left text-muted dark:text-gray-400 border-b border-border dark:border-gray-700">
-                    <th class="py-2 pr-4">구간</th>
-                    <th class="py-2 pr-4 text-right">회차 수</th>
-                    <th class="py-2 pr-4 text-right">비율</th>
-                </tr>
-            </thead>
+  <!-- 중심(23) 기준 분포 -->
+  <div class="card mb-4">
+    <div class="card-header fw-semibold">중심값(23) 기준 분포</div>
+    <div class="card-body">
+      <div class="row text-center g-3">
+        <div class="col-4">
+          <div class="fs-3 fw-bold text-info">{{ data.below_pct }}%</div>
+          <div class="text-muted">중앙값 &lt; 23</div>
+          <div class="text-muted small">{{ data.below_center }}회 (저편향)</div>
+        </div>
+        <div class="col-4">
+          <div class="fs-3 fw-bold text-secondary">{{ data.at_pct }}%</div>
+          <div class="text-muted">중앙값 = 23</div>
+          <div class="text-muted small">{{ data.at_center }}회 (균형)</div>
+        </div>
+        <div class="col-4">
+          <div class="fs-3 fw-bold text-warning">{{ data.above_pct }}%</div>
+          <div class="text-muted">중앙값 &gt; 23</div>
+          <div class="text-muted small">{{ data.above_center }}회 (고편향)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <!-- 구간 분포 -->
+    <div class="col-12 col-md-5">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">중앙값 구간 분포</div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>구간</th><th>회차</th><th>비율</th></tr></thead>
             <tbody>
-                {# 9개 고정 키("1-5".."41-45")를 정의 순서대로 표시한다(미관측 키 0 포함) #}
-                {% for label, cell in stats.median_distribution.items() %}
-                {% if label == stats.most_common_range %}
-                <tr class="border-b border-border dark:border-gray-700 bg-sky-50 dark:bg-sky-900/20">
-                {% else %}
-                <tr class="border-b border-border dark:border-gray-700">
-                {% endif %}
-                    <td class="py-2 pr-4 font-semibold text-ink dark:text-gray-100">
-                        {{ label }}{% if label == stats.most_common_range %} <span class="text-xs font-normal text-sky-600 dark:text-sky-400">(최다)</span>{% endif %}
-                    </td>
-                    <td class="py-2 pr-4 text-right text-ink dark:text-gray-100">{{ cell.count }}</td>
-                    <td class="py-2 pr-4 text-right text-muted dark:text-gray-400">{{ cell.pct }}%</td>
-                </tr>
-                {% endfor %}
+              {% for item in data.bucket_list %}
+              <tr {% if item.label == data.best_bucket_label %}class="table-success"{% endif %}>
+                <td><strong>{{ item.label }}</strong></td>
+                <td>{{ item.count }}</td>
+                <td>
+                  <div class="progress" style="height:14px;">
+                    <div class="progress-bar bg-success" style="width:{{ item.pct }}%;">{{ item.pct }}%</div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
             </tbody>
-        </table>
+          </table>
+        </div>
+      </div>
     </div>
-    {% endif %}
+
+    <!-- 최근 20회차 -->
+    <div class="col-12 col-md-7">
+      <div class="card h-100">
+        <div class="card-header fw-semibold">최근 20회차 중앙값</div>
+        <div class="card-body">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>회차</th><th>번호</th><th>중앙값</th></tr></thead>
+            <tbody>
+              {% for item in data.recent %}
+              <tr>
+                <td>{{ item.drwNo }}</td>
+                <td>
+                  {% for n in item.numbers %}
+                  <span class="badge rounded-pill {% if n <= 10 %}bg-warning text-dark{% elif n <= 20 %}bg-primary{% elif n <= 30 %}bg-danger{% elif n <= 40 %}bg-secondary{% else %}bg-dark{% endif %}">{{ n }}</span>
+                  {% endfor %}
+                </td>
+                <td>
+                  <strong {% if item.median < 23 %}class="text-info"{% elif item.median > 23 %}class="text-warning"{% endif %}>
+                    {{ item.median }}
+                  </strong>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
 </div>
 {% endblock %}
