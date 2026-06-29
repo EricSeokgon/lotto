@@ -2459,3 +2459,13 @@ async def perfect_cube_page(request: Request) -> TemplateResponse:
         "active_tab": "perfect_cube",
         "data": data,
     })
+
+
+@router.get("/stats/fibonacci")
+async def fibonacci_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-160: 피보나치 수 분포 분석."""
+    data = wd.get_fibonacci_analysis()
+    return _render(request, "fibonacci.html", {
+        "active_tab": "fibonacci",
+        "data": data,
+    })
