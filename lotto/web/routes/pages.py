@@ -2419,3 +2419,13 @@ async def multiples41_page(request: Request) -> TemplateResponse:
         "active_tab": "multiples41",
         "data": data,
     })
+
+
+@router.get("/stats/multiples-43")
+async def multiples43_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-156: 43의 배수 분포 분석."""
+    data = wd.get_multiples43_analysis()
+    return _render(request, "multiples43.html", {
+        "active_tab": "multiples43",
+        "data": data,
+    })
