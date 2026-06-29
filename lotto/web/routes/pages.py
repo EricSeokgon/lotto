@@ -2469,3 +2469,13 @@ async def fibonacci_page(request: Request) -> TemplateResponse:
         "active_tab": "fibonacci",
         "data": data,
     })
+
+
+@router.get("/stats/prime")
+async def prime_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-161: 소수 분포 분석."""
+    data = wd.get_prime_analysis()
+    return _render(request, "prime.html", {
+        "active_tab": "prime",
+        "data": data,
+    })
