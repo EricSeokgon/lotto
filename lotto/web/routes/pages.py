@@ -2449,3 +2449,13 @@ async def triangular_number_page(request: Request) -> TemplateResponse:
         "active_tab": "triangular_number",
         "data": data,
     })
+
+
+@router.get("/stats/perfect-cube")
+async def perfect_cube_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-159: 세제곱수 분포 분석."""
+    data = wd.get_perfect_cube_analysis()
+    return _render(request, "perfect_cube.html", {
+        "active_tab": "perfect_cube",
+        "data": data,
+    })

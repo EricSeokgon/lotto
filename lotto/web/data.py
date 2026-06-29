@@ -13254,3 +13254,68 @@ def get_triangular_number_analysis() -> dict | None:
         "freq_list": freq_list,
         "recent": recent,
     }
+
+
+def get_perfect_cube_analysis() -> dict | None:
+    """SPEC-LOTTO-159: 세제곱수 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    CUBES = {n ** 3 for n in range(1, 10) if n ** 3 <= 45}  # noqa: N806
+    total = len(draws)
+    expected = round(len(CUBES) / 45 * 6, 3)
+
+    max_k = len(CUBES)
+    count_dist: dict[int, int] = {k: 0 for k in range(max_k + 1)}  # noqa: C420
+    freq: dict[int, int] = {m: 0 for m in CUBES}  # noqa: C420
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        in_draw = nums & CUBES
+        count_dist[len(in_draw)] = count_dist.get(len(in_draw), 0) + 1
+        for m in in_draw:
+            freq[m] += 1
+
+    avg = round(sum(k * v for k, v in count_dist.items()) / total, 3)
+    best_count = max(count_dist, key=lambda k: count_dist[k])
+
+    dist_list = [
+        {
+            "count": k,
+            "draws": count_dist[k],
+            "pct": round(count_dist[k] / total * 100, 1),
+        }
+        for k in range(max_k + 1)
+    ]
+
+    freq_list = sorted(
+        [{"number": m, "count": freq[m], "pct": round(freq[m] / total * 100, 1)} for m in CUBES],
+        key=lambda x: x["number"],
+    )
+
+    recent: list[dict] = []
+    for draw in sorted(draws, key=lambda d: d.drwNo, reverse=True)[:20]:
+        nums = set(draw.numbers())
+        in_draw = nums & CUBES
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "cubes": in_draw,
+            "count": len(in_draw),
+        })
+
+    return {
+        "total": total,
+        "cube_count": len(CUBES),
+        "cubes_list": sorted(CUBES),
+        "avg": avg,
+        "expected": expected,
+        "diff": round(avg - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+        "zero_pct": round(count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }
