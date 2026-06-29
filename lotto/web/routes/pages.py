@@ -2429,3 +2429,13 @@ async def multiples43_page(request: Request) -> TemplateResponse:
         "active_tab": "multiples43",
         "data": data,
     })
+
+
+@router.get("/stats/perfect-square")
+async def perfect_square_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-157: 완전제곱수 분포 분석."""
+    data = wd.get_perfect_square_analysis()
+    return _render(request, "perfect_square.html", {
+        "active_tab": "perfect_square",
+        "data": data,
+    })
