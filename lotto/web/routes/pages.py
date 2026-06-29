@@ -2479,3 +2479,13 @@ async def prime_page(request: Request) -> TemplateResponse:
         "active_tab": "prime",
         "data": data,
     })
+
+
+@router.get("/stats/even")
+async def even_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-162: 짝수 분포 분석."""
+    data = wd.get_even_analysis()
+    return _render(request, "even.html", {
+        "active_tab": "even",
+        "data": data,
+    })
