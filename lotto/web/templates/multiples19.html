@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}19의 배수 분포 분석{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="row mb-4">
+    <div class="col">
+      <h2 class="fw-bold">19의 배수 분포 분석</h2>
+      <p class="text-muted">1~45 내 19의 배수(19,38) 2개의 당첨 번호 포함 빈도 분석. 이론적 기댓값(2/45×6≈0.267)과 비교.</p>
+    </div>
+  </div>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- Summary Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card h-100 text-center">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-primary">2개</div>
+          <div class="text-muted small">19의 배수 개수</div>
+          <div class="text-muted small">기댓값 {{ data.expected }}개/회</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card h-100 text-center">
+        <div class="card-body">
+          <div class="fs-2 fw-bold">{{ data.avg }}</div>
+          <div class="text-muted small">실제 평균 포함 수</div>
+          <div class="small {% if data.diff >= 0 %}text-danger{% else %}text-primary{% endif %}">
+            {% if data.diff >= 0 %}+{% endif %}{{ data.diff }} vs 기댓값
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card h-100 text-center">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-success">{{ data.best_count }}개</div>
+          <div class="text-muted small">최빈 포함 개수</div>
+          <div class="text-muted small">{{ data.best_count_pct }}% 회차</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card h-100 text-center">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-warning">{{ data.zero_pct }}%</div>
+          <div class="text-muted small">19의 배수 0개 비율</div>
+          <div class="text-muted small">전체 회차 중</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Distribution Table + Frequency Table -->
+  <div class="row mb-4">
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header fw-bold">회차별 19의 배수 포함 개수 분포</div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>포함 개수</th>
+                <th>회차 수</th>
+                <th>비율</th>
+                <th>분포</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in data.dist_list %}
+              <tr {% if row.count == data.best_count %}class="table-warning"{% endif %}>
+                <td>{{ row.count }}개</td>
+                <td>{{ row.draws }}</td>
+                <td>{{ row.pct }}%</td>
+                <td>
+                  <div class="progress" style="height:16px; min-width:80px;">
+                    <div class="progress-bar" role="progressbar" style="width:{{ row.pct }}%">
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header fw-bold">19의 배수 번호별 출현 빈도</div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>#</th>
+                <th>번호</th>
+                <th>출현 횟수</th>
+                <th>출현율</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in data.freq_list %}
+              <tr>
+                <td>{{ loop.index }}</td>
+                <td><span class="badge bg-success fs-6">{{ row.number }}</span></td>
+                <td>{{ row.count }}</td>
+                <td>{{ row.pct }}%</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent 20 Draws -->
+  <div class="row mb-4">
+    <div class="col">
+      <div class="card">
+        <div class="card-header fw-bold">최근 20회차 19의 배수 포함 현황</div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>회차</th>
+                <th>당첨 번호</th>
+                <th>19의 배수 개수</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in data.recent %}
+              <tr>
+                <td>{{ row.drwNo }}회</td>
+                <td>
+                  {% for n in row.numbers %}
+                  {% if n in row.mult19 %}
+                  <span class="badge bg-success me-1">{{ n }}</span>
+                  {% else %}
+                  <span class="badge bg-light text-dark border me-1">{{ n }}</span>
+                  {% endif %}
+                  {% endfor %}
+                </td>
+                <td><span class="badge bg-primary">{{ row.count }}개</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
