@@ -269,6 +269,10 @@ async def recommend_page(
                 LottoRecommender(stats), target_numbers
             )
 
+    draws = wd.get_draws() or []
+    latest_drw_no = max((d.drwNo for d in draws), default=0) if draws else 0
+    next_drw_no = latest_drw_no + 1
+
     return _render(request, "recommend.html", {
         "active_tab": "recommend",
         "data_status": data_status,
@@ -277,6 +281,7 @@ async def recommend_page(
         # SPEC-LOTTO-051 REQ-CONS-003/006: 번호별 합의 카운트(N/11)와 주의 임계값
         "consensus": consensus,
         "consensus_caution_threshold": 4,
+        "next_drw_no": next_drw_no,
     })
 
 

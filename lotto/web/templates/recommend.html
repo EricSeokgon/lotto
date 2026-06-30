@@ -97,8 +97,9 @@
         {% for rec in recommendations %}
         <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer select-none"
              data-numbers="{{ rec.numbers | join(',') }}"
-             title="클릭하면 생성 이력에서 해당 번호로 이동합니다"
-             onclick="scrollToHistory(this)">
+             data-strategy="{{ rec.strategy_label }}"
+             title="클릭하면 구매 이력에 추가합니다"
+             onclick="openAddTicketModal(this)">
             <!-- 헤더: 세트 번호 + 전략 배지 -->
             <div class="flex items-start justify-between mb-3">
                 <span class="text-sm font-semibold text-ink">세트 {{ loop.index }}</span>
@@ -334,7 +335,7 @@
                 </button>
             </div>
         </div>
-        <p class="text-xs text-muted mb-3">API로 추천된 최근 10건의 번호 조합입니다.</p>
+        <p class="text-xs text-muted mb-3">번호를 추천받을 때마다 자동으로 기록됩니다. 실제 구매한 번호는 아래 <strong>내 구매 이력</strong>에 별도로 추가하세요.</p>
 
         <table class="w-full text-sm">
             <thead>
@@ -351,30 +352,94 @@
         <p id="gen-history-empty" class="text-sm text-muted hidden">생성 이력이 없습니다.</p>
     </section>
 
+    <!-- 구매 이력 추가 모달 -->
+    <div id="add-ticket-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/40">
+        <div class="bg-card rounded-xl shadow-2xl border border-border p-6 w-full max-w-sm mx-4">
+            <h4 class="text-base font-semibold text-ink mb-1">구매 이력 추가</h4>
+            <p class="text-xs text-muted mb-4" id="modal-numbers-preview"></p>
+            <div class="mb-3">
+                <label class="block text-xs text-muted mb-1">구매 회차</label>
+                <input type="number" id="modal-drwNo" min="1"
+                       class="w-full text-sm border border-border rounded px-3 py-1.5 bg-card text-ink">
+            </div>
+            <div class="mb-4">
+                <label class="block text-xs text-muted mb-1">메모 (선택)</label>
+                <input type="text" id="modal-memo" maxlength="30" placeholder="편의점 구매 등"
+                       class="w-full text-sm border border-border rounded px-3 py-1.5 bg-card text-ink">
+            </div>
+            <p id="modal-error" class="text-xs text-red-500 mb-3 hidden"></p>
+            <div class="flex gap-2 justify-end">
+                <button onclick="closeAddTicketModal()"
+                        class="text-sm px-4 py-1.5 rounded border border-border text-muted hover:bg-surface transition-colors">
+                    취소
+                </button>
+                <button id="modal-confirm-btn" onclick="confirmAddTicket()"
+                        class="text-sm px-4 py-1.5 rounded bg-blue-600 text-white hover:bg-blue-700 transition-colors font-medium">
+                    추가
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        function scrollToHistory(card) {
-            const raw = card.getAttribute('data-numbers') || '';
-            const key = raw.split(',').map(Number).sort(function(a,b){return a-b;}).join(',');
-            const section = document.getElementById('gen-history-section');
-            if (section) {
-                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-            setTimeout(function () {
-                const rows = document.querySelectorAll('#gen-history-tbody tr');
-                rows.forEach(function (tr) { tr.style.transition = ''; tr.style.backgroundColor = ''; });
-                let matched = null;
-                rows.forEach(function (tr) {
-                    if (tr.getAttribute('data-numbers') === key) matched = tr;
-                });
-                if (matched) {
-                    matched.style.transition = 'background-color 0.3s';
-                    matched.style.backgroundColor = '#fef9c3';
-                    setTimeout(function () {
-                        matched.style.backgroundColor = '';
-                    }, 2500);
-                }
-            }, 500);
+        var _modalNumbers = [];
+
+        function openAddTicketModal(card) {
+            _modalNumbers = (card.getAttribute('data-numbers') || '').split(',').map(Number);
+            const strategy = card.getAttribute('data-strategy') || '';
+            document.getElementById('modal-numbers-preview').textContent =
+                (strategy ? '[' + strategy + '] ' : '') + _modalNumbers.join(', ');
+            document.getElementById('modal-drwNo').value = '{{ next_drw_no }}';
+            document.getElementById('modal-memo').value = '';
+            document.getElementById('modal-error').classList.add('hidden');
+            document.getElementById('add-ticket-modal').classList.remove('hidden');
+            document.getElementById('modal-drwNo').focus();
         }
+
+        function closeAddTicketModal() {
+            document.getElementById('add-ticket-modal').classList.add('hidden');
+        }
+
+        async function confirmAddTicket() {
+            const drwNo = parseInt(document.getElementById('modal-drwNo').value, 10);
+            const memo = document.getElementById('modal-memo').value.trim();
+            const errEl = document.getElementById('modal-error');
+            errEl.classList.add('hidden');
+            if (!drwNo || drwNo < 1) {
+                errEl.textContent = '회차를 입력하세요.'; errEl.classList.remove('hidden'); return;
+            }
+            const btn = document.getElementById('modal-confirm-btn');
+            btn.disabled = true; btn.textContent = '추가 중...';
+            try {
+                const res = await fetch('/api/my-tickets', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({drwNo, numbers: _modalNumbers, memo})
+                });
+                if (!res.ok) {
+                    const d = await res.json();
+                    errEl.textContent = d.detail || '저장 실패'; errEl.classList.remove('hidden');
+                    return;
+                }
+                closeAddTicketModal();
+                /* 구매 이력 섹션으로 스크롤 & 새로고침 */
+                const section = document.getElementById('my-tickets-section');
+                if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                if (typeof window._reloadMyTickets === 'function') window._reloadMyTickets();
+            } catch (e) {
+                errEl.textContent = '네트워크 오류가 발생했습니다.'; errEl.classList.remove('hidden');
+            } finally {
+                btn.disabled = false; btn.textContent = '추가';
+            }
+        }
+
+        /* ESC로 모달 닫기 */
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeAddTicketModal();
+        });
+        document.getElementById('add-ticket-modal').addEventListener('click', function(e) {
+            if (e.target === this) closeAddTicketModal();
+        });
     </script>
 
     <script>
@@ -618,6 +683,7 @@
                 }
             });
 
+            window._reloadMyTickets = loadTickets;
             loadTickets();
         })();
     </script>
