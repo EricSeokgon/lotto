@@ -2569,3 +2569,13 @@ async def semiprime_page(request: Request) -> TemplateResponse:
         "active_tab": "semiprime",
         "data": data,
     })
+
+
+@router.get("/stats/catalan")
+async def catalan_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-172: 카탈란 수 포함 분포 분석."""
+    data = wd.get_catalan_analysis()
+    return _render(request, "catalan.html", {
+        "active_tab": "catalan",
+        "data": data,
+    })

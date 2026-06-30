@@ -14055,3 +14055,77 @@ def get_semiprime_analysis() -> dict | None:
         "freq_list": freq_list,
         "recent": recent,
     }
+
+
+def get_catalan_analysis() -> dict | None:
+    """SPEC-LOTTO-172: 카탈란 수 포함 분포 분석.
+
+    카탈란 수: Cn = C(2n,n)/(n+1). 1~45 내 값: {1,2,5,14,42} = 5개.
+    C0=1, C1=1(중복제거), C2=2, C3=5, C4=14, C5=42.
+    """
+    draws = get_draws()
+    if not draws:
+        return None
+
+    CATALANS = {1, 2, 5, 14, 42}  # noqa: N806
+    total = len(draws)
+    expected = round(len(CATALANS) / 45 * 6, 3)
+    max_k = min(6, len(CATALANS))
+
+    count_dist: dict[int, int] = {k: 0 for k in range(max_k + 1)}  # noqa: C420
+    freq: dict[int, int] = {m: 0 for m in CATALANS}
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        in_draw = nums & CATALANS
+        cnt = len(in_draw)
+        count_dist[cnt] = count_dist.get(cnt, 0) + 1
+        for m in in_draw:
+            freq[m] += 1
+
+    avg = round(sum(k * v for k, v in count_dist.items()) / total, 3)
+    best_count = max(count_dist, key=lambda k: count_dist[k])
+    dist_list = [
+        {"count": k, "draws": count_dist[k], "pct": round(count_dist[k] / total * 100, 1)}
+        for k in range(max_k + 1)
+    ]
+    freq_list = [
+        {"number": m, "count": freq[m], "pct": round(freq[m] / total * 100, 1)}
+        for m in sorted(CATALANS)
+    ]
+
+    # 카탈란 수 정보 (n, Cn)
+    catalan_info = [
+        {"n": 0, "value": 1},
+        {"n": 2, "value": 2},
+        {"n": 3, "value": 5},
+        {"n": 4, "value": 14},
+        {"n": 5, "value": 42},
+    ]
+
+    recent: list[dict] = []
+    for draw in sorted(draws, key=lambda d: d.drwNo, reverse=True)[:20]:
+        nums = set(draw.numbers())
+        in_draw = nums & CATALANS
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "catalans": in_draw,
+            "count": len(in_draw),
+        })
+
+    return {
+        "total": total,
+        "catalan_count": len(CATALANS),
+        "catalan_list": sorted(CATALANS),
+        "catalan_info": catalan_info,
+        "avg": avg,
+        "expected": expected,
+        "diff": round(avg - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+        "zero_pct": round(count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }
