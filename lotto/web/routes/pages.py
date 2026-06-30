@@ -2604,3 +2604,13 @@ async def triangular_page(request: Request) -> TemplateResponse:
         "active_tab": "triangular",
         "data": data,
     })
+
+
+@router.get("/stats/perfect")
+async def perfect_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-175: 완전수 포함 분포 분석."""
+    data = wd.get_perfect_analysis()
+    return _render(request, "perfect.html", {
+        "active_tab": "perfect",
+        "data": data,
+    })
