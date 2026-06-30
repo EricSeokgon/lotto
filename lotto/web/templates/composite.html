@@ -1,13 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}합성수(Composite Number) 분포 분석{% endblock %}
+{% block title %}합성수 분포 분석{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
   <div class="row mb-4">
     <div class="col">
-      <h2 class="fw-bold">합성수(Composite Number) 분포 분석</h2>
-      <p class="text-muted">1~45 내 합성수(4,6,8,...,45) 30개의 당첨 번호 포함 빈도 분석. 이론적 기댓값(30/45×6=4.0)과 비교.</p>
+      <h2 class="fw-bold">합성수 분포 분석</h2>
+      <p class="text-muted">
+        1~45 내 합성수(소수도 1도 아닌 수) 30개의 당첨 번호 포함 빈도 분석.
+        이론적 기댓값(30/45×6=4.0)과 비교.
+      </p>
     </div>
   </div>
 
@@ -15,12 +18,11 @@
   <div class="alert alert-warning">데이터가 없습니다.</div>
   {% else %}
 
-  <!-- Summary Cards -->
   <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">
       <div class="card h-100 text-center">
         <div class="card-body">
-          <div class="fs-2 fw-bold text-primary">30개</div>
+          <div class="fs-2 fw-bold text-secondary">{{ data.composite_count }}개</div>
           <div class="text-muted small">합성수 개수</div>
           <div class="text-muted small">기댓값 {{ data.expected }}개/회</div>
         </div>
@@ -29,9 +31,9 @@
     <div class="col-6 col-md-3">
       <div class="card h-100 text-center">
         <div class="card-body">
-          <div class="fs-2 fw-bold">{{ data.avg_comp }}</div>
+          <div class="fs-2 fw-bold">{{ data.avg }}</div>
           <div class="text-muted small">실제 평균 포함 수</div>
-          <div class="small {% if data.diff >= 0 %}text-success{% else %}text-danger{% endif %}">
+          <div class="small {% if data.diff >= 0 %}text-danger{% else %}text-primary{% endif %}">
             {% if data.diff >= 0 %}+{% endif %}{{ data.diff }} vs 기댓값
           </div>
         </div>
@@ -49,39 +51,43 @@
     <div class="col-6 col-md-3">
       <div class="card h-100 text-center">
         <div class="card-body">
-          <div class="fs-2 fw-bold text-info">66.7%</div>
-          <div class="text-muted small">전체 중 합성수 비율</div>
-          <div class="text-muted small">30/45</div>
+          <div class="fs-2 fw-bold text-secondary">{{ data.zero_pct }}%</div>
+          <div class="text-muted small">0개 포함 비율</div>
+          <div class="text-muted small">전체 회차 중</div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Distribution Table -->
   <div class="row mb-4">
-    <div class="col-lg-6">
+    <div class="col">
+      <div class="alert alert-secondary">
+        <strong>분석 대상 합성수 (1~45, 소수·1 제외):</strong>
+        {% for n in data.composites_list %}
+        <span class="badge bg-secondary me-1">{{ n }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="row mb-4">
+    <div class="col-lg-5">
       <div class="card">
         <div class="card-header fw-bold">회차별 합성수 포함 개수 분포</div>
         <div class="card-body p-0">
           <table class="table table-hover mb-0">
             <thead class="table-light">
-              <tr>
-                <th>포함 개수</th>
-                <th>회차 수</th>
-                <th>비율</th>
-                <th>분포</th>
-              </tr>
+              <tr><th>포함 개수</th><th>회차 수</th><th>비율</th><th>분포</th></tr>
             </thead>
             <tbody>
               {% for row in data.dist_list %}
-              <tr {% if row.count == data.best_count %}class="table-warning"{% endif %}>
+              <tr {% if row.count == data.best_count %}class="table-secondary"{% endif %}>
                 <td>{{ row.count }}개</td>
                 <td>{{ row.draws }}</td>
                 <td>{{ row.pct }}%</td>
                 <td>
                   <div class="progress" style="height:16px; min-width:80px;">
-                    <div class="progress-bar" role="progressbar" style="width:{{ row.pct }}%">
-                    </div>
+                    <div class="progress-bar bg-secondary" role="progressbar" style="width:{{ row.pct }}%"></div>
                   </div>
                 </td>
               </tr>
@@ -91,20 +97,13 @@
         </div>
       </div>
     </div>
-
-    <!-- Top 15 Frequent Composites -->
-    <div class="col-lg-6">
+    <div class="col-lg-7">
       <div class="card">
-        <div class="card-header fw-bold">상위 15개 최빈 합성수</div>
+        <div class="card-header fw-bold">합성수 번호별 출현 빈도</div>
         <div class="card-body p-0">
           <table class="table table-hover mb-0">
             <thead class="table-light">
-              <tr>
-                <th>#</th>
-                <th>번호</th>
-                <th>출현 횟수</th>
-                <th>출현율</th>
-              </tr>
+              <tr><th>#</th><th>번호</th><th>출현 횟수</th><th>출현율</th></tr>
             </thead>
             <tbody>
               {% for row in data.freq_list %}
@@ -122,36 +121,6 @@
     </div>
   </div>
 
-  <!-- Bottom 5 Least Frequent -->
-  <div class="row mb-4">
-    <div class="col-lg-6">
-      <div class="card">
-        <div class="card-header fw-bold">하위 5개 최저 빈도 합성수</div>
-        <div class="card-body p-0">
-          <table class="table table-hover mb-0">
-            <thead class="table-light">
-              <tr>
-                <th>번호</th>
-                <th>출현 횟수</th>
-                <th>출현율</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in data.bottom_list %}
-              <tr>
-                <td><span class="badge bg-secondary fs-6">{{ row.number }}</span></td>
-                <td>{{ row.count }}</td>
-                <td>{{ row.pct }}%</td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Recent 20 Draws -->
   <div class="row mb-4">
     <div class="col">
       <div class="card">
@@ -159,11 +128,7 @@
         <div class="card-body p-0">
           <table class="table table-hover mb-0">
             <thead class="table-light">
-              <tr>
-                <th>회차</th>
-                <th>당첨 번호</th>
-                <th>합성수 개수</th>
-              </tr>
+              <tr><th>회차</th><th>당첨 번호</th><th>합성수 개수</th></tr>
             </thead>
             <tbody>
               {% for row in data.recent %}
@@ -172,13 +137,13 @@
                 <td>
                   {% for n in row.numbers %}
                   {% if n in row.composites %}
-                  <span class="badge bg-warning text-dark me-1">{{ n }}</span>
+                  <span class="badge bg-secondary me-1">{{ n }}</span>
                   {% else %}
                   <span class="badge bg-light text-dark border me-1">{{ n }}</span>
                   {% endif %}
                   {% endfor %}
                 </td>
-                <td><span class="badge bg-primary">{{ row.comp_count }}개</span></td>
+                <td><span class="badge bg-success">{{ row.count }}개</span></td>
               </tr>
               {% endfor %}
             </tbody>
