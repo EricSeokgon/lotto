@@ -99,7 +99,7 @@
              data-numbers="{{ rec.numbers | join(',') }}"
              data-strategy="{{ rec.strategy_label }}"
              title="클릭하면 구매 이력에 추가합니다"
-             onclick="openAddTicketModal(this)">
+             onclick="openFromCard(this)">
             <!-- 헤더: 세트 번호 + 전략 배지 -->
             <div class="flex items-start justify-between mb-3">
                 <span class="text-sm font-semibold text-ink">세트 {{ loop.index }}</span>
@@ -381,19 +381,49 @@
         </div>
     </div>
 
-    <script>
-        var _modalNumbers = [];
+    <!-- 토스트 알림 -->
+    <div id="toast-msg" class="fixed bottom-5 right-5 z-[100] hidden max-w-xs">
+        <div class="bg-gray-900 text-white text-sm rounded-lg px-4 py-3 shadow-xl flex items-center gap-2">
+            <span id="toast-icon">✓</span>
+            <span id="toast-text"></span>
+        </div>
+    </div>
 
-        function openAddTicketModal(card) {
-            _modalNumbers = (card.getAttribute('data-numbers') || '').split(',').map(Number);
-            const strategy = card.getAttribute('data-strategy') || '';
+    <script>
+        function showToast(msg, isError) {
+            const el = document.getElementById('toast-msg');
+            document.getElementById('toast-text').textContent = msg;
+            document.getElementById('toast-icon').textContent = isError ? '✕' : '✓';
+            el.querySelector('div').style.background = isError ? '#dc2626' : '#166534';
+            el.classList.remove('hidden');
+            clearTimeout(el._timer);
+            el._timer = setTimeout(function() { el.classList.add('hidden'); }, 2800);
+        }
+
+        var _modalNumbers = [];
+        var _modalStrategy = '';
+
+        function openAddTicketModal(numbersArr, strategy) {
+            _modalNumbers = numbersArr;
+            _modalStrategy = strategy || '';
             document.getElementById('modal-numbers-preview').textContent =
-                (strategy ? '[' + strategy + '] ' : '') + _modalNumbers.join(', ');
+                (_modalStrategy ? '[' + _modalStrategy + '] ' : '') + _modalNumbers.join(', ');
             document.getElementById('modal-drwNo').value = '{{ next_drw_no }}';
             document.getElementById('modal-memo').value = '';
             document.getElementById('modal-error').classList.add('hidden');
             document.getElementById('add-ticket-modal').classList.remove('hidden');
             document.getElementById('modal-drwNo').focus();
+        }
+
+        /* 추천 카드 클릭 */
+        function openFromCard(card) {
+            const nums = (card.getAttribute('data-numbers') || '').split(',').map(Number);
+            openAddTicketModal(nums, card.getAttribute('data-strategy') || '');
+        }
+
+        /* 생성 이력 행 클릭 */
+        function openFromHistory(numbersArr) {
+            openAddTicketModal(numbersArr, 'gen-history');
         }
 
         function closeAddTicketModal() {
@@ -411,6 +441,7 @@
             const btn = document.getElementById('modal-confirm-btn');
             btn.disabled = true; btn.textContent = '추가 중...';
             try {
+                /* 1. 구매 이력 추가 */
                 const res = await fetch('/api/my-tickets', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
@@ -421,6 +452,19 @@
                     errEl.textContent = d.detail || '저장 실패'; errEl.classList.remove('hidden');
                     return;
                 }
+
+                /* 2. 생성 이력 추가 */
+                fetch('/api/gen-history', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({numbers: _modalNumbers, strategy: _modalStrategy || 'manual'})
+                }).then(function() {
+                    if (typeof window._reloadGenHistory === 'function') window._reloadGenHistory();
+                });
+
+                /* 3. 토스트 알림 */
+                showToast(_modalNumbers.join(', ') + ' → 구매 이력에 추가됐습니다', false);
+
                 closeAddTicketModal();
                 /* 구매 이력 섹션으로 스크롤 & 새로고침 */
                 const section = document.getElementById('my-tickets-section');
@@ -490,9 +534,14 @@
                     emptyEl.classList.add('hidden');
                     items.forEach(function (item) {
                         const tr = document.createElement('tr');
-                        tr.className = 'border-b border-border last:border-0';
-                        tr.setAttribute('data-numbers', (item.numbers || []).slice().sort(function(a,b){return a-b;}).join(','));
-                        const balls = (item.numbers || []).map(ballHTML).join(' ');
+                        tr.className = 'border-b border-border last:border-0 cursor-pointer hover:bg-surface transition-colors';
+                        tr.title = '클릭하면 구매 이력에 추가합니다';
+                        const sortedNums = (item.numbers || []).slice().sort(function(a,b){return a-b;});
+                        tr.setAttribute('data-numbers', sortedNums.join(','));
+                        tr.addEventListener('click', function() {
+                            openFromHistory(sortedNums);
+                        });
+                        const balls = sortedNums.map(ballHTML).join(' ');
                         const drwCell = item.target_drw_no
                             ? '<span class="text-xs text-ink">' + item.target_drw_no + '회</span>'
                             : '<span class="text-xs text-muted">-</span>';
@@ -534,6 +583,7 @@
                 }
             });
 
+            window._reloadGenHistory = loadHistory;
             loadHistory();
         })();
     </script>

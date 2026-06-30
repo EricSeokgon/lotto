@@ -420,6 +420,23 @@ async def delete_gen_history() -> dict[str, Any]:
     return {"deleted": deleted}
 
 
+class GenHistoryIn(BaseModel):
+    numbers: list[int]
+    strategy: str = "manual"
+
+
+@router.post("/gen-history", status_code=201)
+async def add_gen_history(body: GenHistoryIn) -> dict[str, Any]:
+    """생성 이력에 항목 1건을 수동으로 추가합니다."""
+    from lotto.web import data as wd
+
+    nums = sorted(body.numbers)
+    if len(nums) != 6 or not all(1 <= n <= 45 for n in nums) or len(set(nums)) != 6:
+        raise HTTPException(status_code=422, detail="번호는 1~45 범위의 6개 고유 숫자여야 합니다.")
+    wd.append_gen_history(strategy=body.strategy, numbers=nums)
+    return {"ok": True}
+
+
 # ─── 구매 이력 API ─────────────────────────────────────────────────────────
 
 @router.get("/my-tickets")
