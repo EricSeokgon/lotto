@@ -2541,11 +2541,11 @@ async def high_zone_page(request: Request) -> TemplateResponse:
     })
 
 
-@router.get("/stats/consecutive")
-async def consecutive_page(request: Request) -> TemplateResponse:
-    """SPEC-LOTTO-168: 연속번호 분포 분석."""
-    data = wd.get_consecutive_analysis()
-    return _render(request, "consecutive.html", {
-        "active_tab": "consecutive",
+@router.get("/stats/sum")
+async def sum_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-169: 번호 합계 분포 분석."""
+    data = wd.get_sum_analysis()
+    return _render(request, "sum_dist.html", {
+        "active_tab": "sum_dist",
         "data": data,
     })

@@ -13870,61 +13870,55 @@ def get_high_zone_analysis() -> dict | None:
     }
 
 
-def get_consecutive_analysis() -> dict | None:
-    """SPEC-LOTTO-168: 연속번호 분포 분석."""
+def get_sum_analysis() -> dict | None:
+    """SPEC-LOTTO-169: 번호 합계 분포 분석."""
     draws = get_draws()
     if not draws:
         return None
 
     total = len(draws)
-    max_pairs = 5
-    count_dist: dict[int, int] = {k: 0 for k in range(max_pairs + 1)}  # noqa: C420
+    theoretical_avg = round(6 * (1 + 45) / 2, 3)  # = 138.0  (기댓값: 6 × 23)
 
-    for draw in draws:
-        nums = sorted(draw.numbers())
-        pairs = sum(1 for i in range(len(nums) - 1) if nums[i + 1] == nums[i] + 1)
-        count_dist[min(pairs, max_pairs)] = count_dist.get(min(pairs, max_pairs), 0) + 1
+    sums = [sum(draw.numbers()) for draw in draws]
+    actual_avg = round(sum(sums) / total, 3)
 
-    avg = round(sum(k * v for k, v in count_dist.items()) / total, 3)
-    best_count = max(count_dist, key=lambda k: count_dist[k])
-    has_consecutive_pct = round((total - count_dist[0]) / total * 100, 1)
-
-    dist_list = [
-        {
-            "count": k,
-            "draws": count_dist[k],
-            "pct": round(count_dist[k] / total * 100, 1),
-        }
-        for k in range(max_pairs + 1)
+    # 구간: ~99, 100~124, 125~149, 150~174, 175~199, 200~
+    ranges = [
+        {"label": "~99", "min": 0, "max": 99},
+        {"label": "100~124", "min": 100, "max": 124},
+        {"label": "125~149", "min": 125, "max": 149},
+        {"label": "150~174", "min": 150, "max": 174},
+        {"label": "175~199", "min": 175, "max": 199},
+        {"label": "200~", "min": 200, "max": 999},
     ]
+    for r in ranges:
+        r["draws"] = sum(1 for s in sums if r["min"] <= s <= r["max"])
+        r["pct"] = round(r["draws"] / total * 100, 1)
+
+    best_range = max(ranges, key=lambda r: r["draws"])
+
+    min_sum = min(sums)
+    max_sum = max(sums)
 
     recent: list[dict] = []
     for draw in sorted(draws, key=lambda d: d.drwNo, reverse=True)[:20]:
-        nums = sorted(draw.numbers())
-        pairs: list[tuple[int, int]] = [
-            (nums[i], nums[i + 1])
-            for i in range(len(nums) - 1)
-            if nums[i + 1] == nums[i] + 1
-        ]
-        consecutive_nums: set[int] = set()
-        for a, b in pairs:
-            consecutive_nums.add(a)
-            consecutive_nums.add(b)
+        s = sum(draw.numbers())
         recent.append({
             "drwNo": draw.drwNo,
-            "numbers": nums,
-            "consecutive": consecutive_nums,
-            "pairs": pairs,
-            "count": len(pairs),
+            "numbers": sorted(draw.numbers()),
+            "sum": s,
+            "diff": s - theoretical_avg,
         })
 
     return {
         "total": total,
-        "avg": avg,
-        "best_count": best_count,
-        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
-        "zero_pct": round(count_dist[0] / total * 100, 1),
-        "has_consecutive_pct": has_consecutive_pct,
-        "dist_list": dist_list,
+        "theoretical_avg": theoretical_avg,
+        "actual_avg": actual_avg,
+        "diff": round(actual_avg - theoretical_avg, 3),
+        "min_sum": min_sum,
+        "max_sum": max_sum,
+        "best_range": best_range["label"],
+        "best_range_pct": best_range["pct"],
+        "ranges": ranges,
         "recent": recent,
     }

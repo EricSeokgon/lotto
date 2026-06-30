@@ -1,89 +1,126 @@
-"""SPEC-LOTTO-168: 연속번호 분포 분석 테스트."""
+"""SPEC-LOTTO-132: 연속 번호 패턴 분석 테스트."""
+
+from __future__ import annotations
+
+import datetime
+from unittest.mock import patch
+
 from fastapi.testclient import TestClient
 
 from lotto.models import DrawResult
 from lotto.web import data as wd
-from lotto.web.app import app
-
-client = TestClient(app)
-
-SAMPLE_DRAWS = [
-    # 1,2,3 연속 → 쌍 2개 (1-2, 2-3)
-    DrawResult(n1=1, n2=2, n3=3, n4=10, n5=20, n6=30, bonus=40, drwNo=1, date="2002-12-07"),
-    # 연속 없음
-    DrawResult(n1=1, n2=3, n3=5, n4=7, n5=9, n6=11, bonus=13, drwNo=2, date="2002-12-14"),
-    # 7,8 연속 → 쌍 1개
-    DrawResult(n1=7, n2=8, n3=15, n4=25, n5=35, n6=45, bonus=2, drwNo=3, date="2002-12-21"),
-]
 
 
-def test_returns_none_when_empty(monkeypatch):
-    monkeypatch.setattr(wd, "get_draws", lambda: [])
-    assert wd.get_consecutive_analysis() is None
+def _make_draw(drw_no: int, nums: list[int], bonus: int = 7) -> DrawResult:
+    """6개 본번호로 DrawResult를 만든다."""
+    n1, n2, n3, n4, n5, n6 = nums
+    return DrawResult(
+        drwNo=drw_no,
+        date=datetime.date(2002, 12, 7) + datetime.timedelta(days=7 * drw_no),
+        n1=n1, n2=n2, n3=n3, n4=n4, n5=n5, n6=n6, bonus=bonus,
+    )
 
 
-def test_returns_dict(monkeypatch):
-    monkeypatch.setattr(wd, "get_draws", lambda: SAMPLE_DRAWS)
-    result = wd.get_consecutive_analysis()
+def _fixture_draws() -> list[DrawResult]:
+    """테스트용 픽스처.
+
+    D1 [1,10,20,30,40,45]  → 연속 없음 (pairs=0)
+    D2 [1,2,10,15,16,30]   → (1-2), (15-16) → pairs=2
+    D3 [5,6,7,20,30,40]    → (5-6-7) → pairs=2, max_run=3
+    """
+    return [
+        _make_draw(1, [1, 10, 20, 30, 40, 45]),
+        _make_draw(2, [1, 2, 10, 15, 16, 30]),
+        _make_draw(3, [5, 6, 7, 20, 30, 40]),
+    ]
+
+
+def test_returns_none_when_empty() -> None:
+    """데이터가 없으면 None 반환."""
+    with patch.object(wd, "get_draws", return_value=[]):
+        result = wd.get_consecutive_analysis()
+    assert result is None
+
+
+def test_returns_dict() -> None:
+    """정상 데이터 → dict 반환."""
+    with patch.object(wd, "get_draws", return_value=_fixture_draws()):
+        result = wd.get_consecutive_analysis()
     assert isinstance(result, dict)
 
 
-def test_required_keys(monkeypatch):
-    monkeypatch.setattr(wd, "get_draws", lambda: SAMPLE_DRAWS)
-    result = wd.get_consecutive_analysis()
+def test_required_keys() -> None:
+    """필수 키 포함 여부 확인."""
+    with patch.object(wd, "get_draws", return_value=_fixture_draws()):
+        result = wd.get_consecutive_analysis()
     assert result is not None
-    for key in ("total", "avg", "best_count", "best_count_pct", "zero_pct",
-                "has_consecutive_pct", "dist_list", "recent"):
-        assert key in result
+    for key in ("total", "no_consec", "has_consec", "best_pair_count",
+                "pair_dist_list", "max_run_list", "top_pairs", "recent"):
+        assert key in result, f"필수 키 누락: {key}"
 
 
-def test_total_is_correct(monkeypatch):
-    monkeypatch.setattr(wd, "get_draws", lambda: SAMPLE_DRAWS)
-    result = wd.get_consecutive_analysis()
+def test_no_consec_plus_has_consec_equals_total() -> None:
+    """no_consec + has_consec == total."""
+    with patch.object(wd, "get_draws", return_value=_fixture_draws()):
+        result = wd.get_consecutive_analysis()
     assert result is not None
-    assert result["total"] == 3
+    assert result["no_consec"] + result["has_consec"] == result["total"]
 
 
-def test_zero_pct(monkeypatch):
-    monkeypatch.setattr(wd, "get_draws", lambda: SAMPLE_DRAWS)
-    result = wd.get_consecutive_analysis()
+def test_pair_dist_sum_equals_total() -> None:
+    """pair_dist_list count 합계 == total."""
+    with patch.object(wd, "get_draws", return_value=_fixture_draws()):
+        result = wd.get_consecutive_analysis()
     assert result is not None
-    # 3회차 중 1회차(drwNo=2)만 연속 없음 → 33.3%
-    assert abs(result["zero_pct"] - round(1 / 3 * 100, 1)) < 0.1
+    count_sum = sum(item["count"] for item in result["pair_dist_list"])
+    assert count_sum == result["total"]
 
 
-def test_has_consecutive_pct(monkeypatch):
-    monkeypatch.setattr(wd, "get_draws", lambda: SAMPLE_DRAWS)
-    result = wd.get_consecutive_analysis()
+def test_top_pairs_max_20() -> None:
+    """top_pairs는 최대 20개."""
+    with patch.object(wd, "get_draws", return_value=_fixture_draws()):
+        result = wd.get_consecutive_analysis()
     assert result is not None
-    # 3회차 중 2회차 연속 포함 → 66.7%
-    assert abs(result["has_consecutive_pct"] - round(2 / 3 * 100, 1)) < 0.1
+    assert len(result["top_pairs"]) <= 20
 
 
-def test_dist_list_length(monkeypatch):
-    monkeypatch.setattr(wd, "get_draws", lambda: SAMPLE_DRAWS)
-    result = wd.get_consecutive_analysis()
-    assert result is not None
-    assert len(result["dist_list"]) == 6  # 0~5쌍
-
-
-def test_recent_length_lte_20(monkeypatch):
-    monkeypatch.setattr(wd, "get_draws", lambda: SAMPLE_DRAWS)
-    result = wd.get_consecutive_analysis()
+def test_recent_length_lte_20() -> None:
+    """recent 항목 수 <= 20."""
+    with patch.object(wd, "get_draws", return_value=_fixture_draws()):
+        result = wd.get_consecutive_analysis()
     assert result is not None
     assert len(result["recent"]) <= 20
 
 
-def test_recent_has_consecutive_key(monkeypatch):
-    monkeypatch.setattr(wd, "get_draws", lambda: SAMPLE_DRAWS)
-    result = wd.get_consecutive_analysis()
+def test_recent_has_runs_key() -> None:
+    """recent 각 항목에 runs 키가 있어야 한다."""
+    with patch.object(wd, "get_draws", return_value=_fixture_draws()):
+        result = wd.get_consecutive_analysis()
     assert result is not None
-    for row in result["recent"]:
-        assert "consecutive" in row
-        assert "pairs" in row
-        assert "count" in row
+    for item in result["recent"]:
+        assert "runs" in item, "recent 항목에 runs 키 없음"
+        assert "pair_count" in item, "recent 항목에 pair_count 키 없음"
 
 
-def test_consecutive_page_200():
-    response = client.get("/stats/consecutive")
-    assert response.status_code == 200
+def test_consecutive_detected_correctly() -> None:
+    """[1,2,10,20,30,40] 회차에서 연속 쌍이 최소 1개 이상 감지되어야 한다."""
+    draws = [_make_draw(1, [1, 2, 10, 20, 30, 40])]
+    with patch.object(wd, "get_draws", return_value=draws):
+        result = wd.get_consecutive_analysis()
+    assert result is not None
+    assert result["has_consec"] == 1
+    assert result["no_consec"] == 0
+    # recent의 첫 항목에 runs가 존재해야 함
+    item = result["recent"][0]
+    assert item["pair_count"] >= 1
+    assert len(item["runs"]) >= 1
+
+
+def test_consecutive_page_200() -> None:
+    """GET /stats/consecutive → HTTP 200."""
+    from lotto.web.app import app
+    client = TestClient(app)
+    with patch.object(wd, "get_draws", return_value=_fixture_draws()):
+        resp = client.get("/stats/consecutive")
+    assert resp.status_code == 200
+    assert "text/html" in resp.headers["content-type"]
