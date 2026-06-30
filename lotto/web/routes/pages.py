@@ -2489,3 +2489,13 @@ async def even_page(request: Request) -> TemplateResponse:
         "active_tab": "even",
         "data": data,
     })
+
+
+@router.get("/stats/odd")
+async def odd_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-163: 홀수 분포 분석."""
+    data = wd.get_odd_analysis()
+    return _render(request, "odd.html", {
+        "active_tab": "odd",
+        "data": data,
+    })
