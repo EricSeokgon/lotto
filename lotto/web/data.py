@@ -13990,3 +13990,68 @@ def get_twin_prime_analysis() -> dict | None:
         "freq_list": freq_list,
         "recent": recent,
     }
+
+
+def get_semiprime_analysis() -> dict | None:
+    """SPEC-LOTTO-171: 반소수(semiprime) 포함 분포 분석.
+
+    반소수: 소인수 분해 시 소수 인수가 정확히 2개(중복 허용)인 수.
+    1~45 내 반소수: {4,6,9,10,14,15,21,22,25,26,33,34,35,38,39} = 15개.
+    """
+    draws = get_draws()
+    if not draws:
+        return None
+
+    # 4=2², 6=2×3, 9=3², 10=2×5, 14=2×7, 15=3×5, 21=3×7, 22=2×11,
+    # 25=5², 26=2×13, 33=3×11, 34=2×17, 35=5×7, 38=2×19, 39=3×13
+    SEMIPRIMES = {4, 6, 9, 10, 14, 15, 21, 22, 25, 26, 33, 34, 35, 38, 39}  # noqa: N806
+    total = len(draws)
+    expected = round(len(SEMIPRIMES) / 45 * 6, 3)
+    max_k = 6
+
+    count_dist: dict[int, int] = {k: 0 for k in range(max_k + 1)}  # noqa: C420
+    freq: dict[int, int] = {m: 0 for m in SEMIPRIMES}
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        in_draw = nums & SEMIPRIMES
+        count_dist[len(in_draw)] = count_dist.get(len(in_draw), 0) + 1
+        for m in in_draw:
+            freq[m] += 1
+
+    avg = round(sum(k * v for k, v in count_dist.items()) / total, 3)
+    best_count = max(count_dist, key=lambda k: count_dist[k])
+    dist_list = [
+        {"count": k, "draws": count_dist[k], "pct": round(count_dist[k] / total * 100, 1)}
+        for k in range(max_k + 1)
+    ]
+    freq_list = sorted(
+        [{"number": m, "count": freq[m], "pct": round(freq[m] / total * 100, 1)} for m in SEMIPRIMES],
+        key=lambda x: x["number"],
+    )
+
+    recent: list[dict] = []
+    for draw in sorted(draws, key=lambda d: d.drwNo, reverse=True)[:20]:
+        nums = set(draw.numbers())
+        in_draw = nums & SEMIPRIMES
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "semiprimes": in_draw,
+            "count": len(in_draw),
+        })
+
+    return {
+        "total": total,
+        "semiprime_count": len(SEMIPRIMES),
+        "semiprime_list": sorted(SEMIPRIMES),
+        "avg": avg,
+        "expected": expected,
+        "diff": round(avg - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+        "zero_pct": round(count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }

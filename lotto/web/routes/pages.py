@@ -2559,3 +2559,13 @@ async def twin_prime_page(request: Request) -> TemplateResponse:
         "active_tab": "twin_prime",
         "data": data,
     })
+
+
+@router.get("/stats/semiprime")
+async def semiprime_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-171: 반소수 포함 분포 분석."""
+    data = wd.get_semiprime_analysis()
+    return _render(request, "semiprime.html", {
+        "active_tab": "semiprime",
+        "data": data,
+    })
