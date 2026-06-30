@@ -14129,3 +14129,72 @@ def get_catalan_analysis() -> dict | None:
         "freq_list": freq_list,
         "recent": recent,
     }
+
+
+def get_harshad_analysis() -> dict | None:
+    """SPEC-LOTTO-173: 하샤드 수(Harshad Number) 포함 분포 분석.
+
+    하샤드 수: 각 자릿수의 합으로 나누어 떨어지는 양의 정수.
+    1~45 내 하샤드 수 21개:
+    {1,2,3,4,5,6,7,8,9,10,12,18,20,21,24,27,30,36,40,42,45}.
+    """
+    draws = get_draws()
+    if not draws:
+        return None
+
+    # 검증: n % sum(digits(n)) == 0
+    HARSHADS = {  # noqa: N806
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+        12, 18, 20, 21, 24, 27, 30, 36, 40, 42, 45,
+    }
+    total = len(draws)
+    expected = round(len(HARSHADS) / 45 * 6, 3)
+    max_k = 6
+
+    count_dist: dict[int, int] = {k: 0 for k in range(max_k + 1)}  # noqa: C420
+    freq: dict[int, int] = {m: 0 for m in HARSHADS}
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        in_draw = nums & HARSHADS
+        cnt = len(in_draw)
+        count_dist[cnt] = count_dist.get(cnt, 0) + 1
+        for m in in_draw:
+            freq[m] += 1
+
+    avg = round(sum(k * v for k, v in count_dist.items()) / total, 3)
+    best_count = max(count_dist, key=lambda k: count_dist[k])
+    dist_list = [
+        {"count": k, "draws": count_dist[k], "pct": round(count_dist[k] / total * 100, 1)}
+        for k in range(max_k + 1)
+    ]
+    freq_list = sorted(
+        [{"number": m, "count": freq[m], "pct": round(freq[m] / total * 100, 1)} for m in HARSHADS],
+        key=lambda x: x["number"],
+    )
+
+    recent: list[dict] = []
+    for draw in sorted(draws, key=lambda d: d.drwNo, reverse=True)[:20]:
+        nums = set(draw.numbers())
+        in_draw = nums & HARSHADS
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "harshads": in_draw,
+            "count": len(in_draw),
+        })
+
+    return {
+        "total": total,
+        "harshad_count": len(HARSHADS),
+        "harshad_list": sorted(HARSHADS),
+        "avg": avg,
+        "expected": expected,
+        "diff": round(avg - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+        "zero_pct": round(count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }

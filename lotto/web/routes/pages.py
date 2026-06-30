@@ -2579,3 +2579,13 @@ async def catalan_page(request: Request) -> TemplateResponse:
         "active_tab": "catalan",
         "data": data,
     })
+
+
+@router.get("/stats/harshad")
+async def harshad_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-173: 하샤드 수 포함 분포 분석."""
+    data = wd.get_harshad_analysis()
+    return _render(request, "harshad.html", {
+        "active_tab": "harshad",
+        "data": data,
+    })
