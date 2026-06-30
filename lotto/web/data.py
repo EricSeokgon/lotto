@@ -13868,3 +13868,63 @@ def get_high_zone_analysis() -> dict | None:
         "freq_list": freq_list,
         "recent": recent,
     }
+
+
+def get_consecutive_analysis() -> dict | None:
+    """SPEC-LOTTO-168: 연속번호 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    total = len(draws)
+    max_pairs = 5
+    count_dist: dict[int, int] = {k: 0 for k in range(max_pairs + 1)}  # noqa: C420
+
+    for draw in draws:
+        nums = sorted(draw.numbers())
+        pairs = sum(1 for i in range(len(nums) - 1) if nums[i + 1] == nums[i] + 1)
+        count_dist[min(pairs, max_pairs)] = count_dist.get(min(pairs, max_pairs), 0) + 1
+
+    avg = round(sum(k * v for k, v in count_dist.items()) / total, 3)
+    best_count = max(count_dist, key=lambda k: count_dist[k])
+    has_consecutive_pct = round((total - count_dist[0]) / total * 100, 1)
+
+    dist_list = [
+        {
+            "count": k,
+            "draws": count_dist[k],
+            "pct": round(count_dist[k] / total * 100, 1),
+        }
+        for k in range(max_pairs + 1)
+    ]
+
+    recent: list[dict] = []
+    for draw in sorted(draws, key=lambda d: d.drwNo, reverse=True)[:20]:
+        nums = sorted(draw.numbers())
+        pairs: list[tuple[int, int]] = [
+            (nums[i], nums[i + 1])
+            for i in range(len(nums) - 1)
+            if nums[i + 1] == nums[i] + 1
+        ]
+        consecutive_nums: set[int] = set()
+        for a, b in pairs:
+            consecutive_nums.add(a)
+            consecutive_nums.add(b)
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": nums,
+            "consecutive": consecutive_nums,
+            "pairs": pairs,
+            "count": len(pairs),
+        })
+
+    return {
+        "total": total,
+        "avg": avg,
+        "best_count": best_count,
+        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+        "zero_pct": round(count_dist[0] / total * 100, 1),
+        "has_consecutive_pct": has_consecutive_pct,
+        "dist_list": dist_list,
+        "recent": recent,
+    }
