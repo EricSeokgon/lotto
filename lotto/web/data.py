@@ -13736,3 +13736,69 @@ def get_low_zone_analysis() -> dict | None:
         "freq_list": freq_list,
         "recent": recent,
     }
+
+
+def get_mid_zone_analysis() -> dict | None:
+    """SPEC-LOTTO-166: 중구간(16~30) 분포 분석."""
+    draws = get_draws()
+    if not draws:
+        return None
+
+    MID_ZONE = set(range(16, 31))  # noqa: N806
+
+    total = len(draws)
+    expected = round(len(MID_ZONE) / 45 * 6, 3)
+
+    max_k = 6
+    count_dist: dict[int, int] = {k: 0 for k in range(max_k + 1)}  # noqa: C420
+    freq: dict[int, int] = {m: 0 for m in MID_ZONE}  # noqa: C420
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        in_draw = nums & MID_ZONE
+        count_dist[len(in_draw)] = count_dist.get(len(in_draw), 0) + 1
+        for m in in_draw:
+            freq[m] += 1
+
+    avg = round(sum(k * v for k, v in count_dist.items()) / total, 3)
+    best_count = max(count_dist, key=lambda k: count_dist[k])
+
+    dist_list = [
+        {
+            "count": k,
+            "draws": count_dist[k],
+            "pct": round(count_dist[k] / total * 100, 1),
+        }
+        for k in range(max_k + 1)
+    ]
+
+    freq_list = sorted(
+        [{"number": m, "count": freq[m], "pct": round(freq[m] / total * 100, 1)} for m in MID_ZONE],
+        key=lambda x: x["number"],
+    )
+
+    recent: list[dict] = []
+    for draw in sorted(draws, key=lambda d: d.drwNo, reverse=True)[:20]:
+        nums = set(draw.numbers())
+        in_draw = nums & MID_ZONE
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "mid_zone": in_draw,
+            "count": len(in_draw),
+        })
+
+    return {
+        "total": total,
+        "zone_count": len(MID_ZONE),
+        "zone_list": sorted(MID_ZONE),
+        "avg": avg,
+        "expected": expected,
+        "diff": round(avg - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+        "zero_pct": round(count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }

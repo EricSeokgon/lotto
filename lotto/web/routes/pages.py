@@ -2519,3 +2519,13 @@ async def low_zone_page(request: Request) -> TemplateResponse:
         "active_tab": "low_zone",
         "data": data,
     })
+
+
+@router.get("/stats/mid-zone")
+async def mid_zone_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-166: 중구간(16~30) 분포 분석."""
+    data = wd.get_mid_zone_analysis()
+    return _render(request, "mid_zone.html", {
+        "active_tab": "mid_zone",
+        "data": data,
+    })
