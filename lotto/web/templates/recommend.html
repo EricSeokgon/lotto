@@ -95,7 +95,10 @@
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {% for rec in recommendations %}
-        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm hover:shadow-md transition-shadow">
+        <div class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm hover:shadow-md transition-shadow cursor-pointer select-none"
+             data-numbers="{{ rec.numbers | join(',') }}"
+             title="클릭하면 생성 이력에서 해당 번호로 이동합니다"
+             onclick="scrollToHistory(this)">
             <!-- 헤더: 세트 번호 + 전략 배지 -->
             <div class="flex items-start justify-between mb-3">
                 <span class="text-sm font-semibold text-ink">세트 {{ loop.index }}</span>
@@ -349,6 +352,32 @@
     </section>
 
     <script>
+        function scrollToHistory(card) {
+            const raw = card.getAttribute('data-numbers') || '';
+            const key = raw.split(',').map(Number).sort(function(a,b){return a-b;}).join(',');
+            const section = document.getElementById('gen-history-section');
+            if (section) {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            setTimeout(function () {
+                const rows = document.querySelectorAll('#gen-history-tbody tr');
+                rows.forEach(function (tr) { tr.style.transition = ''; tr.style.backgroundColor = ''; });
+                let matched = null;
+                rows.forEach(function (tr) {
+                    if (tr.getAttribute('data-numbers') === key) matched = tr;
+                });
+                if (matched) {
+                    matched.style.transition = 'background-color 0.3s';
+                    matched.style.backgroundColor = '#fef9c3';
+                    setTimeout(function () {
+                        matched.style.backgroundColor = '';
+                    }, 2500);
+                }
+            }, 500);
+        }
+    </script>
+
+    <script>
         (function () {
             const tbody = document.getElementById('gen-history-tbody');
             const emptyEl = document.getElementById('gen-history-empty');
@@ -397,6 +426,7 @@
                     items.forEach(function (item) {
                         const tr = document.createElement('tr');
                         tr.className = 'border-b border-border last:border-0';
+                        tr.setAttribute('data-numbers', (item.numbers || []).slice().sort(function(a,b){return a-b;}).join(','));
                         const balls = (item.numbers || []).map(ballHTML).join(' ');
                         const drwCell = item.target_drw_no
                             ? '<span class="text-xs text-ink">' + item.target_drw_no + '회</span>'
