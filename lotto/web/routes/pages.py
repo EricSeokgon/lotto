@@ -2614,3 +2614,13 @@ async def perfect_page(request: Request) -> TemplateResponse:
         "active_tab": "perfect",
         "data": data,
     })
+
+
+@router.get("/stats/pentagonal")
+async def pentagonal_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-176: 오각수 포함 분포 분석."""
+    data = wd.get_pentagonal_analysis()
+    return _render(request, "pentagonal.html", {
+        "active_tab": "pentagonal",
+        "data": data,
+    })

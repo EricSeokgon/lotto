@@ -14344,6 +14344,80 @@ def get_perfect_analysis() -> dict | None:
     }
 
 
+def get_pentagonal_analysis() -> dict | None:
+    """SPEC-LOTTO-176: 오각수(Pentagonal Number) 포함 분포 분석.
+
+    오각수 P(n) = n(3n-1)/2.
+    1~45 범위 내 5개: {1, 5, 12, 22, 35}.
+    (P(1)=1, P(2)=5, P(3)=12, P(4)=22, P(5)=35)
+    이론 기댓값 = 5/45 × 6 ≈ 0.667.
+    """
+    draws = get_draws()
+    if not draws:
+        return None
+
+    # P(n) = n(3n-1)/2; 1~45 범위 내 오각수
+    PENTAGONS = {1, 5, 12, 22, 35}  # noqa: N806
+    PENTAGON_N = {1: 1, 5: 2, 12: 3, 22: 4, 35: 5}  # noqa: N806
+    total = len(draws)
+    expected = round(len(PENTAGONS) / 45 * 6, 3)
+    max_k = min(6, len(PENTAGONS))
+
+    count_dist: dict[int, int] = {k: 0 for k in range(max_k + 1)}  # noqa: C420
+    freq: dict[int, int] = {m: 0 for m in PENTAGONS}  # noqa: C420
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        in_draw = nums & PENTAGONS
+        cnt = len(in_draw)
+        count_dist[cnt] = count_dist.get(cnt, 0) + 1
+        for m in in_draw:
+            freq[m] += 1
+
+    avg = round(sum(k * v for k, v in count_dist.items()) / total, 3)
+    best_count = max(count_dist, key=lambda k: count_dist[k])
+    dist_list = [
+        {"count": k, "draws": count_dist[k], "pct": round(count_dist[k] / total * 100, 1)}
+        for k in range(max_k + 1)
+    ]
+    freq_list = [
+        {
+            "number": m,
+            "n": PENTAGON_N[m],
+            "formula": f"{PENTAGON_N[m]}×(3×{PENTAGON_N[m]}-1)÷2",
+            "count": freq[m],
+            "pct": round(freq[m] / total * 100, 1),
+        }
+        for m in sorted(PENTAGONS)
+    ]
+
+    recent: list[dict] = []
+    for draw in sorted(draws, key=lambda d: d.drwNo, reverse=True)[:20]:
+        nums = set(draw.numbers())
+        in_draw = nums & PENTAGONS
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "pentagons": in_draw,
+            "count": len(in_draw),
+        })
+
+    return {
+        "total": total,
+        "pentagon_count": len(PENTAGONS),
+        "pentagon_list": sorted(PENTAGONS),
+        "avg": avg,
+        "expected": expected,
+        "diff": round(avg - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+        "zero_pct": round(count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }
+
+
 # ─── 구매 이력 (my_tickets) ─────────────────────────────────────────────────
 _MY_TICKETS_PATH = settings.data_dir / "my_tickets.json"
 
