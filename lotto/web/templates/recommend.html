@@ -441,6 +441,13 @@
                 }
                 /* 토스트 폴백 */
                 showToast(title + '  ' + body, false);
+
+                /* 슬랙 알림 (서버 경유) */
+                fetch('/api/notify/prize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ rank: w.rank, numbers: w.numbers, label: w.label })
+                }).catch(function() { /* 슬랙 전송 실패는 조용히 무시 */ });
             });
         }
 

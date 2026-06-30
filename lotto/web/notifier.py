@@ -473,6 +473,54 @@ def notify_recommendations(draws: list[Any]) -> list[dict[str, Any]]:
     return entries
 
 
+_PRIZE_EMOJI_MAP = {1: "🎉", 2: "🏆", 3: "🥈", 4: "🥉", 5: "🎫"}
+_PRIZE_LABEL_MAP = {1: "1등", 2: "2등", 3: "3등", 4: "4등", 5: "5등"}
+
+
+def send_slack_prize(rank: int, numbers: list[int], label: str) -> bool:
+    """슬랙 Incoming Webhook 으로 당첨 알림을 전송합니다.
+
+    - settings.slack_webhook_url 미설정 시 즉시 False 반환
+    - 실패는 경고 로그 후 False 반환 — 예외를 호출자에게 전파하지 않음
+    """
+    url = settings.slack_webhook_url.strip()
+    if not url:
+        return False
+
+    emoji = _PRIZE_EMOJI_MAP.get(rank, "🎰")
+    rank_label = _PRIZE_LABEL_MAP.get(rank, f"{rank}등")
+    nums_str = "  ".join(str(n) for n in sorted(numbers))
+
+    payload = {
+        "text": f"{emoji} 로또 {rank_label} 당첨!",
+        "blocks": [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": (
+                        f"*{emoji} 로또 {rank_label} 당첨!*\n"
+                        f"> *번호:* `{nums_str}`\n"
+                        f"> *출처:* {label}"
+                    ),
+                },
+            }
+        ],
+    }
+
+    try:
+        import httpx
+
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.post(url, json=payload)
+        if 200 <= resp.status_code < 300:
+            return True
+        logger.warning("Slack 당첨 알림 실패: status=%d body=%r", resp.status_code, resp.text[:200])
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Slack 당첨 알림 오류: %s", exc)
+    return False
+
+
 def get_full_settings_status() -> dict[str, Any]:
     """SPEC-LOTTO-027 REQ-SET-002: 전체 설정 현황 (마스킹 처리) — 설정 페이지/API 용.
 

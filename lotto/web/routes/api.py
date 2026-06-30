@@ -476,6 +476,36 @@ async def delete_my_ticket(ticket_id: str) -> dict[str, Any]:
     return {"deleted": ticket_id}
 
 
+class PrizeNotifyIn(BaseModel):
+    """슬랙 당첨 알림 요청 바디."""
+
+    rank: int
+    numbers: List[int]
+    label: str = ""
+
+
+@router.post("/notify/prize", status_code=200)
+async def notify_prize(body: PrizeNotifyIn) -> dict[str, Any]:
+    """5등 이상 당첨 시 슬랙으로 알림을 전송합니다.
+
+    - LOTTO_SLACK_WEBHOOK_URL 또는 user_settings.json 의 slack_webhook_url 이 설정되어야 함
+    - 미설정 시 {"ok": false, "reason": "slack_webhook_url 미설정"} 반환
+    - 전송 실패는 200 으로 반환하되 ok=false
+    """
+    from lotto.web.notifier import send_slack_prize
+    from lotto.config import settings
+
+    if not settings.slack_webhook_url.strip():
+        return {"ok": False, "reason": "slack_webhook_url 미설정"}
+
+    ok = send_slack_prize(
+        rank=body.rank,
+        numbers=body.numbers,
+        label=body.label,
+    )
+    return {"ok": ok}
+
+
 # @MX:ANCHOR: [AUTO] SPEC-LOTTO-019 REQ-PAT-001 — 번호 패턴 분석 API 경계
 # @MX:REASON: 외부 클라이언트(analyze 페이지 JS)에서 직접 호출되는 공개 API
 # @MX:SPEC: SPEC-LOTTO-019 REQ-PAT-001

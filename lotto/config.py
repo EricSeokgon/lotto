@@ -122,6 +122,8 @@ class Settings:
     notify_smtp_pass: str = ""
     # SPEC-LOTTO-115 REQ-REC-001: 추천 번호 알림 개수 (0 = 비활성)
     notify_recommend_count: int = 0
+    # 슬랙 당첨 알림 전용 Incoming Webhook URL (빈 문자열 = 비활성)
+    slack_webhook_url: str = ""
 
 
 def _load_settings() -> Settings:
@@ -178,6 +180,7 @@ def _load_settings() -> Settings:
         os.environ.get("LOTTO_NOTIFY_RECOMMEND_COUNT", "0"),
         "LOTTO_NOTIFY_RECOMMEND_COUNT",
     )
+    slack_webhook_url = os.environ.get("LOTTO_SLACK_WEBHOOK_URL", "")
 
     # 웹 UI 저장 설정 로드 (환경 변수가 없을 때만 적용)
     _us_path = data_dir / "user_settings.json"
@@ -220,6 +223,8 @@ def _load_settings() -> Settings:
                             notify_prize_threshold = int(_ft)
                         except (TypeError, ValueError):
                             pass
+                if not slack_webhook_url:
+                    slack_webhook_url = str(_file.get("slack_webhook_url", ""))
     except (OSError, ValueError):
         pass
 
@@ -244,6 +249,7 @@ def _load_settings() -> Settings:
         notify_smtp_user=notify_smtp_user,
         notify_smtp_pass=notify_smtp_pass,
         notify_recommend_count=notify_recommend_count,
+        slack_webhook_url=slack_webhook_url,
     )
 
 
