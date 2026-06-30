@@ -2549,3 +2549,13 @@ async def sum_page(request: Request) -> TemplateResponse:
         "active_tab": "sum_dist",
         "data": data,
     })
+
+
+@router.get("/stats/twin-prime")
+async def twin_prime_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-170: 쌍둥이 소수 포함 분포 분석."""
+    data = wd.get_twin_prime_analysis()
+    return _render(request, "twin_prime.html", {
+        "active_tab": "twin_prime",
+        "data": data,
+    })
