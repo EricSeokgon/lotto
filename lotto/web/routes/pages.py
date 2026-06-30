@@ -2502,10 +2502,20 @@ async def odd_page(request: Request) -> TemplateResponse:
 
 
 @router.get("/stats/composite")
-async def composite_page(request: Request) -> TemplateResponse:
+async def composite_numbers_page(request: Request) -> TemplateResponse:
     """SPEC-LOTTO-164: 합성수 분포 분석."""
     data = wd.get_composite_analysis()
     return _render(request, "composite.html", {
         "active_tab": "composite",
+        "data": data,
+    })
+
+
+@router.get("/stats/low-zone")
+async def low_zone_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-165: 저구간(1~15) 분포 분석."""
+    data = wd.get_low_zone_analysis()
+    return _render(request, "low_zone.html", {
+        "active_tab": "low_zone",
         "data": data,
     })
