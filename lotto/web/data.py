@@ -14269,3 +14269,80 @@ def get_triangular_analysis() -> dict | None:
         "freq_list": freq_list,
         "recent": recent,
     }
+
+
+# ─── 구매 이력 (my_tickets) ─────────────────────────────────────────────────
+_MY_TICKETS_PATH = settings.data_dir / "my_tickets.json"
+
+
+def _load_my_tickets() -> list[dict[str, Any]]:
+    if not _MY_TICKETS_PATH.exists():
+        return []
+    try:
+        data = json.loads(_MY_TICKETS_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _save_my_tickets(tickets: list[dict[str, Any]]) -> None:
+    _MY_TICKETS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _MY_TICKETS_PATH.write_text(
+        json.dumps(tickets, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def _enrich_ticket(ticket: dict[str, Any]) -> dict[str, Any]:
+    """드로우 결과가 있으면 당첨 등수를 자동 계산해 ticket에 합칩니다."""
+    t = dict(ticket)
+    drw_no = t.get("drwNo")
+    draw = get_draw_by_no(drw_no) if drw_no else None
+    if draw:
+        result = calc_prize_rank(
+            t.get("numbers", []),
+            draw.n1, draw.n2, draw.n3, draw.n4, draw.n5, draw.n6,
+            draw.bonus,
+        )
+        t["prize"] = result
+        t["draw_numbers"] = sorted(draw.numbers())
+        t["draw_bonus"] = draw.bonus
+    else:
+        t.setdefault("prize", None)
+        t.setdefault("draw_numbers", None)
+        t.setdefault("draw_bonus", None)
+    return t
+
+
+def get_my_tickets() -> list[dict[str, Any]]:
+    """구매 이력 목록을 최신순으로 반환합니다. 당첨 결과를 자동 계산합니다."""
+    tickets = _load_my_tickets()
+    enriched = [_enrich_ticket(t) for t in tickets]
+    return list(reversed(enriched))
+
+
+def add_my_ticket(drw_no: int, numbers: list[int], memo: str = "") -> dict[str, Any]:
+    """구매 이력을 추가하고 저장된 항목을 반환합니다."""
+    import uuid
+    from datetime import datetime, timezone
+    tickets = _load_my_tickets()
+    ticket: dict[str, Any] = {
+        "id": str(uuid.uuid4()),
+        "drwNo": drw_no,
+        "numbers": sorted(numbers),
+        "memo": memo,
+        "created_at": datetime.now(tz=timezone.utc).isoformat(),
+    }
+    tickets.append(ticket)
+    _save_my_tickets(tickets)
+    return _enrich_ticket(ticket)
+
+
+def delete_my_ticket(ticket_id: str) -> bool:
+    """ID로 구매 이력을 삭제합니다. 삭제 성공 여부를 반환합니다."""
+    tickets = _load_my_tickets()
+    before = len(tickets)
+    tickets = [t for t in tickets if t.get("id") != ticket_id]
+    if len(tickets) == before:
+        return False
+    _save_my_tickets(tickets)
+    return True

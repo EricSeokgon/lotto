@@ -420,6 +420,45 @@ async def delete_gen_history() -> dict[str, Any]:
     return {"deleted": deleted}
 
 
+# ─── 구매 이력 API ─────────────────────────────────────────────────────────
+
+@router.get("/my-tickets")
+async def get_my_tickets() -> dict[str, Any]:
+    """구매 이력 목록을 반환합니다 (최신순, 당첨 자동 계산)."""
+    from lotto.web import data as wd
+    return {"items": wd.get_my_tickets()}
+
+
+class MyTicketIn(BaseModel):
+    drwNo: int
+    numbers: list[int]
+    memo: str = ""
+
+
+@router.post("/my-tickets", status_code=201)
+async def add_my_ticket(body: MyTicketIn) -> dict[str, Any]:
+    """구매 이력을 추가합니다."""
+    from lotto.web import data as wd
+    if len(body.numbers) != 6:
+        raise HTTPException(status_code=422, detail="번호는 정확히 6개여야 합니다.")
+    if not all(1 <= n <= 45 for n in body.numbers):
+        raise HTTPException(status_code=422, detail="번호는 1~45 범위여야 합니다.")
+    if len(set(body.numbers)) != 6:
+        raise HTTPException(status_code=422, detail="번호가 중복되었습니다.")
+    ticket = wd.add_my_ticket(body.drwNo, body.numbers, body.memo)
+    return {"item": ticket}
+
+
+@router.delete("/my-tickets/{ticket_id}", status_code=200)
+async def delete_my_ticket(ticket_id: str) -> dict[str, Any]:
+    """구매 이력을 삭제합니다."""
+    from lotto.web import data as wd
+    ok = wd.delete_my_ticket(ticket_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="해당 구매 이력을 찾을 수 없습니다.")
+    return {"deleted": ticket_id}
+
+
 # @MX:ANCHOR: [AUTO] SPEC-LOTTO-019 REQ-PAT-001 — 번호 패턴 분석 API 경계
 # @MX:REASON: 외부 클라이언트(analyze 페이지 JS)에서 직접 호출되는 공개 API
 # @MX:SPEC: SPEC-LOTTO-019 REQ-PAT-001
