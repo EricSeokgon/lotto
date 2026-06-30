@@ -320,10 +320,16 @@
     <section id="gen-history-section" class="bg-card rounded-lg border border-border dark:bg-gray-800 dark:border-gray-700 p-5 shadow-sm">
         <div class="flex items-center justify-between mb-4">
             <h3 class="text-lg font-semibold text-ink dark:text-gray-100">생성 이력</h3>
-            <button type="button" id="gen-history-clear"
-                    class="text-xs px-3 py-1.5 rounded border border-border text-muted hover:bg-surface hover:text-red-600 transition-colors">
-                전체 삭제
-            </button>
+            <div class="flex items-center gap-2">
+                <button type="button" id="gen-history-generate"
+                        class="text-xs px-3 py-1.5 rounded border border-blue-400 text-blue-600 hover:bg-blue-50 transition-colors font-medium">
+                    새 번호 생성
+                </button>
+                <button type="button" id="gen-history-clear"
+                        class="text-xs px-3 py-1.5 rounded border border-border text-muted hover:bg-surface hover:text-red-600 transition-colors">
+                    전체 삭제
+                </button>
+            </div>
         </div>
         <p class="text-xs text-muted mb-3">API로 추천된 최근 10건의 번호 조합입니다.</p>
 
@@ -347,6 +353,7 @@
             const tbody = document.getElementById('gen-history-tbody');
             const emptyEl = document.getElementById('gen-history-empty');
             const clearBtn = document.getElementById('gen-history-clear');
+            const generateBtn = document.getElementById('gen-history-generate');
 
             function ballHTML(num) {
                 let bg = '#FBC400', fg = '#1f2937';
@@ -407,6 +414,20 @@
                     emptyEl.classList.remove('hidden');
                 }
             }
+
+            generateBtn.addEventListener('click', async function () {
+                generateBtn.disabled = true;
+                generateBtn.textContent = '생성 중...';
+                try {
+                    await fetch('/api/recommendations?count=5');
+                    await loadHistory();
+                } catch (e) {
+                    /* 생성 실패 시 조용히 무시 */
+                } finally {
+                    generateBtn.disabled = false;
+                    generateBtn.textContent = '새 번호 생성';
+                }
+            });
 
             clearBtn.addEventListener('click', async function () {
                 if (!confirm('생성 이력을 전체 삭제하시겠어요?')) return;
