@@ -2529,3 +2529,13 @@ async def mid_zone_page(request: Request) -> TemplateResponse:
         "active_tab": "mid_zone",
         "data": data,
     })
+
+
+@router.get("/stats/high-zone")
+async def high_zone_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-167: 고구간(31~45) 분포 분석."""
+    data = wd.get_high_zone_analysis()
+    return _render(request, "high_zone.html", {
+        "active_tab": "high_zone",
+        "data": data,
+    })
