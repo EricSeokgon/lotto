@@ -2624,3 +2624,13 @@ async def pentagonal_page(request: Request) -> TemplateResponse:
         "active_tab": "pentagonal",
         "data": data,
     })
+
+
+@router.get("/stats/hexagonal")
+async def hexagonal_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-177: 육각수 포함 분포 분석."""
+    data = wd.get_hexagonal_analysis()
+    return _render(request, "hexagonal.html", {
+        "active_tab": "hexagonal",
+        "data": data,
+    })
