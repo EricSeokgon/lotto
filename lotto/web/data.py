@@ -14198,3 +14198,74 @@ def get_harshad_analysis() -> dict | None:
         "freq_list": freq_list,
         "recent": recent,
     }
+
+
+def get_triangular_analysis() -> dict | None:
+    """SPEC-LOTTO-174: 삼각수(Triangular Number) 포함 분포 분석.
+
+    삼각수: T(n) = n(n+1)/2. 1~45 내 9개:
+    T1=1, T2=3, T3=6, T4=10, T5=15, T6=21, T7=28, T8=36, T9=45.
+    """
+    draws = get_draws()
+    if not draws:
+        return None
+
+    TRIANGULARS = {1, 3, 6, 10, 15, 21, 28, 36, 45}  # noqa: N806
+    # T(n) → n 역매핑
+    TRIANGULAR_N = {1: 1, 3: 2, 6: 3, 10: 4, 15: 5, 21: 6, 28: 7, 36: 8, 45: 9}  # noqa: N806
+    total = len(draws)
+    expected = round(len(TRIANGULARS) / 45 * 6, 3)
+    max_k = min(6, len(TRIANGULARS))
+
+    count_dist: dict[int, int] = {k: 0 for k in range(max_k + 1)}  # noqa: C420
+    freq: dict[int, int] = {m: 0 for m in TRIANGULARS}
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        in_draw = nums & TRIANGULARS
+        cnt = len(in_draw)
+        count_dist[cnt] = count_dist.get(cnt, 0) + 1
+        for m in in_draw:
+            freq[m] += 1
+
+    avg = round(sum(k * v for k, v in count_dist.items()) / total, 3)
+    best_count = max(count_dist, key=lambda k: count_dist[k])
+    dist_list = [
+        {"count": k, "draws": count_dist[k], "pct": round(count_dist[k] / total * 100, 1)}
+        for k in range(max_k + 1)
+    ]
+    freq_list = [
+        {
+            "number": m,
+            "n": TRIANGULAR_N[m],
+            "count": freq[m],
+            "pct": round(freq[m] / total * 100, 1),
+        }
+        for m in sorted(TRIANGULARS)
+    ]
+
+    recent: list[dict] = []
+    for draw in sorted(draws, key=lambda d: d.drwNo, reverse=True)[:20]:
+        nums = set(draw.numbers())
+        in_draw = nums & TRIANGULARS
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "triangulars": in_draw,
+            "count": len(in_draw),
+        })
+
+    return {
+        "total": total,
+        "triangular_count": len(TRIANGULARS),
+        "triangular_list": sorted(TRIANGULARS),
+        "avg": avg,
+        "expected": expected,
+        "diff": round(avg - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+        "zero_pct": round(count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }

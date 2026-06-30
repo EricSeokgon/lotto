@@ -2589,3 +2589,13 @@ async def harshad_page(request: Request) -> TemplateResponse:
         "active_tab": "harshad",
         "data": data,
     })
+
+
+@router.get("/stats/triangular")
+async def triangular_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-174: 삼각수 포함 분포 분석."""
+    data = wd.get_triangular_analysis()
+    return _render(request, "triangular.html", {
+        "active_tab": "triangular",
+        "data": data,
+    })
