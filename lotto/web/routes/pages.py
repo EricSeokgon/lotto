@@ -2674,3 +2674,13 @@ async def decagonal_page(request: Request) -> TemplateResponse:
         "active_tab": "decagonal",
         "data": data,
     })
+
+
+@router.get("/stats/hendecagonal")
+async def hendecagonal_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-182: 십일각수 포함 분포 분석."""
+    data = wd.get_hendecagonal_analysis()
+    return _render(request, "hendecagonal.html", {
+        "active_tab": "hendecagonal",
+        "data": data,
+    })
