@@ -14714,6 +14714,80 @@ def get_nonagonal_analysis() -> dict | None:
     }
 
 
+def get_decagonal_analysis() -> dict | None:
+    """SPEC-LOTTO-181: 십각수(Decagonal Number) 포함 분포 분석.
+
+    십각수 D(n) = n(4n-3).
+    1~45 범위 내 3개: {1, 10, 27}.
+    (D(1)=1, D(2)=10, D(3)=27)
+    이론 기댓값 = 3/45 × 6 = 0.4.
+    """
+    draws = get_draws()
+    if not draws:
+        return None
+
+    # D(n) = n(4n-3); 1~45 범위 내 십각수
+    DECAGONS = {1, 10, 27}  # noqa: N806
+    DECAGON_N = {1: 1, 10: 2, 27: 3}  # noqa: N806
+    total = len(draws)
+    expected = round(len(DECAGONS) / 45 * 6, 3)
+    max_k = min(6, len(DECAGONS))
+
+    count_dist: dict[int, int] = {k: 0 for k in range(max_k + 1)}  # noqa: C420
+    freq: dict[int, int] = {m: 0 for m in DECAGONS}  # noqa: C420
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        in_draw = nums & DECAGONS
+        cnt = len(in_draw)
+        count_dist[cnt] = count_dist.get(cnt, 0) + 1
+        for m in in_draw:
+            freq[m] += 1
+
+    avg = round(sum(k * v for k, v in count_dist.items()) / total, 3)
+    best_count = max(count_dist, key=lambda k: count_dist[k])
+    dist_list = [
+        {"count": k, "draws": count_dist[k], "pct": round(count_dist[k] / total * 100, 1)}
+        for k in range(max_k + 1)
+    ]
+    freq_list = [
+        {
+            "number": m,
+            "n": DECAGON_N[m],
+            "formula": f"{DECAGON_N[m]}×(4×{DECAGON_N[m]}-3)",
+            "count": freq[m],
+            "pct": round(freq[m] / total * 100, 1),
+        }
+        for m in sorted(DECAGONS)
+    ]
+
+    recent: list[dict] = []
+    for draw in sorted(draws, key=lambda d: d.drwNo, reverse=True)[:20]:
+        nums = set(draw.numbers())
+        in_draw = nums & DECAGONS
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "decagons": in_draw,
+            "count": len(in_draw),
+        })
+
+    return {
+        "total": total,
+        "decagon_count": len(DECAGONS),
+        "decagon_list": sorted(DECAGONS),
+        "avg": avg,
+        "expected": expected,
+        "diff": round(avg - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+        "zero_pct": round(count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }
+
+
 # ─── 구매 이력 (my_tickets) ─────────────────────────────────────────────────
 _MY_TICKETS_PATH = settings.data_dir / "my_tickets.json"
 

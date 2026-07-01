@@ -2664,3 +2664,13 @@ async def nonagonal_page(request: Request) -> TemplateResponse:
         "active_tab": "nonagonal",
         "data": data,
     })
+
+
+@router.get("/stats/decagonal")
+async def decagonal_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-181: 십각수 포함 분포 분석."""
+    data = wd.get_decagonal_analysis()
+    return _render(request, "decagonal.html", {
+        "active_tab": "decagonal",
+        "data": data,
+    })

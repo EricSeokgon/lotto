@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}십각수 분포 분석{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="row mb-4">
+    <div class="col">
+      <h2 class="fw-bold">십각수 분포 분석</h2>
+      <p class="text-muted">
+        십각수 D(n) = n(4n-3) 중 1~45 범위 내 3개
+        {1, 10, 27}의 당첨 번호 포함 빈도 분석.
+        이론 기댓값: {{ data.expected if data else 0.4 }}개/회.
+      </p>
+    </div>
+  </div>
+
+  {% if not data %}
+  <div class="alert alert-warning">데이터가 없습니다.</div>
+  {% else %}
+
+  <!-- Summary Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card h-100 text-center">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-warning">{{ data.decagon_count }}개</div>
+          <div class="text-muted small">십각수 개수</div>
+          <div class="text-muted small">기댓값 {{ data.expected }}개/회</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card h-100 text-center">
+        <div class="card-body">
+          <div class="fs-2 fw-bold">{{ data.avg }}</div>
+          <div class="text-muted small">실제 평균 포함 수</div>
+          <div class="small {% if data.diff >= 0 %}text-danger{% else %}text-primary{% endif %}">
+            {% if data.diff >= 0 %}+{% endif %}{{ data.diff }} vs 기댓값
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card h-100 text-center">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-warning">{{ data.best_count }}개</div>
+          <div class="text-muted small">최빈 포함 개수</div>
+          <div class="text-muted small">{{ data.best_count_pct }}% 회차</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card h-100 text-center">
+        <div class="card-body">
+          <div class="fs-2 fw-bold text-secondary">{{ data.zero_pct }}%</div>
+          <div class="text-muted small">0개 포함 비율</div>
+          <div class="text-muted small">전체 회차 중</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Decagon list -->
+  <div class="row mb-4">
+    <div class="col">
+      <div class="alert alert-warning">
+        <strong>분석 대상 십각수 D(n):</strong>
+        {% for row in data.freq_list %}
+        <span class="badge bg-warning text-dark me-2 fs-6">D{{ row.n }}={{ row.number }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Distribution + Frequency -->
+  <div class="row mb-4">
+    <div class="col-lg-5">
+      <div class="card">
+        <div class="card-header fw-bold">회차별 십각수 포함 개수 분포</div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>포함 개수</th>
+                <th>회차 수</th>
+                <th>비율</th>
+                <th>분포</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in data.dist_list %}
+              <tr {% if row.count == data.best_count %}class="table-warning"{% endif %}>
+                <td>{{ row.count }}개</td>
+                <td>{{ row.draws }}</td>
+                <td>{{ row.pct }}%</td>
+                <td>
+                  <div class="progress" style="height:16px; min-width:80px;">
+                    <div class="progress-bar bg-warning" role="progressbar" style="width:{{ row.pct }}%">
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-header fw-bold">십각수 번호별 출현 빈도</div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>번호</th>
+                <th>D(n) 식</th>
+                <th>출현 횟수</th>
+                <th>출현율</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in data.freq_list %}
+              <tr>
+                <td><span class="badge bg-warning text-dark fs-6">{{ row.number }}</span></td>
+                <td class="text-muted small">{{ row.formula }}</td>
+                <td>{{ row.count }}</td>
+                <td>{{ row.pct }}%</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent 20 Draws -->
+  <div class="row mb-4">
+    <div class="col">
+      <div class="card">
+        <div class="card-header fw-bold">최근 20회차 십각수 포함 현황</div>
+        <div class="card-body p-0">
+          <table class="table table-hover mb-0">
+            <thead class="table-light">
+              <tr>
+                <th>회차</th>
+                <th>당첨 번호</th>
+                <th>십각수 개수</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in data.recent %}
+              <tr>
+                <td>{{ row.drwNo }}회</td>
+                <td>
+                  {% for n in row.numbers %}
+                  {% if n in row.decagons %}
+                  <span class="badge bg-warning text-dark me-1">{{ n }}</span>
+                  {% else %}
+                  <span class="badge bg-light text-dark border me-1">{{ n }}</span>
+                  {% endif %}
+                  {% endfor %}
+                </td>
+                <td>
+                  {% if row.count > 0 %}
+                  <span class="badge bg-warning text-dark">{{ row.count }}개</span>
+                  {% else %}
+                  <span class="badge bg-secondary">0개</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
