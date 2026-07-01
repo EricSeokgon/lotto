@@ -14640,6 +14640,80 @@ def get_octagonal_analysis() -> dict | None:
     }
 
 
+def get_nonagonal_analysis() -> dict | None:
+    """SPEC-LOTTO-180: 구각수(Nonagonal Number) 포함 분포 분석.
+
+    구각수 N(n) = n(7n-5)/2.
+    1~45 범위 내 3개: {1, 9, 24}.
+    (N(1)=1, N(2)=9, N(3)=24)
+    이론 기댓값 = 3/45 × 6 = 0.4.
+    """
+    draws = get_draws()
+    if not draws:
+        return None
+
+    # N(n) = n(7n-5)/2; 1~45 범위 내 구각수
+    NONAGONS = {1, 9, 24}  # noqa: N806
+    NONAGON_N = {1: 1, 9: 2, 24: 3}  # noqa: N806
+    total = len(draws)
+    expected = round(len(NONAGONS) / 45 * 6, 3)
+    max_k = min(6, len(NONAGONS))
+
+    count_dist: dict[int, int] = {k: 0 for k in range(max_k + 1)}  # noqa: C420
+    freq: dict[int, int] = {m: 0 for m in NONAGONS}  # noqa: C420
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        in_draw = nums & NONAGONS
+        cnt = len(in_draw)
+        count_dist[cnt] = count_dist.get(cnt, 0) + 1
+        for m in in_draw:
+            freq[m] += 1
+
+    avg = round(sum(k * v for k, v in count_dist.items()) / total, 3)
+    best_count = max(count_dist, key=lambda k: count_dist[k])
+    dist_list = [
+        {"count": k, "draws": count_dist[k], "pct": round(count_dist[k] / total * 100, 1)}
+        for k in range(max_k + 1)
+    ]
+    freq_list = [
+        {
+            "number": m,
+            "n": NONAGON_N[m],
+            "formula": f"{NONAGON_N[m]}×(7×{NONAGON_N[m]}-5)÷2",
+            "count": freq[m],
+            "pct": round(freq[m] / total * 100, 1),
+        }
+        for m in sorted(NONAGONS)
+    ]
+
+    recent: list[dict] = []
+    for draw in sorted(draws, key=lambda d: d.drwNo, reverse=True)[:20]:
+        nums = set(draw.numbers())
+        in_draw = nums & NONAGONS
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "nonagons": in_draw,
+            "count": len(in_draw),
+        })
+
+    return {
+        "total": total,
+        "nonagon_count": len(NONAGONS),
+        "nonagon_list": sorted(NONAGONS),
+        "avg": avg,
+        "expected": expected,
+        "diff": round(avg - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+        "zero_pct": round(count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }
+
+
 # ─── 구매 이력 (my_tickets) ─────────────────────────────────────────────────
 _MY_TICKETS_PATH = settings.data_dir / "my_tickets.json"
 

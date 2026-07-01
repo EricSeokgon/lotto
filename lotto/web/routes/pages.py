@@ -2654,3 +2654,13 @@ async def octagonal_page(request: Request) -> TemplateResponse:
         "active_tab": "octagonal",
         "data": data,
     })
+
+
+@router.get("/stats/nonagonal")
+async def nonagonal_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-180: 구각수 포함 분포 분석."""
+    data = wd.get_nonagonal_analysis()
+    return _render(request, "nonagonal.html", {
+        "active_tab": "nonagonal",
+        "data": data,
+    })
