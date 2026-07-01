@@ -14936,6 +14936,80 @@ def get_dodecagonal_analysis() -> dict | None:
     }
 
 
+def get_tridecagonal_analysis() -> dict | None:
+    """SPEC-LOTTO-184: 십삼각수(Tridecagonal Number) 포함 분포 분석.
+
+    십삼각수 T(n) = n(11n-9)/2.
+    1~45 범위 내 3개: {1, 13, 36}.
+    (T(1)=1, T(2)=13, T(3)=36)
+    이론 기댓값 = 3/45 × 6 = 0.4.
+    """
+    draws = get_draws()
+    if not draws:
+        return None
+
+    # T(n) = n(11n-9)/2; 1~45 범위 내 십삼각수
+    TRIDECAGONS = {1, 13, 36}  # noqa: N806
+    TRIDECAGON_N = {1: 1, 13: 2, 36: 3}  # noqa: N806
+    total = len(draws)
+    expected = round(len(TRIDECAGONS) / 45 * 6, 3)
+    max_k = min(6, len(TRIDECAGONS))
+
+    count_dist: dict[int, int] = {k: 0 for k in range(max_k + 1)}  # noqa: C420
+    freq: dict[int, int] = {m: 0 for m in TRIDECAGONS}  # noqa: C420
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        in_draw = nums & TRIDECAGONS
+        cnt = len(in_draw)
+        count_dist[cnt] = count_dist.get(cnt, 0) + 1
+        for m in in_draw:
+            freq[m] += 1
+
+    avg = round(sum(k * v for k, v in count_dist.items()) / total, 3)
+    best_count = max(count_dist, key=lambda k: count_dist[k])
+    dist_list = [
+        {"count": k, "draws": count_dist[k], "pct": round(count_dist[k] / total * 100, 1)}
+        for k in range(max_k + 1)
+    ]
+    freq_list = [
+        {
+            "number": m,
+            "n": TRIDECAGON_N[m],
+            "formula": f"{TRIDECAGON_N[m]}×(11×{TRIDECAGON_N[m]}-9)÷2",
+            "count": freq[m],
+            "pct": round(freq[m] / total * 100, 1),
+        }
+        for m in sorted(TRIDECAGONS)
+    ]
+
+    recent: list[dict] = []
+    for draw in sorted(draws, key=lambda d: d.drwNo, reverse=True)[:20]:
+        nums = set(draw.numbers())
+        in_draw = nums & TRIDECAGONS
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "tridecagons": in_draw,
+            "count": len(in_draw),
+        })
+
+    return {
+        "total": total,
+        "tridecagon_count": len(TRIDECAGONS),
+        "tridecagon_list": sorted(TRIDECAGONS),
+        "avg": avg,
+        "expected": expected,
+        "diff": round(avg - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+        "zero_pct": round(count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }
+
+
 # ─── 구매 이력 (my_tickets) ─────────────────────────────────────────────────
 _MY_TICKETS_PATH = settings.data_dir / "my_tickets.json"
 
