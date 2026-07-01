@@ -2724,3 +2724,13 @@ async def pentadecagonal_page(request: Request) -> TemplateResponse:
         "active_tab": "pentadecagonal",
         "data": data,
     })
+
+
+@router.get("/stats/hexadecagonal")
+async def hexadecagonal_page(request: Request) -> TemplateResponse:
+    """SPEC-LOTTO-187: 십육각수 포함 분포 분석."""
+    data = wd.get_hexadecagonal_analysis()
+    return _render(request, "hexadecagonal.html", {
+        "active_tab": "hexadecagonal",
+        "data": data,
+    })

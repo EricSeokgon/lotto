@@ -15158,6 +15158,80 @@ def get_pentadecagonal_analysis() -> dict | None:
     }
 
 
+def get_hexadecagonal_analysis() -> dict | None:
+    """SPEC-LOTTO-187: 십육각수(Hexadecagonal Number) 포함 분포 분석.
+
+    십육각수 H(n) = 7n²-6n.
+    1~45 범위 내 3개: {1, 16, 45}.
+    (H(1)=1, H(2)=16, H(3)=45)
+    이론 기댓값 = 3/45 × 6 = 0.4.
+    """
+    draws = get_draws()
+    if not draws:
+        return None
+
+    # H(n) = 7n²-6n; 1~45 범위 내 십육각수
+    HEXADECAGONS = {1, 16, 45}  # noqa: N806
+    HEXADECAGON_N = {1: 1, 16: 2, 45: 3}  # noqa: N806
+    total = len(draws)
+    expected = round(len(HEXADECAGONS) / 45 * 6, 3)
+    max_k = min(6, len(HEXADECAGONS))
+
+    count_dist: dict[int, int] = {k: 0 for k in range(max_k + 1)}  # noqa: C420
+    freq: dict[int, int] = {m: 0 for m in HEXADECAGONS}  # noqa: C420
+
+    for draw in draws:
+        nums = set(draw.numbers())
+        in_draw = nums & HEXADECAGONS
+        cnt = len(in_draw)
+        count_dist[cnt] = count_dist.get(cnt, 0) + 1
+        for m in in_draw:
+            freq[m] += 1
+
+    avg = round(sum(k * v for k, v in count_dist.items()) / total, 3)
+    best_count = max(count_dist, key=lambda k: count_dist[k])
+    dist_list = [
+        {"count": k, "draws": count_dist[k], "pct": round(count_dist[k] / total * 100, 1)}
+        for k in range(max_k + 1)
+    ]
+    freq_list = [
+        {
+            "number": m,
+            "n": HEXADECAGON_N[m],
+            "formula": f"7×{HEXADECAGON_N[m]}²-6×{HEXADECAGON_N[m]}",
+            "count": freq[m],
+            "pct": round(freq[m] / total * 100, 1),
+        }
+        for m in sorted(HEXADECAGONS)
+    ]
+
+    recent: list[dict] = []
+    for draw in sorted(draws, key=lambda d: d.drwNo, reverse=True)[:20]:
+        nums = set(draw.numbers())
+        in_draw = nums & HEXADECAGONS
+        recent.append({
+            "drwNo": draw.drwNo,
+            "numbers": sorted(draw.numbers()),
+            "hexadecagons": in_draw,
+            "count": len(in_draw),
+        })
+
+    return {
+        "total": total,
+        "hexadecagon_count": len(HEXADECAGONS),
+        "hexadecagon_list": sorted(HEXADECAGONS),
+        "avg": avg,
+        "expected": expected,
+        "diff": round(avg - expected, 3),
+        "best_count": best_count,
+        "best_count_pct": round(count_dist[best_count] / total * 100, 1),
+        "zero_pct": round(count_dist[0] / total * 100, 1),
+        "dist_list": dist_list,
+        "freq_list": freq_list,
+        "recent": recent,
+    }
+
+
 # ─── 구매 이력 (my_tickets) ─────────────────────────────────────────────────
 _MY_TICKETS_PATH = settings.data_dir / "my_tickets.json"
 
